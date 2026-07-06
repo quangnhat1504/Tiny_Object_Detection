@@ -1,5 +1,6 @@
 """Evaluation utilities — shared across all experiments."""
 from __future__ import annotations
+import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -16,6 +17,110 @@ except ImportError:
 from .config import (
     DEVICE, CLASS_NAMES, TINY_THRESHOLD_PX,
 )
+
+
+# =============================================================================
+# FPS measurement
+# =============================================================================
+def measure_fps(model, device, batch_size: int = 1,
+                img_size: Tuple[int, int] = (640, 800),
+                n_warmup: int = 30, n_iters: int = 100) -> float:
+    """Measure inference speed (images/second) on a dummy batch.
+
+    Args:
+        model: torch model (will be set to eval mode)
+        device: torch device
+        batch_size: number of images per batch
+        img_size: (H, W) input size
+        n_warmup: iterations to warm up GPU
+        n_iters: iterations to measure
+    Returns:
+        FPS (images/second)
+    """
+    model.eval()
+    dummy = torch.randn(batch_size, 3, img_size[0], img_size[1]).to(device)
+
+    # Warmup
+    with torch.no_grad():
+        for _ in range(n_warmup):
+            _ = model(dummy)
+
+    # Measure
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    t0 = time.perf_counter()
+    with torch.no_grad():
+        for _ in range(n_iters):
+            _ = model(dummy)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    elapsed = time.perf_counter() - t0
+
+    fps = (n_iters * batch_size) / elapsed
+    return fps
+
+
+# =============================================================================
+# Precision & Recall
+# =============================================================================
+def compute_precision_recall(preds: List[Dict], gts: List[Dict],
+                              iou_thresh: float = 0.5,
+                              score_thresh: float = 0.05) -> Dict:
+    """Compute Precision and Recall at given IoU threshold.
+
+    Args:
+        preds: list of {"boxes", "scores", "labels"}
+        gts: list of {"boxes", "labels"}
+        iou_thresh: IoU threshold for a match
+        score_thresh: minimum score to consider a detection
+    Returns:
+        {"Precision": float, "Recall": float}
+    """
+    total_gt = 0
+    total_tp = 0
+    total_fp = 0
+
+    for pred, gt in zip(preds, gts):
+        gb = gt["boxes"]
+        pb = pred.get("boxes", torch.empty(0, 4))
+        ps = pred.get("scores", torch.empty(0))
+        total_gt += len(gb)
+
+        if len(gb) == 0 or len(pb) == 0 or len(ps) == 0:
+            continue
+
+        # Filter by score
+        keep = ps >= score_thresh
+        pb = pb[keep]
+        ps = ps[keep]
+
+        if len(pb) == 0:
+            continue
+
+        ious = box_iou(pb, gb)
+        matched = torch.zeros(len(gb), dtype=torch.bool)
+
+        # Sort by score descending
+        order = ps.argsort(descending=True)
+        for pi in order:
+            row = ious[pi].clone()
+            row[matched] = 0.0
+            best_iou, best_gt = row.max(dim=0)
+            if best_iou >= iou_thresh:
+                matched[best_gt] = True
+                total_tp += 1
+            else:
+                total_fp += 1
+
+    precision = total_tp / max(total_tp + total_fp, 1)
+    recall = total_tp / max(total_gt, 1)
+
+    return {
+        "Precision": round(precision, 4),
+        "Recall": round(recall, 4),
+        "n_gt_total": total_gt,
+        "n_tp": total_tp,
+    }
 
 
 # =============================================================================
@@ -182,8 +287,10 @@ def collect_predictions(model, loader, device, amp: bool = True
             continue
     val_loss = tvl / max(nb, 1)
 
-    # 2) predictions in eval mode
+    # 2) predictions in eval mode — lower score_thresh for tiny objects
     model.eval()
+    prev_score = model.roi_heads.score_thresh
+    model.roi_heads.score_thresh = 0.001
     preds_all, gts_all = [], []
     for imgs, targets in loader:
         try:
@@ -195,14 +302,24 @@ def collect_predictions(model, loader, device, amp: bool = True
                                 for k, v in tt.items()})
         except Exception:
             continue
+    model.roi_heads.score_thresh = prev_score
     return val_loss, preds_all, gts_all
 
 
 # =============================================================================
 # Main evaluate() — 1 pass, returns full metrics dict
 # =============================================================================
-def evaluate(model, loader, device) -> Dict:
-    """Run full evaluation. Returns metrics dict suitable for logging."""
+def evaluate(model, loader, device, measure_fps_flag: bool = False,
+             fps_img_size: Tuple[int, int] = (640, 800)) -> Dict:
+    """Run full evaluation. Returns metrics dict suitable for logging.
+
+    Args:
+        model: torch model
+        loader: DataLoader for validation
+        device: torch device
+        measure_fps_flag: if True, measure FPS on dummy data
+        fps_img_size: (H, W) for FPS dummy input
+    """
     val_loss, preds, gts = collect_predictions(model, loader, device)
 
     # mAP@50 only
@@ -229,13 +346,26 @@ def evaluate(model, loader, device) -> Dict:
     # COCO mAP
     coco = evaluate_coco(preds, gts, class_metrics=True)
 
+    # Precision & Recall
+    pr = compute_precision_recall(preds, gts, iou_thresh=0.5, score_thresh=0.05)
+
+    # FPS (optional)
+    fps = 0.0
+    if measure_fps_flag:
+        fps = measure_fps(model, device, batch_size=1, img_size=fps_img_size)
+
     metrics = {
         "val_loss": round(val_loss, 4),
         "mAP_primary": round(prim, 6),
         "mAP_50":      round(mAP50, 6),
         **sap,
         **coco,
+        **pr,
     }
+    if fps > 0:
+        metrics["FPS"] = round(fps, 1)
+        metrics["inference_ms"] = round(1000.0 / fps, 2)
+
     print(f"\n{'='*50}\nEVAL\n{'='*50}")
     print(f"  val_loss    : {metrics['val_loss']:.4f}")
     print(f"  mAP(scale)  : {metrics['mAP_primary']:.4f}")
@@ -249,4 +379,8 @@ def evaluate(model, loader, device) -> Dict:
     print(f"  COCO AP@75  : {coco.get('coco_AP75', 0):.4f}")
     print(f"  COCO AP_small : {coco.get('coco_AP_small', 0):.4f}")
     print(f"  COCO AR@100 : {coco.get('coco_AR100', 0):.4f}")
+    print(f"\n  Precision   : {pr.get('Precision', 0):.4f}")
+    print(f"  Recall      : {pr.get('Recall', 0):.4f}")
+    if fps > 0:
+        print(f"  FPS         : {fps:.1f} ({1000.0/fps:.1f} ms/img)")
     return metrics

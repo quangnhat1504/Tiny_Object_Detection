@@ -21,7 +21,7 @@ def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg, **kwargs) -> torch.Tensor:
     """Treat anchors + GT as boxes, return IoU matrix as 'similarity'.
 
     boxes_n = [xn-wn/2, yn-hn/2, xn+wn/2, yn+hn/2]
-    boxes_g = [xg-wg/2, yg-hg/2, xg+wg/2, yg+wg/2]
+    boxes_g = [xg-wg/2, yg-hg/2, xg+wg/2, yg+hg/2]
     """
     boxes_n = torch.stack([xn - wn/2, yn - hn/2, xn + wn/2, yn + hn/2], dim=1)
     boxes_g = torch.stack([xg - wg/2, yg - hg/2, xg + wg/2, yg + hg/2], dim=1)

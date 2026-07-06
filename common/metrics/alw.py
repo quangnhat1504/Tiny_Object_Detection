@@ -27,7 +27,7 @@ import torch
 from ..config import (
     ALW_SHAPE_LAMBDA_MIN, ALW_SHAPE_LAMBDA_POWER,
     ALW_CHARBONNIER_EPS_MIN, ALW_CHARBONNIER_EPS_MAX,
-    METRIC_BETA,
+    METRIC_BETA, SA_ALW_LOG_CLAMP,
 )
 
 EPS = 1e-6
@@ -89,9 +89,9 @@ def _alw(xn, yn, wn, hn, xg, yg, wg, hg,
     pos_x = dx * dx / Sx.clamp(min=EPS)
     pos_y = dy * dy / Sy.clamp(min=EPS)
 
-    # Shape (log-ratio)
-    log_ratio_w = torch.log(wn.unsqueeze(1) / wg.unsqueeze(0)).abs()
-    log_ratio_h = torch.log(hn.unsqueeze(1) / hg.unsqueeze(0)).abs()
+    # Shape (log-ratio) — clamp for numerical stability
+    log_ratio_w = torch.log(wn.unsqueeze(1) / wg.unsqueeze(0)).abs().clamp(0, SA_ALW_LOG_CLAMP)
+    log_ratio_h = torch.log(hn.unsqueeze(1) / hg.unsqueeze(0)).abs().clamp(0, SA_ALW_LOG_CLAMP)
 
     if use_reliability:
         gt_size = torch.sqrt((wg * hg).clamp(min=EPS)).unsqueeze(0)

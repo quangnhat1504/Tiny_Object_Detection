@@ -15,7 +15,7 @@ by default; can be overridden by passing C explicitly).
 from __future__ import annotations
 import torch
 
-from ..config import METRIC_BETA
+from ..config import METRIC_BETA, NWD_C
 
 EPS = 1e-6
 
@@ -29,7 +29,7 @@ def _wasserstein_sq(xn, yn, wn, hn, xg, yg, wg, hg):
     return dx * dx + dy * dy + dw * dw + dh * dh
 
 
-def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg, C: float = 12.0,
+def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg, C: float = NWD_C,
                 beta: float = METRIC_BETA, **kwargs) -> torch.Tensor:
     """NWD similarity (Wang et al. 2022).
 

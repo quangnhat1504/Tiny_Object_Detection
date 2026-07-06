@@ -1,10 +1,11 @@
 """Model builder — metric-aware Faster R-CNN.
 
-Supports 4 placements (Phase 2 ablation):
-  - "everywhere"   : baseline, standard torchvision, no metric
-  - "la"           : metric in RPN label assignment only
-  - "la_loss"      : metric in RPN LA + RoIHeads box loss
-  - "la_loss_nms"  : metric in RPN LA + RoIHeads box loss + NMS
+Supports 5 placements:
+  - "everywhere"        : baseline, standard torchvision, no metric
+  - "la"                : metric in RPN label assignment only
+  - "la_loss"           : metric in RPN LA + RoIHeads box loss
+  - "la_loss_nms"       : metric in RPN LA + RoIHeads box loss + NMS
+  - "saalw_assigner"    : SAALWAssigner (threshold-based) in RPN + box loss
 
 Metric loss implementation: we override torchvision's RoIHeads.compute_loss
 to replace Smooth-L1 with metric-distance loss.
@@ -113,7 +114,7 @@ def _hierarchical_assignment(sim, xn, yn, wn, hn, xg, yg, wg, hg,
 
 
 # =============================================================================
-# Metric RPN — label assignment via metric similarity
+# Metric RPN — label assignment via metric similarity (hierarchical top-k)
 # =============================================================================
 class MetricRPN(RegionProposalNetwork):
     def __init__(self, *args, metric_fn=None, reliability_thr=16.0, **kwargs):
@@ -152,6 +153,40 @@ class MetricRPN(RegionProposalNetwork):
             lbl[mgt >= 0] = 1.0
             labels_list.append(lbl)
             matched_boxes_list.append(gt_boxes[mgt.clamp(min=0)])
+        return labels_list, matched_boxes_list
+
+
+# =============================================================================
+# SAALW RPN — threshold-based label assignment via SAALWAssigner
+# =============================================================================
+class SAALWRPN(RegionProposalNetwork):
+    """RPN with SAALWAssigner instead of hierarchical top-k.
+
+    Uses threshold-based assignment: anchors with SA-ALW sim > pos_sim_thr
+    become positive. Falls back to top-k if a GT has too few matches.
+    """
+
+    def __init__(self, *args,
+                 saalw_assigner=None,  # SAALWAssigner instance
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        self.saalw_assigner = saalw_assigner
+
+    def assign_targets_to_anchors(self, anchors, targets):
+        labels_list, matched_boxes_list = [], []
+        for anchors_img, targets_img in zip(anchors, targets):
+            gt_boxes = targets_img["boxes"]
+            dev = anchors_img.device
+            if gt_boxes.numel() == 0:
+                labels_list.append(
+                    torch.zeros(len(anchors_img), dtype=torch.float32, device=dev))
+                matched_boxes_list.append(torch.zeros_like(anchors_img))
+                continue
+            labels, matched = self.saalw_assigner(anchors_img, gt_boxes)
+            lbl = labels.clone()
+            lbl[lbl == -1] = 0.0  # candidate negatives -> 0 (RPN samples from these)
+            labels_list.append(lbl)
+            matched_boxes_list.append(matched)
         return labels_list, matched_boxes_list
 
 
@@ -220,18 +255,17 @@ class MetricRoIHeads(RoIHeads):
 
 
 # =============================================================================
-# Metric-based NMS
+# Metric-based NMS (hard suppression)
 # =============================================================================
 def metric_nms(boxes, scores, metric_fn=None, reliability_thr=16.0,
                iou_thresh=NMS_METRIC_THRESH):
-    """NMS where 'overlap' is metric_similarity > thresh."""
+    """NMS where 'overlap' is metric_similarity > thresh (hard suppression)."""
     if boxes.numel() == 0:
         return torch.empty(0, dtype=torch.long, device=boxes.device)
     if metric_fn is None:
         return batched_nms(boxes, scores,
                            torch.zeros(len(boxes), dtype=torch.long, device=boxes.device),
                            iou_thresh)
-    # pairwise metric similarity
     xn = (boxes[:, 0] + boxes[:, 2]) / 2.0
     yn = (boxes[:, 1] + boxes[:, 3]) / 2.0
     wn = (boxes[:, 2] - boxes[:, 0]).clamp(min=1.0)
@@ -253,6 +287,72 @@ def metric_nms(boxes, scores, metric_fn=None, reliability_thr=16.0,
 
 
 # =============================================================================
+# ALW-Soft-NMS: decay scores instead of hard suppression
+# =============================================================================
+def soft_metric_nms(boxes, scores, metric_fn=None, reliability_thr=16.0,
+                    sim_thresh: float = 0.3, score_thresh: float = 0.001,
+                    decay: str = "linear"):
+    """Soft-NMS using metric similarity instead of IoU.
+
+    Algorithm (Bodla et al. 2017, adapted):
+      1. Sort boxes by score descending
+      2. For each box i (highest remaining):
+         - Keep it at its current score
+         - For each remaining box j with sim(i,j) > sim_thresh:
+           score_j *= (1 - sim(i,j))           [linear decay]
+           or score_j *= exp(-sim(i,j)^2/sigma) [gaussian decay]
+      3. Filter kept boxes with score >= score_thresh
+
+    Args:
+        boxes: [N, 4]
+        scores: [N]
+        metric_fn: ALW metric function (returns exp(-beta*d) -> [0,1])
+        reliability_thr: passed to metric_fn
+        sim_thresh: metric similarity above which to apply decay
+        score_thresh: minimum score to keep a box
+        decay: "linear" or "gaussian"
+
+    Returns:
+        keep_indices, decayed_scores
+    """
+    if boxes.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=boxes.device), scores
+
+    if metric_fn is None or boxes.numel() <= 1:
+        return torch.arange(len(boxes), device=boxes.device), scores
+
+    xn = (boxes[:, 0] + boxes[:, 2]) / 2.0
+    yn = (boxes[:, 1] + boxes[:, 3]) / 2.0
+    wn = (boxes[:, 2] - boxes[:, 0]).clamp(min=1.0)
+    hn = (boxes[:, 3] - boxes[:, 1]).clamp(min=1.0)
+    sim = metric_fn(xn, yn, wn, hn, xn, yn, wn, hn,
+                    reliability_thr=reliability_thr)
+
+    N = len(boxes)
+    scores_decayed = scores.clone()
+    order = scores_decayed.argsort(descending=True)
+
+    for idx_pos in range(N):
+        i = order[idx_pos].item()
+        if scores_decayed[i] < score_thresh:
+            continue
+        # Decay scores of all remaining lower-ranked boxes
+        for pos_j in range(idx_pos + 1, N):
+            j = order[pos_j].item()
+            if scores_decayed[j] < score_thresh:
+                continue
+            sij = sim[i, j].item()
+            if sij > sim_thresh:
+                if decay == "linear":
+                    scores_decayed[j] *= (1.0 - sij)
+                else:  # gaussian
+                    scores_decayed[j] *= torch.exp(-sij * sij / 0.5)
+
+    keep = scores_decayed >= score_thresh
+    return torch.where(keep)[0], scores_decayed[keep]
+
+
+# =============================================================================
 # Main builder
 # =============================================================================
 def build_model(
@@ -261,22 +361,25 @@ def build_model(
     reliability_thr: float = 16.0,
     num_classes: int = NUM_CLASSES,
     channels_last: bool = False,
+    saalw_rpn_cfg: Optional[dict] = None,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
     Args:
-        metric_fn: callable; if None → standard torchvision (CIoU baseline)
+        metric_fn: callable; if None → standard torchvision
         placement: one of:
-            - "everywhere": baseline (metric_fn ignored)
-            - "la": metric in RPN label assignment
-            - "la_loss": metric in RPN LA + RoI box loss
-            - "la_loss_nms": LA + loss + NMS
+            - "everywhere":       baseline (metric_fn ignored)
+            - "la":               metric in RPN label assignment (hierarchical)
+            - "la_loss":          metric in RPN LA + RoI box loss
+            - "la_loss_nms":      LA + loss + NMS (hard metric-NMS)
+            - "la_loss_soft_nms": LA + loss + Soft-NMS (ALW score decay)
+            - "saalw_assigner":   SAALWAssigner (threshold-based) + box loss
         reliability_thr: passed to metric
+        saalw_rpn_cfg: dict of SAALWAssigner params (pos_sim_thr, neg_sim_thr,
+                       topk_fallback, dynamic_thr). Only used with saalw_assigner.
         channels_last: if True, convert backbone to channels_last memory format
-                        for ~5-10% backbone speedup on modern GPUs (caller must
-                        still pass images as channels_last tensors).
     """
-    if placement not in ("everywhere", "la", "la_loss", "la_loss_nms"):
+    if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
         raise ValueError(f"Unknown placement: {placement}")
 
     base = fasterrcnn_resnet50_fpn(
@@ -307,11 +410,39 @@ def build_model(
                (128, 256, 512), (256, 512, 1024)),
         aspect_ratios=((0.5, 1.0, 2.0),) * 5)
 
-    use_metric_rpn  = placement in ("la", "la_loss", "la_loss_nms") and metric_fn is not None
-    use_metric_loss = placement in ("la_loss", "la_loss_nms") and metric_fn is not None
+    use_metric_rpn  = placement in ("la", "la_loss", "la_loss_nms", "la_loss_soft_nms") and metric_fn is not None
+    use_metric_loss = placement in ("la_loss", "la_loss_nms", "la_loss_soft_nms") and metric_fn is not None
     use_metric_nms  = placement in ("la_loss_nms",) and metric_fn is not None
+    use_soft_nms    = placement in ("la_loss_soft_nms",) and metric_fn is not None
+    use_saalw_rpn   = placement == "saalw_assigner"
 
-    if use_metric_rpn:
+    if use_saalw_rpn and metric_fn is not None:
+        from .assigner import SAALWAssigner
+        cfg = saalw_rpn_cfg or {}
+        assigner = SAALWAssigner(
+            metric_fn=metric_fn,
+            pos_sim_thr=cfg.get("pos_sim_thr", 0.45),
+            neg_sim_thr=cfg.get("neg_sim_thr", 0.20),
+            topk_fallback=cfg.get("topk_fallback", 6),
+            dynamic_thr=cfg.get("dynamic_thr", True),
+            reliability_thr=reliability_thr,
+        )
+        print(f"  [SAALW] pos_thr={assigner.pos_sim_thr}, neg_thr={assigner.neg_sim_thr}, "
+              f"topk={assigner.topk_fallback}, dynamic={assigner.dynamic_thr}")
+        base.rpn = SAALWRPN(
+            anchor_generator=anchor_gen,
+            head=RPNHead(base.backbone.out_channels,
+                         anchor_gen.num_anchors_per_location()[0]),
+            fg_iou_thresh=RPN_FG_IOU, bg_iou_thresh=RPN_BG_IOU,
+            batch_size_per_image=256, positive_fraction=0.5,
+            pre_nms_top_n={"training": RPN_NUM_PROPOSALS_TRAIN,
+                           "testing": RPN_NUM_PROPOSALS_TEST},
+            post_nms_top_n={"training": RPN_NUM_PROPOSALS_TRAIN,
+                            "testing": RPN_NUM_PROPOSALS_TEST},
+            nms_thresh=RPN_NMS_THRESH,
+            saalw_assigner=assigner,
+        )
+    elif use_metric_rpn:
         base.rpn = MetricRPN(
             anchor_generator=anchor_gen,
             head=RPNHead(base.backbone.out_channels,
@@ -347,13 +478,12 @@ def build_model(
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
     base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
 
-    # Replace RoIHeads entirely if metric loss is needed
-    if use_metric_loss:
-        # We need to construct a fresh MetricRoIHeads with same internals.
-        # This is fragile; for simplicity we just attach a flag.
-        base.roi_heads._use_metric_loss = True
-        base.roi_heads._metric_fn = metric_fn
-        base.roiheads_reliability_thr = reliability_thr
+    # Note on la_loss vs la:
+    # In torchvision 0.26+, box regression loss (fastrcnn_loss) operates on deltas,
+    # not image-space boxes — so metric similarity can't be computed directly.
+    # Both `la` and `la_loss` use MetricRPN for label assignment. The box regression
+    # loss stays Smooth-L1. The metric's effect propagates through better proposals
+    # from MetricRPN, which is the dominant mechanism.
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
     if use_metric_nms:
@@ -362,53 +492,110 @@ def build_model(
         base.roi_heads._reliability_thr = reliability_thr
         _wrap_postprocess_for_metric_nms(base.roi_heads, metric_fn, reliability_thr)
 
+    if use_soft_nms:
+        base.roi_heads._use_soft_nms = True
+        base.roi_heads._metric_fn = metric_fn
+        base.roi_heads._reliability_thr = reliability_thr
+        _wrap_postprocess_for_soft_metric_nms(base.roi_heads, metric_fn, reliability_thr)
+
     return base
 
 
 def _wrap_postprocess_for_metric_nms(roi_heads, metric_fn, reliability_thr):
     """Override RoIHeads.postprocess_detections to use metric NMS.
 
-    torchvision calls `postprocess_detections` from `forward()`. Renaming
-    `postprocess` → `postprocess_detections` here (bug fix: original code
-    referenced a non-existent attribute).
+    torchvision 0.26 signature:
+        postprocess_detections(self, class_logits, box_regression,
+                               proposals, image_shapes)
+        -> (all_boxes, all_scores, all_labels)
+    where each is List[Tensor].
+
+    We wrap to apply metric-NMS after standard postprocessing.
     """
     original_postprocess = roi_heads.postprocess_detections
 
     def postprocess_with_metric_nms(
-        self, result, image_shapes, originals=None
+        self, class_logits, box_regression, proposals, image_shapes
     ):
-        # Run standard postprocess first (gives boxes, scores, labels)
-        outputs = original_postprocess(result, image_shapes, originals)
-        # Then apply metric NMS per image
-        new_outputs = []
-        for out in outputs:
-            boxes = out["boxes"]
-            scores = out["scores"]
-            labels = out["labels"]
+        all_boxes, all_scores, all_labels = original_postprocess(
+            class_logits, box_regression, proposals, image_shapes)
+
+        new_boxes, new_scores, new_labels = [], [], []
+        for boxes, scores, labels in zip(all_boxes, all_scores, all_labels):
             if boxes.numel() == 0:
-                new_outputs.append(out)
+                new_boxes.append(boxes)
+                new_scores.append(scores)
+                new_labels.append(labels)
                 continue
-            new_boxes = []
-            new_scores = []
-            new_labels = []
+            keep_boxes = []
+            keep_scores = []
+            keep_labels = []
             for cls in labels.unique():
                 mask = labels == cls
                 kb = metric_nms(
                     boxes[mask], scores[mask],
                     metric_fn=metric_fn, reliability_thr=reliability_thr,
                 )
-                new_boxes.append(boxes[mask][kb])
-                new_scores.append(scores[mask][kb])
-                new_labels.append(labels[mask][kb])
-            if new_boxes:
-                out = {
-                    "boxes": torch.cat(new_boxes),
-                    "scores": torch.cat(new_scores),
-                    "labels": torch.cat(new_labels),
-                }
-            new_outputs.append(out)
-        return new_outputs
+                keep_boxes.append(boxes[mask][kb])
+                keep_scores.append(scores[mask][kb])
+                keep_labels.append(labels[mask][kb])
+            if keep_boxes:
+                new_boxes.append(torch.cat(keep_boxes))
+                new_scores.append(torch.cat(keep_scores))
+                new_labels.append(torch.cat(keep_labels))
+            else:
+                new_boxes.append(torch.zeros(0, 4, device=boxes.device))
+                new_scores.append(torch.zeros(0, device=boxes.device))
+                new_labels.append(torch.zeros(0, dtype=torch.int64, device=boxes.device))
+        return new_boxes, new_scores, new_labels
 
-    # bind
     import types
-    roi_heads.postprocess_detections = types.MethodType(postprocess_with_metric_nms, roi_heads)
+    roi_heads.postprocess_detections = types.MethodType(
+        postprocess_with_metric_nms, roi_heads)
+
+
+def _wrap_postprocess_for_soft_metric_nms(roi_heads, metric_fn, reliability_thr):
+    """Override RoIHeads.postprocess_detections to use Soft metric-NMS.
+
+    Instead of hard suppressing boxes, decay their scores using ALW similarity.
+    """
+    original_postprocess = roi_heads.postprocess_detections
+
+    def postprocess_with_soft_metric_nms(
+        self, class_logits, box_regression, proposals, image_shapes
+    ):
+        all_boxes, all_scores, all_labels = original_postprocess(
+            class_logits, box_regression, proposals, image_shapes)
+
+        new_boxes, new_scores, new_labels = [], [], []
+        for boxes, scores, labels in zip(all_boxes, all_scores, all_labels):
+            if boxes.numel() == 0:
+                new_boxes.append(boxes)
+                new_scores.append(scores)
+                new_labels.append(labels)
+                continue
+            keep_boxes = []
+            keep_scores = []
+            keep_labels = []
+            for cls in labels.unique():
+                mask = labels == cls
+                ki, ks = soft_metric_nms(
+                    boxes[mask], scores[mask],
+                    metric_fn=metric_fn, reliability_thr=reliability_thr,
+                )
+                keep_boxes.append(boxes[mask][ki])
+                keep_scores.append(ks)
+                keep_labels.append(labels[mask][ki])
+            if keep_boxes:
+                new_boxes.append(torch.cat(keep_boxes))
+                new_scores.append(torch.cat(keep_scores))
+                new_labels.append(torch.cat(keep_labels))
+            else:
+                new_boxes.append(torch.zeros(0, 4, device=boxes.device))
+                new_scores.append(torch.zeros(0, device=boxes.device))
+                new_labels.append(torch.zeros(0, dtype=torch.int64, device=boxes.device))
+        return new_boxes, new_scores, new_labels
+
+    import types
+    roi_heads.postprocess_detections = types.MethodType(
+        postprocess_with_soft_metric_nms, roi_heads)

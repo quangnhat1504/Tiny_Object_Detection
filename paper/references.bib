@@ -1,0 +1,160 @@
+% =============================================================================
+%  references.bib  --  ALW paper
+%  NOTE: Some entries (esp. IGWD) are drawn from PDFs collected in the project
+%  source folder; bibliographic fields marked TODO should be verified against
+%  the original publication before camera-ready submission.
+% =============================================================================
+
+% ---------- Detectors / backbones ----------
+@inproceedings{ren2015faster,
+  title     = {Faster {R-CNN}: Towards Real-Time Object Detection with Region Proposal Networks},
+  author    = {Ren, Shaoqing and He, Kaiming and Girshick, Ross and Sun, Jian},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2015}
+}
+
+@inproceedings{lin2017fpn,
+  title     = {Feature Pyramid Networks for Object Detection},
+  author    = {Lin, Tsung-Yi and Doll{\'a}r, Piotr and Girshick, Ross and He, Kaiming and Hariharan, Bharath and Belongie, Serge},
+  booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2017}
+}
+
+@inproceedings{he2016resnet,
+  title     = {Deep Residual Learning for Image Recognition},
+  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2016}
+}
+
+% ---------- IoU-family metrics ----------
+@inproceedings{rezatofighi2019giou,
+  title     = {Generalized Intersection over Union: A Metric and a Loss for Bounding Box Regression},
+  author    = {Rezatofighi, Hamid and Tsoi, Nathan and Gwak, JunYoung and Sadeghian, Amir and Reid, Ian and Savarese, Silvio},
+  booktitle = {IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2019}
+}
+
+@inproceedings{zheng2020diou,
+  title     = {Distance-{IoU} Loss: Faster and Better Learning for Bounding Box Regression},
+  author    = {Zheng, Zhaohui and Wang, Ping and Liu, Wei and Li, Jinze and Ye, Rongguang and Ren, Dongwei},
+  booktitle = {AAAI Conference on Artificial Intelligence},
+  year      = {2020}
+}
+
+% ---------- Gaussian / Wasserstein metrics ----------
+@article{wang2021nwd,
+  title   = {A Normalized {Gaussian} {Wasserstein} Distance for Tiny Object Detection},
+  author  = {Wang, Jinwang and Xu, Chang and Yang, Wen and Yu, Lei},
+  journal = {arXiv preprint arXiv:2110.13389},
+  year    = {2021}
+}
+
+@article{xu2022aitodv2nwd,
+  title   = {Detecting Tiny Objects in Aerial Images: A Normalized {Wasserstein} Distance and a New Benchmark},
+  author  = {Xu, Chang and Wang, Jinwang and Yang, Wen and Yu, Huai and Yu, Lei and Xia, Gui-Song},
+  journal = {ISPRS Journal of Photogrammetry and Remote Sensing},
+  volume  = {190},
+  pages   = {79--93},
+  year    = {2022}
+}
+
+@inproceedings{xu2021dotd,
+  title     = {Dot Distance for Tiny Object Detection in Aerial Images},
+  author    = {Xu, Chang and Wang, Jinwang and Yang, Wen and Yu, Lei},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)},
+  year      = {2021}
+}
+
+@inproceedings{yang2021gwd,
+  title     = {Rethinking Rotated Object Detection with {Gaussian} {Wasserstein} Distance Loss},
+  author    = {Yang, Xue and Yan, Junchi and Ming, Qi and Wang, Wentao and Zhang, Xiaopeng and Tian, Qi},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2021}
+}
+
+@inproceedings{yang2021kld,
+  title     = {Learning High-Precision Bounding Box for Rotated Object Detection via {Kullback-Leibler} Divergence},
+  author    = {Yang, Xue and Yang, Xiaojiang and Yang, Jirui and Ming, Qi and Wang, Wentao and Tian, Qi and Yan, Junchi},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2021}
+}
+
+@article{guan2025gcd,
+  title   = {{Gaussian} Combined Distance: A Generic Metric for Object Detection},
+  author  = {Guan, Ziqian and others},
+  journal = {arXiv preprint arXiv:2510.27649},
+  year    = {2025}
+}
+
+% IGWD: collected as a PDF in the project sources; verify venue/authors before camera-ready.
+@misc{igwd2024,
+  title  = {Improved {Gaussian} {Wasserstein} Distance: A Smooth Adaptive New Metric for Remote Sensing Tiny Object Detection},
+  author = {{Anonymous (IGWD source PDF)}},
+  note   = {Project source PDF; bibliographic details to be confirmed},
+  year   = {2024}
+}
+
+@article{su2024mmpw,
+  title   = {{MMPW-Net}: Detection of Tiny Objects in Aerial Imagery Using Mixed Minimum Point-{Wasserstein} Distance},
+  author  = {Su, Nan and others},
+  journal = {Remote Sensing},
+  volume  = {16},
+  number  = {23},
+  year    = {2024}
+}
+
+@article{swintod2024,
+  title   = {{SWIN-TOD}: Smooth {Wasserstein} Distance and Instance-Level Neighboring Enhancement for Remote Sensing Tiny Object Detection},
+  author  = {Zhu, Zhaohui and others},
+  journal = {IEEE Transactions on Geoscience and Remote Sensing},
+  volume  = {62},
+  year    = {2024},
+  note    = {Bibliographic details to be verified before camera-ready.}
+}
+
+% ---------- Label assignment ----------
+@inproceedings{xu2022rfla,
+  title     = {{RFLA}: {Gaussian} Receptive Field Based Label Assignment for Tiny Object Detection},
+  author    = {Xu, Chang and Wang, Jinwang and Yang, Wen and Yu, Huai and Yu, Lei and Xia, Gui-Song},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  year      = {2022}
+}
+
+@inproceedings{zhang2020atss,
+  title     = {Bridging the Gap Between Anchor-Based and Anchor-Free Detection via Adaptive Training Sample Selection},
+  author    = {Zhang, Shifeng and Chi, Cheng and Yao, Yongqiang and Lei, Zhen and Li, Stan Z.},
+  booktitle = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year      = {2020}
+}
+
+% ---------- Tiny-object datasets ----------
+@inproceedings{wang2021aitod,
+  title     = {Tiny Object Detection in Aerial Images},
+  author    = {Wang, Jinwang and Yang, Wen and Guo, Haowen and Zhang, Ruixiang and Xia, Gui-Song},
+  booktitle = {International Conference on Pattern Recognition (ICPR)},
+  pages     = {3791--3798},
+  year      = {2021}
+}
+
+@inproceedings{yu2020tinyperson,
+  title     = {Scale Match for Tiny Person Detection},
+  author    = {Yu, Xuehui and Gong, Yuqi and Jiang, Nan and Ye, Qixiang and Han, Zhenjun},
+  booktitle = {IEEE Winter Conference on Applications of Computer Vision (WACV)},
+  year      = {2020}
+}
+
+@inproceedings{lin2014coco,
+  title     = {Microsoft {COCO}: Common Objects in Context},
+  author    = {Lin, Tsung-Yi and Maire, Michael and Belongie, Serge and Hays, James and Perona, Pietro and Ramanan, Deva and Doll{\'a}r, Piotr and Zitnick, C. Lawrence},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  year      = {2014}
+}
+
+% ---------- Tiling / inference ----------
+@inproceedings{akyon2022sahi,
+  title     = {Slicing Aided Hyper Inference and Fine-Tuning for Small Object Detection},
+  author    = {Akyon, Fatih Cagatay and Altinuc, Sinan Onur and Temizel, Alptekin},
+  booktitle = {IEEE International Conference on Image Processing (ICIP)},
+  year      = {2022}
+}

@@ -13,6 +13,7 @@ from __future__ import annotations
 import torch
 
 from ..config import (
+    METRIC_BETA, SA_ALW_LOG_CLAMP,
     ALW_SHAPE_LAMBDA_MIN, ALW_SHAPE_LAMBDA_POWER,
     ALW_CHARBONNIER_EPS_MIN, ALW_CHARBONNIER_EPS_MAX,
 )
@@ -33,7 +34,7 @@ def _area_sum(wn, hn, wg, hg):
 
 
 def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg,
-                beta: float = 8.0, **kwargs) -> torch.Tensor:
+                beta: float = METRIC_BETA, **kwargs) -> torch.Tensor:
     """IGWD similarity, Eq (8) of paper IGWD.
 
     IGWD = sqrt(W2^2 / S)
@@ -50,7 +51,7 @@ def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg,
 
 # ── Ablation: IGWD + reliability gate ────────────────────────────────────
 def compute_with_reliability(xn, yn, wn, hn, xg, yg, wg, hg,
-                             beta: float = 8.0,
+                             beta: float = METRIC_BETA,
                              reliability_thr: float = 16.0, **kwargs
                              ) -> torch.Tensor:
     """IGWD where the 'shape' term is reliability-gated.
@@ -92,6 +93,58 @@ def compute_with_reliability(xn, yn, wn, hn, xg, yg, wg, hg,
     w2sq = (pos + shape).clamp(min=0.0)
     S = _area_sum(wn, hn, wg, hg).clamp(min=EPS)
     igwd = (w2sq / S).clamp(min=0.0).clamp(max=30.0 / max(beta, EPS))
+    return torch.exp(-beta * igwd)
+
+
+# ── Ablation: IGWD + log-ratio shape (Phase 2.4) ────────────────────────
+def compute_log_shape(xn, yn, wn, hn, xg, yg, wg, hg,
+                      beta: float = METRIC_BETA, **kwargs) -> torch.Tensor:
+    """IGWD position (isotropic) + ALW log-ratio shape.
+
+    Position: same as IGWD — normalized by S = wp·hp + wt·ht
+    Shape: log-ratio from ALW — [ln(wp/wt)]² + [ln(hp/ht)]²
+    """
+    wn = wn.clamp(min=EPS); hn = hn.clamp(min=EPS)
+    wg = wg.clamp(min=EPS); hg = hg.clamp(min=EPS)
+
+    dx = xn.unsqueeze(1) - xg.unsqueeze(0)
+    dy = yn.unsqueeze(1) - yg.unsqueeze(0)
+
+    log_w = torch.log(wn.unsqueeze(1) / wg.unsqueeze(0)).clamp(-SA_ALW_LOG_CLAMP, SA_ALW_LOG_CLAMP)
+    log_h = torch.log(hn.unsqueeze(1) / hg.unsqueeze(0)).clamp(-SA_ALW_LOG_CLAMP, SA_ALW_LOG_CLAMP)
+
+    # Log-shape replaces (dw²+dh²)/4 in W2²
+    w2sq = (dx*dx + dy*dy + log_w*log_w + log_h*log_h).clamp(min=0.0)
+    S = _area_sum(wn, hn, wg, hg).clamp(min=EPS)
+    igwd = (w2sq / S).clamp(min=0.0).clamp(max=30.0 / max(beta, EPS))
+    return torch.exp(-beta * igwd)
+
+
+# ── Ablation: IGWD + anisotropic position normalization (Phase 2.5) ────
+def compute_anisotropic_s(xn, yn, wn, hn, xg, yg, wg, hg,
+                          beta: float = METRIC_BETA, **kwargs) -> torch.Tensor:
+    """ALW anisotropic position + IGWD Euclidean shape.
+
+    Position: anisotropic — dx²/Sx + dy²/Sy (like ALW)
+    Shape: Euclidean — (dw²+dh²)/4 (like IGWD, no S normalization)
+    """
+    wn = wn.clamp(min=EPS); hn = hn.clamp(min=EPS)
+    wg = wg.clamp(min=EPS); hg = hg.clamp(min=EPS)
+
+    dx = xn.unsqueeze(1) - xg.unsqueeze(0)
+    dy = yn.unsqueeze(1) - yg.unsqueeze(0)
+    dw = (wn.unsqueeze(1) - wg.unsqueeze(0)) / 2.0
+    dh = (hn.unsqueeze(1) - hg.unsqueeze(0)) / 2.0
+
+    # Anisotropic denominators (like ALW)
+    Sx = (wn.unsqueeze(1)**2 + wg.unsqueeze(0)**2) / 2.0
+    Sy = (hn.unsqueeze(1)**2 + hg.unsqueeze(0)**2) / 2.0
+    pos_x = dx*dx / Sx.clamp(min=EPS)
+    pos_y = dy*dy / Sy.clamp(min=EPS)
+
+    # Euclidean shape (like IGWD, no global S normalization)
+    igwd_sq = (pos_x + pos_y + dw*dw + dh*dh).clamp(min=0.0)
+    igwd = igwd_sq.sqrt().clamp(max=30.0 / max(beta, EPS))
     return torch.exp(-beta * igwd)
 
 

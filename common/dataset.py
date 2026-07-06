@@ -15,6 +15,7 @@ from .config import (
     TILE_SIZE, TILE_OVERLAP, TINY_THRESHOLD_PX,
     USE_COPY_PASTE, COPY_PASTE_PROB, COPY_PASTE_MAX_PER, COPY_PASTE_SCALE_JIT,
     CACHE_IMAGES, TINY_TILE_OVERSAMPLE,
+    TRAIN_DIR, VALID_DIR, PATCH_ROOT,
 )
 
 
@@ -64,7 +65,7 @@ class YOLOTinyDataset(Dataset):
                 n_bytes += len(im.tobytes())
             except Exception:
                 pass
-        print(f"[Cache] {len(self.images_cache)}/{len(self.img_files)} ảnh, "
+        print(f"[Cache] {len(self.images_cache)}/{len(self.img_files)} imgs, "
               f"~{n_bytes/1024/1024:.1f} MB RAM")
 
     def _build_tile_index(self):
@@ -92,7 +93,7 @@ class YOLOTinyDataset(Dataset):
                         for b in tb))
         n = sum(self.tile_has_tiny)
         tag = "Train" if self.is_train else "Val"
-        print(f"[Dataset] {tag}: {len(self.img_files)} imgs → "
+        print(f"[Dataset] {tag}: {len(self.img_files)} imgs -> "
               f"{len(self.tile_index)} tiles ({n} tiny="
               f"{100*n/max(len(self.tile_index),1):.1f}%)")
 
@@ -266,8 +267,38 @@ def build_copy_paste_pool(train_ds: YOLOTinyDataset,
                 pool.append((im, tiny_boxes))
         except Exception:
             continue
-    print(f"[Copy-Paste Pool] {len(pool)} ảnh có box nhỏ")
+    print(f"[Copy-Paste Pool] {len(pool)} images with small boxes")
     return pool
+
+
+# =============================================================================
+# Dataset factory — dễ dàng switch giữa full-image và patch training
+# =============================================================================
+def build_training_datasets(use_patches: bool = False,
+                            is_train: bool = True,
+                            copy_paste_pool=None) -> YOLOTinyDataset:
+    """Build dataset cho training/evaluation, full-image hoặc patch.
+
+    Args:
+        use_patches: True → dùng patch data (Phase 0 output)
+        is_train: True → training set (có augmentation)
+        copy_paste_pool: pool cho copy-paste augmentation (train only)
+    Returns:
+        YOLOTinyDataset instance
+    """
+    if use_patches:
+        img_dir = PATCH_ROOT / ("train" if is_train else "valid") / "images"
+        lbl_dir = PATCH_ROOT / ("train" if is_train else "valid") / "labels"
+    else:
+        img_dir = TRAIN_DIR / "images" if is_train else VALID_DIR / "images"
+        lbl_dir = TRAIN_DIR / "labels" if is_train else VALID_DIR / "labels"
+
+    return YOLOTinyDataset(
+        img_dir=img_dir,
+        lbl_dir=lbl_dir,
+        is_train=is_train,
+        copy_paste_pool=copy_paste_pool if is_train else None,
+    )
 
 
 def compute_reliability_threshold(train_ds: YOLOTinyDataset,

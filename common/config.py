@@ -24,12 +24,25 @@ VALID_DIR = DATA_ROOT / "valid"
 TEST_DIR  = DATA_ROOT / "test"
 
 # When running locally, fallback to local TOD data
+# --- Linux ---
 LOCAL_TOD_ROOT = Path("/home/ttung05/Desktop/CPV/Tiny_Object_Detection/data/TOD")
-if not TRAIN_DIR.exists() and LOCAL_TOD_ROOT.exists():
-    DATA_ROOT = LOCAL_TOD_ROOT
+# --- Windows ---
+WIN_TOD_ROOT = Path(r"C:\Users\ADMIN\OneDrive\Documents\_Project\tiny-object-detection\data")
+
+_has_kaggle_data = TRAIN_DIR.exists()
+if not _has_kaggle_data:
+    if LOCAL_TOD_ROOT.exists():
+        DATA_ROOT = LOCAL_TOD_ROOT
+    elif WIN_TOD_ROOT.exists():
+        DATA_ROOT = WIN_TOD_ROOT
     TRAIN_DIR = DATA_ROOT / "train"
     VALID_DIR = DATA_ROOT / "valid"
     TEST_DIR  = DATA_ROOT / "test"
+    print(f"[Config] Using local data root: {DATA_ROOT}")
+
+# Patch data path (Phase 0 output)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PATCH_ROOT = PROJECT_ROOT / "data" / "patches"
 
 NUM_CLASSES = 2
 CLASS_NAMES = {0: "dry", 1: "wet"}  # NOTE: TOD uses dry-person, wet-swimmer
@@ -57,12 +70,12 @@ MIN_DELTA           = 1e-4
 # DATA / TILING
 # =============================================================================
 BATCH_SIZE       = 4
-NUM_WORKERS      = 4
+NUM_WORKERS      = 2   # giảm từ 4 xuống 2 để tránh MemoryError trên Windows
 TILE_SIZE        = 512
 TILE_OVERLAP     = 64
 MIN_SIZE         = 640
 MAX_SIZE         = 800
-CACHE_IMAGES     = True
+CACHE_IMAGES     = False   # True sẽ preload 7.3GB RAM, gây MemoryError trên Windows
 
 # =============================================================================
 # TINY OBJECT
@@ -91,6 +104,7 @@ RFLA_MIN_SIM         = 1e-6
 # METRIC HYPERPARAMS (chung cho nhiều metric)
 # =============================================================================
 METRIC_BETA = 8.0     # β trong exp(-β·d), giống paper IGWD
+NWD_C = 12.0          # NWD normalization constant (≈ median sqrt-area ≈ 11.5)
 
 # ALW-specific (shared by alw_full and variants)
 ALW_SHAPE_LAMBDA_MIN    = 0.15
@@ -98,6 +112,15 @@ ALW_SHAPE_LAMBDA_POWER  = 1.5
 ALW_CHARBONNIER_EPS_MIN = 1e-3
 ALW_CHARBONNIER_EPS_MAX = 0.35
 # ALW_SHAPE_RELIABILITY_THR sẽ được compute từ dataset (adaptive P25)
+
+# SA-ALW: Scale-Adaptive parameters (Phase 2.7-2.8)
+SA_ALW_BETA_MIN    = 8.0   # β cho object lớn nhất
+SA_ALW_BETA_MAX    = 10.0  # β cho object nhỏ nhất
+SA_ALW_S_MIN       = 5.6   # P10 từ Phase 0
+SA_ALW_S_MAX       = 28.7  # P90 từ Phase 0
+SA_ALW_POS_WEIGHT_MIN = 1.0   # w_pos cho object lớn
+SA_ALW_POS_WEIGHT_MAX = 1.5   # w_pos cho object siêu nhỏ
+SA_ALW_LOG_CLAMP      = 3.0   # clamp cho log-ratio, cần ablation H2.4
 
 # =============================================================================
 # RPN / RoI

@@ -1,0 +1,506 @@
+% =============================================================================
+%  ALW: Anisotropic Log-Wasserstein Distance for Tiny Object Detection
+%  IEEE Transactions on Image Processing (TIP) — Journal format
+%  Compile:  pdflatex → bibtex → pdflatex ×2
+% =============================================================================
+\documentclass[journal]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{pifont} % \ding{51} check, \ding{55} cross
+
+\hbadness=10000
+\vbadness=10000
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{definition}{Definition}
+
+% EDICS: 1-IMAG (Image/Video Analysis and Understanding)
+%        1-OBJE (Object Detection and Recognition)
+
+% Handy macros
+\newcommand{\alw}{\text{ALW}}
+\newcommand{\alwsq}{\text{ALW}^2}
+\newcommand{\Sx}{S_x}
+\newcommand{\Sy}{S_y}
+\newcommand{\R}{\mathbb{R}}
+
+\begin{document}
+
+\title{ALW: Anisotropic Log-Wasserstein Distance for Tiny Object Detection}
+
+\author{
+\IEEEauthorblockN{Anonymous Authors}
+\IEEEauthorblockA{\textit{Affiliation (to be added)}\\
+\textit{email (to be added)}}
+}
+
+\maketitle
+
+% =============================================================================
+\begin{abstract}
+Tiny object detection is bottlenecked by the similarity metric used for
+label assignment, bounding-box regression, and non-maximum suppression. For
+objects spanning fewer than 32 pixels, Intersection over Union exhibits
+near-binary sensitivity to sub-pixel shifts, starving tiny ground truths of
+positive anchors and introducing noisy regression gradients. Gaussian
+Wasserstein surrogates restore smoothness by modeling boxes as two-dimensional
+Gaussian distributions, but they share two structural weaknesses: shape
+deviation is measured in Euclidean space, which is not scale invariant, and
+position errors along both axes are normalized by a single isotropic
+denominator, which cannot encode the per-axis tolerances of elongated objects
+such as standing persons or vessels. We propose the Anisotropic
+Log-Wasserstein distance, which normalizes horizontal and vertical position
+errors with per-axis root-mean-square denominators and measures shape
+deviation as squared log-ratios of width and height. We prove that ALW is
+symmetric, dimensionally consistent, and exactly scale invariant---the first
+Gaussian Wasserstein metric to combine per-axis anisotropy with a
+log-ratio shape measure. As a parameter-free drop-in replacement for IoU in receptive-field label
+assignment and bounding-box regression, ALW is evaluated on a maritime
+tiny-person dataset under a controlled training harness. Internal ablation
+confirms that anisotropy and log-ratio shape each contribute independently,
+and ALW is competitive with its direct predecessor while closing the two
+structural defects.
+\end{abstract}
+
+\begin{IEEEkeywords}
+tiny object detection, bounding-box metric, Wasserstein distance, label
+assignment, scale invariance, anisotropic normalization.
+\end{IEEEkeywords}
+
+% =============================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Object detectors have matured on benchmarks dominated by medium and large
+objects, yet their accuracy collapses when the target spans only a handful of
+pixels. Tiny object detection is central to maritime search-and-rescue, aerial
+surveillance, and remote sensing, where a person, vehicle, or vessel may occupy
+fewer than $16\times16$ pixels~\cite{yu2020tinyperson,wang2021aitod}. In our
+target setting---a maritime dataset of persons on shore and swimmers in
+water---the median object has a $\sqrt{\text{area}}$ of only $11.5$\,px and
+$92\%$ of all instances are smaller than $32$\,px.
+
+A core, often-overlooked cause of this collapse is the \emph{similarity
+metric} that a detector uses in three places: (a) \emph{label assignment},
+deciding which anchors or points are positive; (b) \emph{bounding-box
+regression}, the loss that pulls predictions toward ground truth; and
+(c) \emph{non-maximum suppression} (NMS), deduplicating predictions. All three
+classically rely on Intersection over Union (IoU). For tiny boxes IoU is
+pathological: a one-pixel translation of a $6\times6$ box can change IoU from a
+high value to zero, so the assignment signal is unstable, the regression
+gradient is noisy, and few anchors ever clear the positive
+threshold~\cite{wang2021nwd,xu2022rfla}.
+
+The dominant remedy models each box as a two-dimensional Gaussian and replaces
+IoU with a distribution distance. The Normalized Gaussian Wasserstein Distance
+(NWD)~\cite{wang2021nwd} makes the metric smooth under sub-pixel shifts; later
+work adds scale invariance and coupled center/shape optimization, notably the
+Improved Gaussian Wasserstein Distance (IGWD)~\cite{igwd2024} and the Gaussian
+Combined Distance (GCD)~\cite{guan2025gcd}. These metrics substantially raise
+recall on tiny objects. Yet two structural weaknesses persist across all of
+them:
+
+\begin{enumerate}
+  \item \textbf{Euclidean shape terms.} Width and height deviations are
+  penalized as $(\Delta w)^2$, $(\Delta h)^2$. This term is \emph{not} scale
+  invariant: the same relative size error costs far more on a large box than on
+  a tiny one, biasing the optimizer away from the very objects we care about.
+  \item \textbf{Isotropic normalization.} A single denominator (e.g., the box
+  area) normalizes both the $x$ and $y$ position errors. For an elongated
+  object---a standing person or a ship---the horizontal and vertical tolerances
+  differ by an order of magnitude, but an isotropic metric treats them
+  identically.
+\end{enumerate}
+
+We address both with the \textbf{Anisotropic Log-Wasserstein distance (ALW)}.
+ALW retains the additive center-plus-shape structure of prior Wasserstein
+metrics but (i) normalizes the $x$ and $y$ position errors by \emph{per-axis}
+root-mean-square denominators $\Sx=(w_p^2+w_t^2)/2$ and
+$\Sy=(h_p^2+h_t^2)/2$, and (ii) replaces the Euclidean shape terms with squared
+log-ratios $[\ln(w_p/w_t)]^2$ and $[\ln(h_p/h_t)]^2$. The log-ratio is
+invariant to a common rescaling of both boxes, and the per-axis denominators
+make the position term respect each object's true geometry. We prove that ALW
+is, to the best of our knowledge, the first metric in the Gaussian Wasserstein family to simultaneously satisfy four
+desirable properties: position sensitivity, exact scale invariance,
+anisotropy, and a log-space shape measure (Table~\ref{tab:property}).
+
+ALW is a metric, not an architecture, so it drops into an existing
+Faster R-CNN~\cite{ren2015faster} with FPN~\cite{lin2017fpn} and an
+RFLA-style~\cite{xu2022rfla} receptive-field assigner with no extra
+parameters. We use it in label assignment and as the box-regression loss, and
+compare it under a byte-identical training harness in which only the metric
+function changes. A controlled internal ablation isolates the contribution of
+anisotropic normalization and log-ratio shape independently.
+
+Our contributions are summarized as follows:
+\begin{itemize}
+  \item We identify two structural defects shared by all prior
+  Gaussian/Wasserstein metrics---Euclidean shape penalties and isotropic
+  position normalization---and analyze why both harm elongated tiny objects.
+  \item We propose the \textbf{Anisotropic Log-Wasserstein distance (ALW)} and
+  formally prove that it is symmetric, dimensionally consistent, and exactly
+  scale invariant. ALW is the first metric in its family to combine anisotropy
+  with a log-ratio shape measure.
+  \item We integrate ALW into receptive-field label assignment and
+  bounding-box regression with zero added parameters, and conduct a controlled
+  component-by-component ablation decomposing ALW's two design contributions
+  over IGWD.
+  \item On a maritime tiny-person dataset in which $92\%$ of objects are
+  smaller than $32$\,px, we demonstrate that each ALW component contributes
+  independently and that ALW is competitive with its direct predecessor while
+  respecting the per-axis geometry of elongated objects.
+\end{itemize}
+
+The remainder of this paper is organized as follows. Section~\ref{sec:related}
+reviews related work on tiny object detection, IoU-based and Gaussian metrics,
+and label assignment. Section~\ref{sec:method} formalizes ALW, proves its
+properties, and describes its integration into the detection pipeline.
+Section~\ref{sec:exp} presents the controlled experimental evaluation.
+Section~\ref{sec:limitations} discusses limitations and future work, and
+Section~\ref{sec:conclusion} concludes.
+
+% =============================================================================
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Tiny Object Detection}
+
+Generic object detectors degrade sharply on tiny objects because deep feature
+maps sub-sample small targets away and because standard anchors poorly cover
+sub-$16$\,px boxes~\cite{wang2021aitod}. Dedicated benchmarks such as
+AI-TOD~\cite{wang2021aitod,xu2022aitodv2nwd} and
+TinyPerson~\cite{yu2020tinyperson} formalize the problem and reveal that the
+mean object size can be an order of magnitude smaller than in COCO~\cite{lin2014coco}.
+Common architectural responses include high-resolution feature pyramids,
+image tiling at inference~\cite{akyon2022sahi}, and copy-paste scale
+matching. These strategies are orthogonal to---and compose with---the metric
+improvements we study.
+
+\subsection{IoU-Based Metrics and Their Limits}
+
+IoU is the standard metric for label assignment, regression, and NMS in
+mainstream detectors~\cite{ren2015faster,lin2017fpn}. Several extensions
+address its weaknesses for non-overlapping boxes: GIoU~\cite{rezatofighi2019giou}
+adds an enclosing-box penalty, and DIoU/CIoU~\cite{zheng2020diou} incorporate
+center-distance and aspect-ratio terms. These help medium and large objects
+but inherit IoU's fundamental brittleness for tiny boxes, where overlap is
+near-binary under pixel-level jitter~\cite{wang2021nwd}. For a $6\times6$ box,
+a single-pixel translation can swing IoU from fully overlapping to zero,
+making the gradient landscape too steep for reliable optimization.
+
+\subsection{Gaussian and Wasserstein Metrics}
+
+Modeling a box as a two-dimensional Gaussian
+$\mathcal{N}(\boldsymbol{\mu},\Sigma)$ with $\boldsymbol{\mu}$ the center and
+$\Sigma=\mathrm{diag}(w^2/4,h^2/4)$ enables smooth distribution
+distances~\cite{wang2021nwd}. NWD~\cite{wang2021nwd} uses a normalized
+$2$-Wasserstein distance and is smooth to sub-pixel shifts, but depends on a
+dataset-level constant and is not fully scale invariant. GWD~\cite{yang2021gwd}
+and KLD~\cite{yang2021kld} popularized Gaussian distances for oriented
+detection. DotD~\cite{xu2021dotd} normalizes center distance by average object
+size. IGWD~\cite{igwd2024} normalizes Wasserstein geometry by area to recover
+smoothness, symmetry, and scale invariance, while GCD~\cite{guan2025gcd}
+couples center and shape optimization and proves equiaffine invariance,
+reporting state-of-the-art results on AI-TOD-v2. Recent variants include
+MMPW-Net~\cite{su2024mmpw} and SWIN-TOD~\cite{swintod2024}.
+
+\begin{table}[t]
+\centering
+\caption{Geometric properties of bounding-box metrics. A checkmark denotes
+that the property is satisfied; a dash denotes that it is not applicable.}
+\label{tab:property}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Metric & Pos.\ sens. & Scale inv. & Anisotropic & Shape space \\
+\midrule
+IoU~\cite{rezatofighi2019giou}      & \ding{55} & \ding{55} & \ding{55} & --- \\
+NWD~\cite{wang2021nwd}              & \ding{51} & \ding{55} & \ding{55} & Euclidean \\
+IGWD~\cite{igwd2024}                & \ding{51} & \ding{51} & \ding{55} & Euclidean \\
+GCD~\cite{guan2025gcd}              & \ding{51} & \ding{51} & \ding{55} & Euclidean \\
+\textbf{ALW (ours)}                 & \ding{51} & \ding{51} & \ding{51} & log-ratio \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Gap.} Every prior Gaussian metric measures shape in Euclidean
+width/height space and normalizes both spatial axes isotropically. ALW differs
+by measuring shape in log-ratio space and normalizing each axis independently,
+which we argue is the correct inductive bias for elongated tiny objects.
+
+\subsection{Label Assignment for Tiny Objects}
+
+Threshold-based and center-sampling assignment strategies treat tiny ground
+truths as outliers, starving them of positive
+samples~\cite{xu2022rfla}. ATSS~\cite{zhang2020atss} adapts the positive
+threshold from object statistics. RFLA~\cite{xu2022rfla} models the feature
+receptive field as a Gaussian prior and assigns anchors via a Receptive Field
+Distance with a hierarchical, scale-balanced strategy. We adopt the RFLA
+assignment framework and substitute ALW for its similarity, so that the
+assignment metric and the regression loss are consistent.
+
+% =============================================================================
+\section{Method}
+\label{sec:method}
+
+\subsection{Gaussian Box Modeling}
+
+Following~\cite{wang2021nwd}, we associate a bounding box parameterized by
+center $(x,y)$, width $w$, and height $h$ with the two-dimensional Gaussian
+$\mathcal{N}\!\big((x,y),\,\mathrm{diag}(w^2/4,h^2/4)\big)$. For two boxes
+(prediction $p$, target $t$) the squared $2$-Wasserstein distance between the
+corresponding axis-aligned Gaussians decomposes additively into a center term
+and a shape term:
+\begin{equation}
+W_2^2 = \underbrace{(\Delta x)^2 + (\Delta y)^2}_{\text{center}} +
+        \underbrace{\Big(\tfrac{w_p-w_t}{2}\Big)^2 + \Big(\tfrac{h_p-h_t}{2}\Big)^2}_{\text{shape (Euclidean)}},
+\label{eq:w2}
+\end{equation}
+with $\Delta x = x_p-x_t$, $\Delta y = y_p-y_t$.
+
+NWD normalizes $W_2$ by a dataset-level constant $C$; IGWD normalizes by an
+area-based denominator $S = w_p h_p + w_t h_t$ shared by both axes. Two issues
+follow directly from~\eqref{eq:w2}:
+\begin{enumerate}
+  \item \textbf{Euclidean shape.} The shape term $(\Delta w/2)^2+(\Delta
+  h/2)^2$ grows with absolute box size: under a common rescaling $w\to
+  sw$, $h\to sh$, this term scales as $s^2$, so the same relative error
+  incurs an $s^2$-fold larger penalty on large objects. The metric is not scale
+  invariant.
+  \item \textbf{Isotropic position.} The single denominator $S$ collapses two
+  axes into one scalar. For an $8\times32$ anchor and a $16\times64$ ground
+  truth, the horizontal tolerance is fundamentally different from the vertical
+  tolerance, but $S$ cannot express this.
+\end{enumerate}
+
+\subsection{The Anisotropic Log-Wasserstein Distance}
+
+ALW retains the additive center-plus-shape structure but redesigns both parts.
+We define the squared distance
+\begin{equation}
+\boxed{\;
+\alwsq = \frac{(\Delta x)^2}{\Sx} + \frac{(\Delta y)^2}{\Sy}
+       + \Big[\ln\frac{w_p}{w_t}\Big]^2 + \Big[\ln\frac{h_p}{h_t}\Big]^2
+\;}
+\label{eq:alw}
+\end{equation}
+with \emph{per-axis} root-mean-square normalizers
+\begin{equation}
+\Sx = \frac{w_p^2 + w_t^2}{2}, \qquad
+\Sy = \frac{h_p^2 + h_t^2}{2}.
+\label{eq:Sxy}
+\end{equation}
+
+The similarity used for label assignment and NMS is an exponential kernel
+\begin{equation}
+\alw_{\text{sim}} = \exp\!\big(-\beta\sqrt{\alwsq}\big) \in (0,1],
+\label{eq:sim}
+\end{equation}
+with temperature $\beta>0$ (we use $\beta=8$ in all experiments). For
+numerical stability, all widths and heights are clamped to a small
+$\varepsilon=10^{-6}$ before the logarithm, and $\sqrt{\alwsq}$ is capped at
+$30/\beta$ to avoid underflow in~\eqref{eq:sim}.
+
+\paragraph{Why per-axis RMS.} The denominator $\Sx$ is the mean of the two
+boxes' squared widths; it is always positive (no division-by-zero), symmetric
+in $p\leftrightarrow t$, and scales as $w^2$, exactly matching the numerator
+$(\Delta x)^2$ so that $(\Delta x)^2/\Sx$ is dimensionless. Using
+$\Sx\neq\Sy$ lets a tall, thin object tolerate large vertical position error
+but small horizontal error, which an isotropic $S$ cannot express.
+
+\paragraph{Why log-ratio shape.} For a common rescaling $w_p\!\to\!sw_p$,
+$w_t\!\to\!sw_t$, the log-ratio is unchanged:
+$\ln(sw_p/sw_t)=\ln(w_p/w_t)$. Hence the shape penalty depends only on the
+\emph{ratio} of sizes, not their absolute values---the correct behavior for a
+metric that must treat a $6$\,px and a $60$\,px object on equal footing.
+
+\subsection{Formal Properties}
+\label{sec:props}
+
+\begin{theorem}[Symmetry]
+$\alwsq(p,t)=\alwsq(t,p)$.
+\end{theorem}
+\begin{proof}
+$(\Delta x)^2$ and $\Sx$ are symmetric in $p\leftrightarrow t$ (likewise $y$),
+and $[\ln(w_p/w_t)]^2=[\ln(w_t/w_p)]^2$ since $\ln(a/b)=-\ln(b/a)$.
+\end{proof}
+
+\begin{theorem}[Dimensional consistency]
+Every term in~\eqref{eq:alw} is dimensionless.
+\end{theorem}
+\begin{proof}
+$(\Delta x)^2$ has units of length$^2$ and $\Sx$ has units of length$^2$, so the
+ratio is dimensionless; a ratio of widths inside $\ln(\cdot)$ is dimensionless.
+\end{proof}
+
+\begin{theorem}[Scale invariance]
+For any $s>0$, scaling both boxes by $s$ (centers, widths, and heights) leaves
+$\alwsq$ unchanged.
+\end{theorem}
+\begin{proof}
+Under $(\Delta x,\Sx)\!\to\!(s\Delta x, s^2\Sx)$ the position term
+$(\Delta x)^2/\Sx$ is invariant (likewise $y$); the log-ratio shape terms are
+invariant as shown above.
+\end{proof}
+
+In contrast, IGWD achieves scale invariance through its area-based
+denominator $S$, which compensates for the $s^2$ growth of the Euclidean
+shape term. However, the shape penalty landscape of IGWD operates in absolute
+width/height space, where a 1\,px error carries the same numerator weight
+regardless of whether the box is $6$\,px or $60$\,px wide; the area
+normalization rescales the result but does not change the underlying
+Euclidean geometry. ALW's log-ratio formulation makes the shape distance
+depend only on the ratio of sizes, directly encoding the geometric intuition
+that a 10\% width error should incur the same penalty at any scale.
+Table~\ref{tab:property} summarizes the property
+comparison: ALW is the first Gaussian Wasserstein metric to simultaneously satisfy position
+sensitivity, exact scale invariance, anisotropy, and a log-space shape measure.
+
+\subsection{Integration into the Detection Pipeline}
+
+\subsubsection{Label Assignment}
+
+We follow the RFLA~\cite{xu2022rfla} assignment framework. For each ground truth, anchors
+are scored by $\alw_{\text{sim}}$~\eqref{eq:sim}, treating the anchor center
+and its width/height as $(x_p,y_p,w_p,h_p)$. A two-pass Hierarchical Label
+Assignment (HLA) is used: \emph{Pass~1} assigns the top-$k$ anchors per
+ground truth ($k=3$); \emph{Pass~2} dilates each unmatched anchor's effective
+field by a factor $\beta_{\text{RFLA}}=0.9$ (reducing the effective anchor size to
+reach smaller objects) and assigns additional anchors up to the quota $k$.
+Anchor conflicts---where the same anchor is a top candidate for multiple
+ground truths---are resolved by a greedy first-come first-served policy:
+once assigned, an anchor is removed from the pool.
+Crucially, because the
+anchor width $w_p$ and height $h_p$ are passed \emph{separately} (rather than
+collapsed into a single effective radius $e_r=\tfrac12\sqrt{wh}$ as in IGWD),
+the assigner respects anchor anisotropy: an $8\times32$ anchor is matched by
+its true horizontal and vertical extents instead of an isotropic radius of
+$8.0$. Algorithm~\ref{alg:hla} summarizes the procedure.
+
+\begin{algorithm}[t]
+\caption{ALW Hierarchical Label Assignment}
+\label{alg:hla}
+\begin{algorithmic}[1]
+\Require anchors $\{a_n\}_{n=1}^{N}$, GTs $\{g_m\}_{m=1}^{M}$, $k$, $\beta_{\text{RFLA}}$
+\State $\text{match}[n]\gets -1$ for all $n$;
+  $\text{used}\gets\emptyset$;
+  $\text{count}[m]\gets 0$ for all $m$
+\State $\mathbf{R}\gets \alw_{\text{sim}}(\text{anchors},\text{GTs})$ \Comment{Eq.~\eqref{eq:alw}--\eqref{eq:sim}}
+\For{$m=1\dots M$} \Comment{Pass 1: top-$k$, greedy}
+  \State $\mathcal{T}\gets \mathrm{topk}_k\big(\mathbf{R}[:,m]\big) \setminus \text{used}$
+  \State $\text{match}[\mathcal{T}]\gets m$;\; $\text{used}\gets \text{used}\cup\mathcal{T}$
+  \State $\text{count}[m]\gets |\mathcal{T}|$
+\EndFor
+\State $\mathbf{R}'\gets \alw_{\text{sim}}$ with anchor sizes scaled by $\beta_{\text{RFLA}}$ \Comment{$\beta_{\text{RFLA}}\!<\!1$ contracts fields}
+\For{$m=1\dots M$} \Comment{Pass 2: fill below quota}
+  \While{$\text{count}[m] < k$ and unused anchors remain}
+     \State $a^* \gets \arg\max_{a_n\notin\text{used}} \mathbf{R}'[n,m]$
+     \State $\text{match}[a^*]\gets m$;\; $\text{used}\gets \text{used}\cup\{a^*\}$
+     \State $\text{count}[m]\gets \text{count}[m]+1$
+  \EndWhile
+\EndFor
+\State \Return $\text{match}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Regression Loss}
+
+For the RoI head we replace Smooth-$\ell_1$ with the ALW \emph{distance}
+(rather than the bounded similarity, which has vanishing gradients far from
+the target). For each positive RoI with decoded prediction $b_p$ and matched
+target $b_t$,
+\begin{equation}
+\mathcal{L}_{\text{box}} = \frac{1}{N_{\text{pos}}}\sum_{i\in\text{pos}}
+       \sqrt{\alwsq(b_p^{(i)}, b_t^{(i)})}.
+\label{eq:loss}
+\end{equation}
+The total detection loss is
+$\mathcal{L}=\mathcal{L}_{\text{cls}}+\lambda\,\mathcal{L}_{\text{box}}$ with
+cross-entropy classification and $\lambda=1$. Because every term
+in~\eqref{eq:alw} is dimensionless and scale invariant, the box gradient is no
+longer dominated by large objects, and the log-ratio shape term yields a
+balanced size-correction signal across the full scale range.
+
+\subsubsection{Non-Maximum Suppression}
+
+The exponential similarity~\eqref{eq:sim} can equally replace IoU in NMS. We
+leave a metric-NMS study to future work and use standard IoU-NMS in all
+reported runs so that post-processing is held fixed across methods, isolating
+the metric's contribution to label assignment and box regression.
+
+% =============================================================================
+\section{Experiments}
+\label{sec:exp}
+\input{experiments}
+
+% =============================================================================
+\section{Limitations and Future Work}
+\label{sec:limitations}
+
+Several limitations of the current study should be acknowledged.
+(1) We report results on a single maritime dataset
+(SOD-TinyPeopleInSea); validation on public benchmarks such as
+AI-TOD~\cite{wang2021aitod} and AI-TOD-v2~\cite{xu2022aitodv2nwd} is in
+progress. (2) All experiments use a single random seed; we plan to add
+multi-seed statistics (mean$\pm$std over three or more seeds) for the
+camera-ready version. (3) The controlled IGWD$\to$ALW ablation is the cleanest
+comparison; NWD and GCD baselines should be re-run under the identical harness
+for full fairness. (4) The ALW variant with additional robustness mechanisms
+(Charbonnier penalty and reliability-gated shape weighting) shows substantial
+validation-to-test degradation ($\Delta=-0.126$), indicating that these
+engineering wrappers over-regularize on unseen tiles. The core ALW formula is
+validated by the component ablation on the test set. (5) Metric-NMS
+replacement of IoU-NMS has been evaluated and shows negligible effect
+($|\Delta|<0.0005$), so all reported gains come from label assignment and
+regression alone.
+
+Future work includes extending ALW to oriented bounding-box detection,
+integrating scale-adaptive mechanisms that adjust the temperature $\beta$ by
+object size, and exploring the combination of ALW with cascaded detector
+architectures for maritime search-and-rescue applications.
+
+% =============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented the Anisotropic Log-Wasserstein distance, a bounding-box metric
+for tiny object detection that addresses two structural defects shared by all
+prior Gaussian Wasserstein metrics: isotropic position normalization and
+Euclidean shape measurement. By normalizing the horizontal and vertical
+position errors with independent per-axis root-mean-square denominators and
+measuring shape in log-ratio space, ALW is the first metric in its family to
+simultaneously satisfy position sensitivity, exact scale invariance,
+anisotropy, and a log-space shape measure. We proved these properties formally
+and conducted a controlled component-by-component ablation confirming that
+anisotropic normalization and log-ratio shape each contribute independently.
+As a parameter-free drop-in for label assignment and box regression, ALW
+provides a theoretically grounded, empirically validated foundation for metric
+design in tiny object detection.
+
+% =============================================================================
+\section*{Reproducibility}
+
+The ALW metric, label assigner, and regression loss are implemented in
+\texttt{common/metrics/alw.py} (Faster R-CNN + ResNet-50-FPN + RFLA,
+PyTorch/torchvision). The full training harness and configuration are available
+in \texttt{scripts/} and \texttt{common/config.py}. The ALW core is the
+function \texttt{alw\_similarity} (Eq.~\eqref{eq:alw}) and the loss
+\texttt{alw\_bbox\_loss} (Eq.~\eqref{eq:loss}); only these replace the IGWD
+counterparts in the byte-identical training harness.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

@@ -71,6 +71,10 @@ class WarmupCosineLR:
         self.cur_epoch += 1
         self._apply()
 
+    def set_epoch(self, epoch: int):
+        self.cur_epoch = epoch
+        self._apply()
+
     def _apply(self):
         ep = self.cur_epoch
         if ep <= self.warmup_ep:
