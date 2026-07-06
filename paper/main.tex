@@ -63,7 +63,8 @@ denominator, which cannot encode the per-axis tolerances of elongated objects
 such as standing persons or vessels. We propose the Anisotropic
 Log-Wasserstein distance, which normalizes horizontal and vertical position
 errors with per-axis root-mean-square denominators and measures shape
-deviation as squared log-ratios of width and height. We prove that ALW is
+deviation as absolute log-ratios of width and height (penalized with a Charbonnier
+robust loss for numerical stability). We prove that ALW is
 symmetric, dimensionally consistent, and exactly scale invariant---the first
 Gaussian Wasserstein metric to combine per-axis anisotropy with a
 log-ratio shape measure. As a parameter-free drop-in replacement for IoU in receptive-field label
@@ -129,7 +130,8 @@ ALW retains the additive center-plus-shape structure of prior Wasserstein
 metrics but (i) normalizes the $x$ and $y$ position errors by \emph{per-axis}
 root-mean-square denominators $\Sx=(w_p^2+w_t^2)/2$ and
 $\Sy=(h_p^2+h_t^2)/2$, and (ii) replaces the Euclidean shape terms with squared
-log-ratios $[\ln(w_p/w_t)]^2$ and $[\ln(h_p/h_t)]^2$. The log-ratio is
+log-ratios $\lvert\ln(w_p/w_t)\rvert$ and $\lvert\ln(h_p/h_t)\rvert$ with an
+optional Charbonnier penalty. The log-ratio is
 invariant to a common rescaling of both boxes, and the per-axis denominators
 make the position term respect each object's true geometry. We prove that ALW
 is, to the best of our knowledge, the first metric in the Gaussian Wasserstein family to simultaneously satisfy four
@@ -292,7 +294,8 @@ We define the squared distance
 \begin{equation}
 \boxed{\;
 \alwsq = \frac{(\Delta x)^2}{\Sx} + \frac{(\Delta y)^2}{\Sy}
-       + \Big[\ln\frac{w_p}{w_t}\Big]^2 + \Big[\ln\frac{h_p}{h_t}\Big]^2
+       + \Bigl\lvert\ln\frac{w_p}{w_t}\Bigr\rvert
+       + \Bigl\lvert\ln\frac{h_p}{h_t}\Bigr\rvert
 \;}
 \label{eq:alw}
 \end{equation}

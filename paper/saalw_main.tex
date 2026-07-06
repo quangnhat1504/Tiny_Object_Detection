@@ -318,11 +318,11 @@ center-error term for micro objects reduces the optimizer's exposure to noisy
 shape gradients.
 
 \subsection{Scale-Adaptive ALW (SA-ALW)}
-SA-ALW introduces two scale-adaptive mechanisms. Let $s=\max(w_t,h_t)$ be
-the larger dimension of the ground-truth box (a simple proxy for detection
-difficulty more correlated with scale difficulty than $\sqrt{\text{area}}$).
+SA-ALW introduces two scale-adaptive mechanisms. Let $s=\sqrt{w_t h_t}$ be
+the geometric mean dimension of the ground-truth box (a stable, monotonic
+proxy for detection difficulty).
 The scale bounds $s_{\text{min}}$ and $s_{\text{max}}$ are set to the 10th
-and 90th percentiles of the training-set $\max(w,h)$ distribution, making
+and 90th percentiles of the training-set $\sqrt{wh}$ distribution, making
 them dataset-adaptive without learned parameters.
 
 \begin{equation}

@@ -191,67 +191,119 @@ class SAALWRPN(RegionProposalNetwork):
 
 
 # =============================================================================
-# Metric RoIHeads — replace Smooth-L1 box loss with metric distance
+# Metric-based box regression loss
 # =============================================================================
-class MetricRoIHeads(RoIHeads):
-    """RoIHeads where box regression loss is (1 - metric_similarity)."""
+def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
+                     box_coder, metric_fn, reliability_thr, metric_loss_weight,
+                     proposals):
+    """Replacement for torvision's fastrcnn_loss: uses metric distance.
+    
+    The regression_targets are deltas relative to proposals. We decode
+    both predictions and ground truth to image-space boxes via the box_coder
+    before computing the metric distance.
+    """
+    labels = torch.cat(labels, dim=0)
+    regression_targets = torch.cat(regression_targets, dim=0)
+    classification_loss = F.cross_entropy(class_logits, labels)
 
-    def __init__(self, *args, metric_fn=None, reliability_thr=16.0,
-                 metric_loss_weight=1.0, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.metric_fn = metric_fn
-        self.reliability_thr = reliability_thr
-        self.metric_loss_weight = metric_loss_weight
+    sampled_pos_inds = torch.where(labels > 0)[0]
+    if sampled_pos_inds.numel() == 0:
+        return classification_loss, torch.zeros(1, device=class_logits.device).sum()
 
-    def compute_loss(self, class_logits, box_regression, labels, regression_targets):
-        """Same as torchvision but uses metric distance instead of Smooth-L1."""
-        # Classification loss (giống gốc)
-        labels = torch.cat(labels, dim=0)
-        regression_targets = torch.cat(regression_targets, dim=0)
-        classification_loss = F.cross_entropy(class_logits, labels)
+    # Select positive samples
+    N, num_classes = class_logits.shape
+    box_regression = box_regression.reshape(N, num_classes, 4)
+    K = len(sampled_pos_inds)
+    box_regression_pos = box_regression[sampled_pos_inds]            # (K, num_classes, 4)
+    labels_pos = labels[sampled_pos_inds]                            # (K,)
+    targets_deltas = regression_targets[sampled_pos_inds]            # (K, 4)
 
-        # Get positive samples
-        sampled_pos_inds = torch.where(labels > 0)[0]
-        if sampled_pos_inds.numel() == 0:
-            return {
-                "loss_classifier": classification_loss,
-                "loss_box_reg": torch.zeros(1, device=class_logits.device).sum(),
-            }
+    # Gather proposal boxes for positive samples
+    proposals_flat = torch.cat(proposals, dim=0)
+    proposals_pos = proposals_flat[sampled_pos_inds]                 # (K, 4)
 
-        # Box regression loss = metric distance between decoded pred & target
-        # Re-decode pred boxes using the box_coder with class-specific decoding
-        box_regression_pos = box_regression[sampled_pos_inds]
-        labels_pos = labels[sampled_pos_inds]
-        targets_pos = regression_targets[sampled_pos_inds]
+    # Decode deltas → image-space boxes.
+    # decode expects rel_codes (K, num_classes*4), boxes: List[Tensor]
+    box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
+    decoded = box_coder.decode(box_reg_flat, [proposals_pos])        # (K, num_classes, 4)
+    pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]  # (K, 4)
 
-        # Decode pred boxes via torchvision's box_coder
-        pred_boxes = self.box_coder.decode(box_regression_pos, labels_pos)
+    # Decode GT deltas the same way
+    decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])   # (K, 1, 4)
+    gt_boxes = decoded_gt[:, 0, :]                                   # (K, 4)
 
-        # Compute metric loss
-        if self.metric_fn is not None and pred_boxes.numel() > 0:
-            xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
-            yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
-            wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
-            hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
-            xg = (targets_pos[:, 0] + targets_pos[:, 2]) / 2.0
-            yg = (targets_pos[:, 1] + targets_pos[:, 3]) / 2.0
-            wg = (targets_pos[:, 2] - targets_pos[:, 0]).clamp(min=1.0)
-            hg = (targets_pos[:, 3] - targets_pos[:, 1]).clamp(min=1.0)
-            sim = self.metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
-                                 reliability_thr=self.reliability_thr)
-            box_loss = (1.0 - sim).mean() * self.metric_loss_weight
+    xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
+    yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
+    wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
+    hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
+    xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
+    yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
+    wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
+    hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+
+    sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
+                     reliability_thr=reliability_thr)
+    box_loss = (1.0 - sim).mean() * metric_loss_weight
+    return classification_loss, box_loss
+
+
+def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
+                                       metric_loss_weight=1.0):
+    """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
+    original_forward = roi_heads.forward
+
+    def patched_forward(self, features, proposals, image_shapes, targets=None):
+        if targets is not None and self.training:
+            proposals_sampled, matched_idxs, labels, regression_targets = \
+                self.select_training_samples(proposals, targets)
         else:
-            box_loss = F.smooth_l1_loss(
-                box_regression[sampled_pos_inds],
-                regression_targets[sampled_pos_inds],
-                beta=1.0,
-                reduction="sum",
-            ) / max(labels.numel(), 1)
+            labels = None; regression_targets = None; matched_idxs = None
+            proposals_sampled = proposals
 
-        return {
-            "loss_classifier": classification_loss,
-            "loss_box_reg": box_loss,
-        }
+        box_features = self.box_roi_pool(features, proposals_sampled, image_shapes)
+        box_features = self.box_head(box_features)
+        class_logits, box_regression = self.box_predictor(box_features)
+
+        result = []
+        losses = {}
+        if self.training:
+            loss_classifier, loss_box_reg = _metric_box_loss(
+                class_logits, box_regression, labels, regression_targets,
+                self.box_coder, metric_fn, reliability_thr, metric_loss_weight,
+                proposals_sampled)
+            losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
+        else:
+            boxes, scores, labels_out = self.postprocess_detections(
+                class_logits, box_regression, proposals, image_shapes)
+            for i in range(len(boxes)):
+                result.append({"boxes": boxes[i], "labels": labels_out[i], "scores": scores[i]})
+
+        if self.has_mask():
+            mask_proposals = [p["boxes"] for p in result]
+            if self.training:
+                if matched_idxs is not None:
+                    pos_matched_idxs = matched_idxs[matched_idxs >= 0]
+                    mask_proposals = mask_proposals[:len(pos_matched_idxs)]
+                mask_losses = self.mask_roi_pool(features, mask_proposals, image_shapes)
+                losses.update(mask_losses)
+            else:
+                mask_logits = self.mask_roi_pool(features, mask_proposals, image_shapes)
+                for i, logits in enumerate(mask_logits):
+                    result[i]["masks"] = logits
+
+        if self.has_keypoint():
+            keypoint_proposals = [p["boxes"] for p in result]
+            if self.training:
+                keypoint_losses = self.keypoint_roi_pool(features, keypoint_proposals, image_shapes)
+                losses.update(keypoint_losses)
+            else:
+                keypoint_logits = self.keypoint_roi_pool(features, keypoint_proposals, image_shapes)
+                for i, logits in enumerate(keypoint_logits):
+                    result[i]["keypoints"] = logits
+
+        return result, losses
+
+    roi_heads.forward = patched_forward.__get__(roi_heads, type(roi_heads))
 
 
 # =============================================================================
@@ -478,12 +530,12 @@ def build_model(
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
     base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
 
-    # Note on la_loss vs la:
-    # In torchvision 0.26+, box regression loss (fastrcnn_loss) operates on deltas,
-    # not image-space boxes — so metric similarity can't be computed directly.
-    # Both `la` and `la_loss` use MetricRPN for label assignment. The box regression
-    # loss stays Smooth-L1. The metric's effect propagates through better proposals
-    # from MetricRPN, which is the dominant mechanism.
+    # ── Replace box regression loss with metric distance ──────────────
+    if use_metric_loss:
+        _wrap_roi_forward_for_metric_loss(
+            base.roi_heads, metric_fn, reliability_thr,
+            metric_loss_weight=1.0)
+        print(f"  [loss] fastrcnn_loss replaced with metric distance loss")
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
     if use_metric_nms:
