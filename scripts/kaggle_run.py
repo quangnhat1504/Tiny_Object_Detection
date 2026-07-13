@@ -46,7 +46,23 @@ RUNS = {
         "ckpt": "runs/sa_alw_full__la_loss__seed42__os1/best_ap75.pt",
         "analysis": "runs/ap75_analysis_os1_valid",
     },
-    "cp_light": {
+    "os125": {
+        "env": {
+            "TOD_USE_COPY_PASTE": "1",
+            "TOD_TINY_TILE_OVERSAMPLE": "1.25",
+            "TOD_COPY_PASTE_PROB": None,
+            "TOD_COPY_PASTE_MAX_PER": None,
+        },
+        "train": [
+            "scripts/train_frcnn_metric.py",
+            "--metric", "sa_alw_full",
+            "--placement", "la_loss",
+            "--seed", "42",
+            "--tag", "os125",
+        ],
+        "ckpt": "runs/sa_alw_full__la_loss__seed42__os125/best_ap75.pt",
+        "analysis": "runs/ap75_analysis_os125_valid",
+    },    "cp_light": {
         "env": {
             "TOD_USE_COPY_PASTE": "1",
             "TOD_TINY_TILE_OVERSAMPLE": "2.0",
