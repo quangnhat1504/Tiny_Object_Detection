@@ -17,19 +17,19 @@ This repo runs on Kaggle by cloning the GitHub repository and executing the exis
 Account/notebook 1, priority localization baseline:
 
 ```bash
-!python scripts/kaggle_run.py --run smooth_l1_ap75 --data-root /kaggle/input/datasets/kurt54/sod-tinypeopleinsea
+!python scripts/kaggle_run.py --run smooth_l1_ap75 --data-root /kaggle/input/sod-tinypeopleinsea
 ```
 
 Account/notebook 2, reduced oversampling:
 
 ```bash
-!python scripts/kaggle_run.py --run os1 --data-root /kaggle/input/datasets/kurt54/sod-tinypeopleinsea
+!python scripts/kaggle_run.py --run os1 --data-root /kaggle/input/sod-tinypeopleinsea
 ```
 
 Account/notebook 3, light copy-paste:
 
 ```bash
-!python scripts/kaggle_run.py --run cp_light --data-root /kaggle/input/datasets/kurt54/sod-tinypeopleinsea
+!python scripts/kaggle_run.py --run cp_light --data-root /kaggle/input/sod-tinypeopleinsea
 ```
 
 The remaining accounts can duplicate the most promising run with another seed/tag after we add it, or hold for resume/retry if a Kaggle session times out.
@@ -39,7 +39,7 @@ The remaining accounts can duplicate the most promising run with another seed/ta
 After a completed checkpoint exists in the same Kaggle working directory:
 
 ```bash
-!python scripts/kaggle_run.py --run smooth_l1_ap75 --skip-train --data-root /kaggle/input/datasets/kurt54/sod-tinypeopleinsea
+!python scripts/kaggle_run.py --run smooth_l1_ap75 --skip-train --data-root /kaggle/input/sod-tinypeopleinsea
 ```
 
 ## Notes
