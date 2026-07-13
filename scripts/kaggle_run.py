@@ -97,7 +97,7 @@ def analyze(ckpt: str, out_dir: str, env: dict[str, str]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Kaggle runner for tiny-object-detection experiments")
     parser.add_argument("--run", choices=sorted(RUNS), default="smooth_l1_ap75")
-    parser.add_argument("--data-root", default="/kaggle/input/tinydataset-yolostandard")
+    parser.add_argument("--data-root", default="/kaggle/input/datasets/ngquangnht/tinydataset-yolostandard")
     parser.add_argument("--skip-train", action="store_true")
     parser.add_argument("--skip-analysis", action="store_true")
     parser.add_argument("--resume", action="store_true")
