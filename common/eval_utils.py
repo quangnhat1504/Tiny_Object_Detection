@@ -281,7 +281,7 @@ def collect_predictions(model, loader, device, amp: bool = True
             with torch.amp.autocast("cuda", enabled=amp):
                 ld = model(imgs, td)
                 tvl += sum(v.item() for v in ld.values()
-                           if isinstance(v, torch.Tensor) and torch.isfinite(v))
+                           if isinstance(v, torch.Tensor) and torch.isfinite(v)) or 0.0
                 nb += 1
         except Exception:
             continue

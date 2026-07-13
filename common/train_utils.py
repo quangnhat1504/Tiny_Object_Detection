@@ -111,7 +111,7 @@ def train_one_epoch(model: nn.Module, optimizer, loader, scaler,
                 loss_dict = model(imgs, targets)
                 loss = sum(v for v in loss_dict.values()
                            if isinstance(v, torch.Tensor) and torch.isfinite(v))
-            if not torch.isfinite(loss):
+            if isinstance(loss, int) or not torch.isfinite(loss):
                 optimizer.zero_grad()
                 continue
             scaler.scale(loss).backward()
@@ -122,13 +122,16 @@ def train_one_epoch(model: nn.Module, optimizer, loader, scaler,
             optimizer.zero_grad()
             if ema:
                 ema.update(model)
-            if step % EMPTY_CACHE_EVERY == 0:
-                torch.cuda.empty_cache()
+            # Avoid CUDA allocator crash on Windows during long training.
+            # if step % EMPTY_CACHE_EVERY == 0:
+            #     torch.cuda.empty_cache()
             total += loss.item()
             n += 1
             for k in breakdown:
-                if k in loss_dict and torch.isfinite(loss_dict[k]):
-                    breakdown[k] += float(loss_dict[k])
+                if k in loss_dict:
+                    v = loss_dict[k]
+                    if isinstance(v, torch.Tensor) and torch.isfinite(v):
+                        breakdown[k] += float(v.detach())
             bar.set_postfix(loss=f"{loss.item():.4f}")
         except RuntimeError as e:
             if "out of memory" in str(e).lower():

@@ -1,2 +1,23 @@
 __pycache__/
 *.pyc
+.venv*/
+.env
+
+# Local datasets and generated artifacts
+data/
+raw/
+runs/
+image/
+working/
+
+# Model weights / checkpoints
+*.pt
+*.pth
+*.ckpt
+
+# Local agent/editor state
+.agent_scratchpad.md
+.commandcode/
+.claude/
+.agents/
+bug.txt

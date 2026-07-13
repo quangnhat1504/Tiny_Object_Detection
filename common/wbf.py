@@ -42,7 +42,31 @@ def _extent_hull(boxes: torch.Tensor, scores: torch.Tensor,
 
 def _weighted_avg(boxes: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
     w = scores / scores.sum()
-    return (boxes.T @ w).T
+    return (boxes * w[:, None]).sum(dim=0)
+
+
+def _topk_weighted_avg(boxes: torch.Tensor, scores: torch.Tensor,
+                       k: int = 3) -> torch.Tensor:
+    k = min(k, len(boxes))
+    top_idx = torch.topk(scores, k=k).indices
+    return _weighted_avg(boxes[top_idx], scores[top_idx])
+
+
+def _ap75_hybrid(boxes: torch.Tensor, scores: torch.Tensor) -> torch.Tensor | None:
+    if len(boxes) == 0:
+        return None
+    if len(boxes) == 1:
+        return boxes[0]
+
+    widths = (boxes[:, 2] - boxes[:, 0]).clamp(min=0)
+    heights = (boxes[:, 3] - boxes[:, 1]).clamp(min=0)
+    cluster_area = torch.median(widths * heights).item()
+
+    if cluster_area < 256:
+        return boxes[torch.argmax(scores)]
+    if cluster_area < 1024:
+        return _topk_weighted_avg(boxes, scores, k=3)
+    return _extent_hull(boxes, scores)
 
 
 def _adaptive_threshold(area: float, base_iou_thr: float,
@@ -142,11 +166,16 @@ def wbf_fusion_smart(
         cb, cs, cl = boxes[idx], scores[idx], labels[idx]
         if fusion_mode == "extent_hull":
             fb = _extent_hull(cb, cs)
+        elif fusion_mode == "ap75_hybrid":
+            fb = _ap75_hybrid(cb, cs)
         else:
             fb = _weighted_avg(cb, cs)
         if fb is not None:
             fused_b.append(fb)
-            fused_s.append(cs.mean())
+            if fusion_mode == "ap75_hybrid":
+                fused_s.append(0.7 * cs.max() + 0.3 * cs.mean())
+            else:
+                fused_s.append(cs.mean())
             fused_l.append(torch.mode(cl).values)
 
     if not fused_b:

@@ -22,7 +22,7 @@ from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor, RoIHeads)
 from torchvision.models.detection.rpn import (
     AnchorGenerator, RegionProposalNetwork, RPNHead)
-from torchvision.ops import batched_nms
+from torchvision.ops import batched_nms, complete_box_iou_loss, distance_box_iou_loss
 
 from .config import (
     NUM_CLASSES, MIN_SIZE, MAX_SIZE, BOX_DETECTIONS_PER_IMG,
@@ -35,6 +35,7 @@ from .config import (
     RFLA_DYNAMIC_K_SMALL, RFLA_DYNAMIC_K_LARGE,
     RFLA_QUALITY_RATIO, RFLA_MIN_SIM,
     NMS_METRIC_THRESH,
+    BOX_LOSS_TYPE, BOX_LOSS_METRIC_WEIGHT, BOX_LOSS_WARMUP_EPOCHS,
 )
 
 EPS = 1e-6
@@ -191,17 +192,19 @@ class SAALWRPN(RegionProposalNetwork):
 
 
 # =============================================================================
-# Metric-based box regression loss
+# Metric-based box regression loss (with multi-type dispatch)
 # =============================================================================
 def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
                      box_coder, metric_fn, reliability_thr, metric_loss_weight,
-                     proposals):
-    """Replacement for torvision's fastrcnn_loss: uses metric distance.
-    
-    The regression_targets are deltas relative to proposals. We decode
-    both predictions and ground truth to image-space boxes via the box_coder
-    before computing the metric distance.
+                     proposals, current_epoch=1, box_loss_type=None):
+    """Replacement for torchvision's fastrcnn_loss with multi-loss dispatch.
+
+    Args:
+        current_epoch: used for warmup (pure metric loss first N epochs, then ramp)
+        box_loss_type: "metric", "smooth_l1", "ciou", or "diou" (defaults to config)
     """
+    if box_loss_type is None:
+        box_loss_type = BOX_LOSS_TYPE
     labels = torch.cat(labels, dim=0)
     regression_targets = torch.cat(regression_targets, dim=0)
     classification_loss = F.cross_entropy(class_logits, labels)
@@ -210,47 +213,150 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
     if sampled_pos_inds.numel() == 0:
         return classification_loss, torch.zeros(1, device=class_logits.device).sum()
 
-    # Select positive samples
     N, num_classes = class_logits.shape
     box_regression = box_regression.reshape(N, num_classes, 4)
     K = len(sampled_pos_inds)
-    box_regression_pos = box_regression[sampled_pos_inds]            # (K, num_classes, 4)
-    labels_pos = labels[sampled_pos_inds]                            # (K,)
-    targets_deltas = regression_targets[sampled_pos_inds]            # (K, 4)
+    box_regression_pos = box_regression[sampled_pos_inds]
+    labels_pos = labels[sampled_pos_inds]
+    targets_deltas = regression_targets[sampled_pos_inds]
 
-    # Gather proposal boxes for positive samples
     proposals_flat = torch.cat(proposals, dim=0)
-    proposals_pos = proposals_flat[sampled_pos_inds]                 # (K, 4)
+    proposals_pos = proposals_flat[sampled_pos_inds]
 
-    # Decode deltas → image-space boxes.
-    # decode expects rel_codes (K, num_classes*4), boxes: List[Tensor]
-    box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
-    decoded = box_coder.decode(box_reg_flat, [proposals_pos])        # (K, num_classes, 4)
-    pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]  # (K, 4)
+    # ── Determine loss type ──
+    loss_type = box_loss_type
 
-    # Decode GT deltas the same way
-    decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])   # (K, 1, 4)
-    gt_boxes = decoded_gt[:, 0, :]                                   # (K, 4)
+    # ── Warmup: pure metric loss for first warmup_epochs ──
+    if loss_type != "metric" and current_epoch <= BOX_LOSS_WARMUP_EPOCHS:
+        loss_type = "metric"
 
-    xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
-    yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
-    wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
-    hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
-    xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
-    yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
-    wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
-    hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+    # ── Compute primary box loss ──
+    if loss_type == "metric":
+        # Current Gaussian similarity loss
+        box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
+        decoded = box_coder.decode(box_reg_flat, [proposals_pos])
+        pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
+        decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])
+        gt_boxes = decoded_gt[:, 0, :]
 
-    sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
-                     reliability_thr=reliability_thr)
-    box_loss = (1.0 - sim).mean() * metric_loss_weight
+        xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
+        yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
+        wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
+        hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
+        xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
+        yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
+        wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
+        hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+
+        sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
+                         reliability_thr=reliability_thr)
+        box_loss = (1.0 - sim).mean() * metric_loss_weight
+
+    elif loss_type == "smooth_l1":
+        # Standard Smooth-L1 on delta space (mirrors RFLA's AP75=18.8)
+        # Select the regression output for the positive class
+        box_reg_pos_per_class = box_regression_pos[
+            torch.arange(K, device=box_regression_pos.device), labels_pos]  # (K, 4)
+        box_loss = F.smooth_l1_loss(
+            box_reg_pos_per_class, targets_deltas, beta=1.0)
+        # Add auxiliary metric loss (small weight) to preserve micro stability
+        box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
+        decoded = box_coder.decode(box_reg_flat, [proposals_pos])
+        pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
+        decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])
+        gt_boxes = decoded_gt[:, 0, :]
+        xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
+        yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
+        wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
+        hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
+        xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
+        yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
+        wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
+        hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+        sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
+                         reliability_thr=reliability_thr)
+        metric_aux = (1.0 - sim).mean()
+        box_loss = box_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+
+    elif loss_type in ("ciou", "diou"):
+        # Entire CIoU/DIoU block must run in float32 outside autocast.
+        # Under AMP float16, torchvision's CIoU kernel can segfault on
+        # tiny boxes (2-8 px) due to degenerate float16 area computations.
+        with torch.amp.autocast("cuda", enabled=False):
+            # Decode boxes for IoU-based loss (force float32)
+            box_reg_flat = box_regression_pos.float().reshape(K, num_classes * 4)
+            decoded = box_coder.decode(box_reg_flat, [proposals_pos.float()])  
+            pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
+            decoded_gt = box_coder.decode(targets_deltas.float(), [proposals_pos.float()])
+            gt_boxes = decoded_gt[:, 0, :]
+
+            # Clamp degenerate boxes
+            pred_w = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=2.0)
+            pred_h = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=2.0)
+            pred_boxes = torch.stack([
+                pred_boxes[:, 0], pred_boxes[:, 1],
+                pred_boxes[:, 0] + pred_w, pred_boxes[:, 1] + pred_h,
+            ], dim=1)
+            gt_w = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=2.0)
+            gt_h = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=2.0)
+            gt_boxes = torch.stack([
+                gt_boxes[:, 0], gt_boxes[:, 1],
+                gt_boxes[:, 0] + gt_w, gt_boxes[:, 1] + gt_h,
+            ], dim=1)
+
+            # Filter: remove boxes with near-zero area
+            pred_area = pred_w * pred_h
+            gt_area = gt_w * gt_h
+            valid = (pred_area >= 4.0) & (gt_area >= 4.0)
+            if valid.sum() < 1:
+                iou_loss = torch.tensor(0.0, device=pred_boxes.device)
+                metric_aux_val = torch.tensor(0.0, device=pred_boxes.device)
+            else:
+                pred_boxes_f = pred_boxes[valid]
+                gt_boxes_f = gt_boxes[valid]
+
+                if loss_type == "ciou":
+                    iou_loss = complete_box_iou_loss(
+                        pred_boxes_f, gt_boxes_f, reduction="mean")
+                else:
+                    iou_loss = distance_box_iou_loss(
+                        pred_boxes_f, gt_boxes_f, reduction="mean")
+
+                if not torch.isfinite(iou_loss):
+                    iou_loss = torch.tensor(0.0, device=iou_loss.device)
+                iou_loss = iou_loss.clamp(max=5.0)
+
+                # Auxiliary metric loss
+                xn = (pred_boxes_f[:, 0] + pred_boxes_f[:, 2]) / 2.0
+                yn = (pred_boxes_f[:, 1] + pred_boxes_f[:, 3]) / 2.0
+                wn = (pred_boxes_f[:, 2] - pred_boxes_f[:, 0]).clamp(min=1.0)
+                hn = (pred_boxes_f[:, 3] - pred_boxes_f[:, 1]).clamp(min=1.0)
+                xg = (gt_boxes_f[:, 0] + gt_boxes_f[:, 2]) / 2.0
+                yg = (gt_boxes_f[:, 1] + gt_boxes_f[:, 3]) / 2.0
+                wg = (gt_boxes_f[:, 2] - gt_boxes_f[:, 0]).clamp(min=1.0)
+                hg = (gt_boxes_f[:, 3] - gt_boxes_f[:, 1]).clamp(min=1.0)
+                sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
+                                 reliability_thr=reliability_thr)
+                metric_aux_val = (1.0 - sim).mean()
+
+        # Cast back to autocast dtype for box_loss
+        iou_loss = iou_loss.to(dtype=pred_boxes.dtype)
+        metric_aux = metric_aux_val.to(dtype=pred_boxes.dtype)
+        box_loss = iou_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+
+    else:
+        raise ValueError(f"Unknown BOX_LOSS_TYPE: {loss_type}")
+
     return classification_loss, box_loss
 
 
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
-                                       metric_loss_weight=1.0):
+                                       metric_loss_weight=1.0,
+                                       box_loss_type="metric"):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
+    # Store on roi_heads for access during training
+    roi_heads._box_loss_type = box_loss_type
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
         if targets is not None and self.training:
@@ -267,10 +373,13 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
         result = []
         losses = {}
         if self.training:
+            current_epoch = getattr(self, '_current_epoch', 1)
+            box_loss_type = getattr(self, '_box_loss_type', BOX_LOSS_TYPE)
             loss_classifier, loss_box_reg = _metric_box_loss(
                 class_logits, box_regression, labels, regression_targets,
                 self.box_coder, metric_fn, reliability_thr, metric_loss_weight,
-                proposals_sampled)
+                proposals_sampled, current_epoch=current_epoch,
+                box_loss_type=box_loss_type)
             losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
         else:
             boxes, scores, labels_out = self.postprocess_detections(
@@ -414,6 +523,8 @@ def build_model(
     num_classes: int = NUM_CLASSES,
     channels_last: bool = False,
     saalw_rpn_cfg: Optional[dict] = None,
+    box_loss_type: str = "metric",
+    box_loss_warmup_epochs: int = BOX_LOSS_WARMUP_EPOCHS,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
@@ -427,8 +538,9 @@ def build_model(
             - "la_loss_soft_nms": LA + loss + Soft-NMS (ALW score decay)
             - "saalw_assigner":   SAALWAssigner (threshold-based) + box loss
         reliability_thr: passed to metric
-        saalw_rpn_cfg: dict of SAALWAssigner params (pos_sim_thr, neg_sim_thr,
-                       topk_fallback, dynamic_thr). Only used with saalw_assigner.
+        saalw_rpn_cfg: dict of SAALWAssigner params
+        box_loss_type: "metric", "smooth_l1", "ciou", or "diou"
+        box_loss_warmup_epochs: number of warmup epochs with pure metric loss
         channels_last: if True, convert backbone to channels_last memory format
     """
     if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
@@ -534,8 +646,9 @@ def build_model(
     if use_metric_loss:
         _wrap_roi_forward_for_metric_loss(
             base.roi_heads, metric_fn, reliability_thr,
-            metric_loss_weight=1.0)
-        print(f"  [loss] fastrcnn_loss replaced with metric distance loss")
+            metric_loss_weight=1.0,
+            box_loss_type=box_loss_type)
+        print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}")
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
     if use_metric_nms:

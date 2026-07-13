@@ -82,10 +82,10 @@ CACHE_IMAGES     = False   # True sẽ preload 7.3GB RAM, gây MemoryError trên
 # =============================================================================
 TINY_THRESHOLD_PX     = 16.0
 TINY_AREA_THR         = TINY_THRESHOLD_PX ** 2
-TINY_TILE_OVERSAMPLE  = 2.0
-USE_COPY_PASTE        = True
-COPY_PASTE_PROB       = 0.30
-COPY_PASTE_MAX_PER    = 3
+TINY_TILE_OVERSAMPLE  = float(os.environ.get("TOD_TINY_TILE_OVERSAMPLE", "2.0"))
+USE_COPY_PASTE        = os.environ.get("TOD_USE_COPY_PASTE", "1").lower() not in ("0", "false", "no")
+COPY_PASTE_PROB       = float(os.environ.get("TOD_COPY_PASTE_PROB", "0.30"))
+COPY_PASTE_MAX_PER    = int(os.environ.get("TOD_COPY_PASTE_MAX_PER", "3"))
 COPY_PASTE_SCALE_JIT  = (0.8, 1.2)
 
 # =============================================================================
@@ -121,6 +121,17 @@ SA_ALW_S_MAX       = 28.7  # P90 từ Phase 0
 SA_ALW_POS_WEIGHT_MIN = 1.0   # w_pos cho object lớn
 SA_ALW_POS_WEIGHT_MAX = 1.5   # w_pos cho object siêu nhỏ
 SA_ALW_LOG_CLAMP      = 3.0   # clamp cho log-ratio, cần ablation H2.4
+
+# =============================================================================
+# BOX REGRESSION LOSS (decoupled assignment–regression breakthrough)
+# =============================================================================
+# "metric"   — Gaussian/Wasserstein similarity (current, PLATEAUED at AP75=0.03)
+# "smooth_l1" — standard Smooth-L1 on delta space (mirrors vanilla RFLA AP75=18.8)
+# "ciou"     — CompleteIoU on decoded boxes (overlap+center+aspect)
+# "diou"     — DistanceIoU on decoded boxes (overlap+center, no aspect)
+BOX_LOSS_TYPE = "metric"
+BOX_LOSS_METRIC_WEIGHT = 0.25   # auxiliary weight for (1-sim) when using ciou/diou/smooth_l1
+BOX_LOSS_WARMUP_EPOCHS = 3      # pure metric loss for first N epochs, then ramp new loss
 
 # =============================================================================
 # RPN / RoI
