@@ -100,6 +100,7 @@ def train_one_epoch(model: nn.Module, optimizer, loader, scaler,
     n = 0
     breakdown = {"loss_classifier": 0.0, "loss_box_reg": 0.0,
                  "loss_objectness": 0.0, "loss_rpn_box_reg": 0.0,
+                 "loss_quality": 0.0,
                  "loss_metric": 0.0}  # placeholder for future metric loss
     bar = tqdm(loader, desc=f"Epoch {epoch}")
     for step, (imgs, targets) in enumerate(bar):

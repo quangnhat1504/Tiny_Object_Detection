@@ -384,7 +384,9 @@ def main() -> None:
 
     model = build_model(metric_fn=metric_fn, placement=placement,
                         reliability_thr=reliability_thr,
-                        box_loss_type=box_loss).to(device)
+                        box_loss_type=box_loss,
+                        use_quality_score=bool(config.get("quality_score", False)),
+                        quality_loss_weight=float(config.get("quality_loss_weight", 0.0) or 0.0)).to(device)
     model.load_state_dict(ckpt["model"])
 
     preds, gts = collect_predictions(model, loader, device, args.score_thr, args.topk)

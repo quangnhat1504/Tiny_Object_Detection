@@ -40,8 +40,12 @@ from common.eval_utils import evaluate
 
 
 def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
-                 box_loss: str = "metric", tag: str = ""):
+                 box_loss: str = "metric", tag: str = "",
+                 quality_score: bool = False,
+                 quality_loss_weight: float = 0.5):
     metric_name = metric if box_loss == "metric" else f"{metric}__{box_loss}"
+    if quality_score:
+        metric_name = f"{metric_name}__q{quality_loss_weight:g}"
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
         output_name = f"{output_name}__{tag}"
@@ -52,6 +56,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     print(f"METRIC ABLATION — {metric} @ {placement}")
     print(f"  Seed: {seed}")
     print(f"  Box loss: {box_loss}")
+    print(f"  Quality score: {quality_score} (weight={quality_loss_weight:g})")
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
     print(f"{'='*70}\n")
@@ -89,6 +94,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         placement=placement,
         reliability_thr=reliability_thr,
         box_loss_type=box_loss,
+        use_quality_score=quality_score,
+        quality_loss_weight=quality_loss_weight,
     ).to(DEVICE)
 
     # ── Optimizer ──
@@ -211,7 +218,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
             "best_coco_ap_epoch": best_coco_ap_epoch,
             "history": history,
             "config": {"metric": metric, "placement": placement, "seed": seed,
-                        "box_loss": box_loss, "tag": tag},
+                        "box_loss": box_loss, "tag": tag,
+                        "quality_score": quality_score,
+                        "quality_loss_weight": quality_loss_weight},
         }, OUTPUT_DIR / "last.pt")
 
         if mAP50 == best_mAP50 and epoch == best_epoch:
@@ -222,7 +231,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                 "best_coco_AP75": best_ap75,
                 "best_coco_AP": best_coco_ap,
                 "config": {"metric": metric, "placement": placement, "seed": seed,
-                        "box_loss": box_loss, "tag": tag},
+                        "box_loss": box_loss, "tag": tag,
+                        "quality_score": quality_score,
+                        "quality_loss_weight": quality_loss_weight},
             }, OUTPUT_DIR / "best.pt")
 
         if coco_ap75 == best_ap75 and epoch == best_ap75_epoch:
@@ -233,7 +244,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                 "best_coco_AP75": best_ap75,
                 "best_coco_AP": best_coco_ap,
                 "config": {"metric": metric, "placement": placement, "seed": seed,
-                        "box_loss": box_loss, "tag": tag},
+                        "box_loss": box_loss, "tag": tag,
+                        "quality_score": quality_score,
+                        "quality_loss_weight": quality_loss_weight},
             }, OUTPUT_DIR / "best_ap75.pt")
 
         if coco_ap == best_coco_ap and epoch == best_coco_ap_epoch:
@@ -244,7 +257,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                 "best_coco_AP75": best_ap75,
                 "best_coco_AP": best_coco_ap,
                 "config": {"metric": metric, "placement": placement, "seed": seed,
-                        "box_loss": box_loss, "tag": tag},
+                        "box_loss": box_loss, "tag": tag,
+                        "quality_score": quality_score,
+                        "quality_loss_weight": quality_loss_weight},
             }, OUTPUT_DIR / "best_coco_ap.pt")
 
     print(f"\n{'='*70}")
@@ -274,10 +289,16 @@ def main():
                         help="Box regression loss type (decoupled from metric)")
     parser.add_argument("--tag", type=str, default="",
                         help="Optional suffix for output dir")
+    parser.add_argument("--quality-score", action="store_true",
+                        help="Enable auxiliary RoI localization-quality head")
+    parser.add_argument("--quality-loss-weight", type=float, default=0.5,
+                        help="Weight for quality IoU target loss")
     args = parser.parse_args()
 
     train_metric(args.metric, args.placement, args.seed, args.resume,
-                 box_loss=args.box_loss, tag=args.tag)
+                 box_loss=args.box_loss, tag=args.tag,
+                 quality_score=args.quality_score,
+                 quality_loss_weight=args.quality_loss_weight)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,10 @@ from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor, RoIHeads)
 from torchvision.models.detection.rpn import (
     AnchorGenerator, RegionProposalNetwork, RPNHead)
-from torchvision.ops import batched_nms, complete_box_iou_loss, distance_box_iou_loss
+from torchvision.ops import (
+    batched_nms, box_iou, boxes as box_ops,
+    complete_box_iou_loss, distance_box_iou_loss,
+)
 
 from .config import (
     NUM_CLASSES, MIN_SIZE, MAX_SIZE, BOX_DETECTIONS_PER_IMG,
@@ -39,6 +42,25 @@ from .config import (
 )
 
 EPS = 1e-6
+
+
+class QualityFastRCNNPredictor(nn.Module):
+    """Fast R-CNN predictor with an auxiliary localization-quality logit."""
+
+    def __init__(self, in_channels: int, num_classes: int):
+        super().__init__()
+        self.cls_score = nn.Linear(in_channels, num_classes)
+        self.bbox_pred = nn.Linear(in_channels, num_classes * 4)
+        self.quality_score = nn.Linear(in_channels, num_classes)
+
+    def forward(self, x):
+        if x.dim() == 4:
+            torch._assert(
+                list(x.shape[2:]) == [1, 1],
+                f"x has the wrong shape, expecting the last two dimensions to be [1,1] instead of {list(x.shape[2:])}",
+            )
+        x = x.flatten(start_dim=1)
+        return self.cls_score(x), self.bbox_pred(x), self.quality_score(x)
 
 
 # =============================================================================
@@ -194,9 +216,23 @@ class SAALWRPN(RegionProposalNetwork):
 # =============================================================================
 # Metric-based box regression loss (with multi-type dispatch)
 # =============================================================================
+def _paired_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
+    """Pairwise IoU for aligned box tensors [N,4] and [N,4]."""
+    lt = torch.maximum(boxes1[:, :2], boxes2[:, :2])
+    rb = torch.minimum(boxes1[:, 2:], boxes2[:, 2:])
+    wh = (rb - lt).clamp(min=0)
+    inter = wh[:, 0] * wh[:, 1]
+    area1 = ((boxes1[:, 2] - boxes1[:, 0]).clamp(min=0) *
+             (boxes1[:, 3] - boxes1[:, 1]).clamp(min=0))
+    area2 = ((boxes2[:, 2] - boxes2[:, 0]).clamp(min=0) *
+             (boxes2[:, 3] - boxes2[:, 1]).clamp(min=0))
+    return inter / (area1 + area2 - inter).clamp(min=EPS)
+
+
 def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
                      box_coder, metric_fn, reliability_thr, metric_loss_weight,
-                     proposals, current_epoch=1, box_loss_type=None):
+                     proposals, current_epoch=1, box_loss_type=None,
+                     quality_logits=None, quality_loss_weight=0.0):
     """Replacement for torchvision's fastrcnn_loss with multi-loss dispatch.
 
     Args:
@@ -211,7 +247,8 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
 
     sampled_pos_inds = torch.where(labels > 0)[0]
     if sampled_pos_inds.numel() == 0:
-        return classification_loss, torch.zeros(1, device=class_logits.device).sum()
+        zero = torch.zeros(1, device=class_logits.device).sum()
+        return classification_loss, zero, zero
 
     N, num_classes = class_logits.shape
     box_regression = box_regression.reshape(N, num_classes, 4)
@@ -222,6 +259,9 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
 
     proposals_flat = torch.cat(proposals, dim=0)
     proposals_pos = proposals_flat[sampled_pos_inds]
+    decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])
+    gt_boxes_for_quality = decoded_gt[:, 0, :]
+    pred_boxes_for_quality = None
 
     # ── Determine loss type ──
     loss_type = box_loss_type
@@ -236,8 +276,8 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
         box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
         decoded = box_coder.decode(box_reg_flat, [proposals_pos])
         pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
-        decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])
-        gt_boxes = decoded_gt[:, 0, :]
+        gt_boxes = gt_boxes_for_quality
+        pred_boxes_for_quality = pred_boxes
 
         xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
         yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
@@ -263,8 +303,8 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
         box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
         decoded = box_coder.decode(box_reg_flat, [proposals_pos])
         pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
-        decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])
-        gt_boxes = decoded_gt[:, 0, :]
+        gt_boxes = gt_boxes_for_quality
+        pred_boxes_for_quality = pred_boxes
         xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
         yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
         wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
@@ -289,6 +329,8 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
             pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
             decoded_gt = box_coder.decode(targets_deltas.float(), [proposals_pos.float()])
             gt_boxes = decoded_gt[:, 0, :]
+            pred_boxes_for_quality = pred_boxes.to(dtype=box_regression.dtype)
+            gt_boxes_for_quality = gt_boxes.to(dtype=box_regression.dtype)
 
             # Clamp degenerate boxes
             pred_w = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=2.0)
@@ -347,16 +389,76 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
     else:
         raise ValueError(f"Unknown BOX_LOSS_TYPE: {loss_type}")
 
-    return classification_loss, box_loss
+    quality_loss = torch.zeros(1, device=class_logits.device).sum()
+    if quality_logits is not None and quality_loss_weight > 0:
+        if pred_boxes_for_quality is None:
+            box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
+            decoded = box_coder.decode(box_reg_flat, [proposals_pos])
+            pred_boxes_for_quality = decoded[
+                torch.arange(K, device=decoded.device), labels_pos]
+        q_targets = _paired_iou(
+            pred_boxes_for_quality.detach().float(),
+            gt_boxes_for_quality.detach().float(),
+        ).clamp(0, 1).to(dtype=quality_logits.dtype)
+        q_pred = quality_logits[sampled_pos_inds, labels_pos]
+        quality_loss = F.binary_cross_entropy_with_logits(q_pred, q_targets)
+        quality_loss = quality_loss * quality_loss_weight
+
+    return classification_loss, box_loss, quality_loss
+
+
+def _postprocess_detections_with_quality(
+    roi_heads, class_logits, box_regression, quality_logits, proposals, image_shapes
+):
+    """Postprocess detections with score = class_prob * predicted localization quality."""
+    device = class_logits.device
+    num_classes = class_logits.shape[-1]
+
+    boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
+    pred_boxes = roi_heads.box_coder.decode(box_regression, proposals)
+    pred_scores = F.softmax(class_logits, -1) * torch.sigmoid(quality_logits)
+
+    pred_boxes_list = pred_boxes.split(boxes_per_image, 0)
+    pred_scores_list = pred_scores.split(boxes_per_image, 0)
+
+    all_boxes, all_scores, all_labels = [], [], []
+    for boxes, scores, image_shape in zip(pred_boxes_list, pred_scores_list, image_shapes):
+        boxes = box_ops.clip_boxes_to_image(boxes, image_shape)
+        labels = torch.arange(num_classes, device=device)
+        labels = labels.view(1, -1).expand_as(scores)
+
+        boxes = boxes[:, 1:]
+        scores = scores[:, 1:]
+        labels = labels[:, 1:]
+
+        boxes = boxes.reshape(-1, 4)
+        scores = scores.reshape(-1)
+        labels = labels.reshape(-1)
+
+        inds = torch.where(scores > roi_heads.score_thresh)[0]
+        boxes, scores, labels = boxes[inds], scores[inds], labels[inds]
+
+        keep = box_ops.remove_small_boxes(boxes, min_size=1e-2)
+        boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+
+        keep = box_ops.batched_nms(boxes, scores, labels, roi_heads.nms_thresh)
+        keep = keep[: roi_heads.detections_per_img]
+        all_boxes.append(boxes[keep])
+        all_scores.append(scores[keep])
+        all_labels.append(labels[keep])
+
+    return all_boxes, all_scores, all_labels
 
 
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        metric_loss_weight=1.0,
-                                       box_loss_type="metric"):
+                                       box_loss_type="metric",
+                                       quality_loss_weight=0.0):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
     # Store on roi_heads for access during training
     roi_heads._box_loss_type = box_loss_type
+    roi_heads._quality_loss_weight = quality_loss_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
         if targets is not None and self.training:
@@ -368,22 +470,37 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
 
         box_features = self.box_roi_pool(features, proposals_sampled, image_shapes)
         box_features = self.box_head(box_features)
-        class_logits, box_regression = self.box_predictor(box_features)
+        predictor_out = self.box_predictor(box_features)
+        if len(predictor_out) == 3:
+            class_logits, box_regression, quality_logits = predictor_out
+        else:
+            class_logits, box_regression = predictor_out
+            quality_logits = None
 
         result = []
         losses = {}
         if self.training:
             current_epoch = getattr(self, '_current_epoch', 1)
             box_loss_type = getattr(self, '_box_loss_type', BOX_LOSS_TYPE)
-            loss_classifier, loss_box_reg = _metric_box_loss(
+            quality_loss_weight = getattr(self, '_quality_loss_weight', 0.0)
+            loss_classifier, loss_box_reg, loss_quality = _metric_box_loss(
                 class_logits, box_regression, labels, regression_targets,
                 self.box_coder, metric_fn, reliability_thr, metric_loss_weight,
                 proposals_sampled, current_epoch=current_epoch,
-                box_loss_type=box_loss_type)
+                box_loss_type=box_loss_type,
+                quality_logits=quality_logits,
+                quality_loss_weight=quality_loss_weight)
             losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
+            if quality_logits is not None and quality_loss_weight > 0:
+                losses["loss_quality"] = loss_quality
         else:
-            boxes, scores, labels_out = self.postprocess_detections(
-                class_logits, box_regression, proposals, image_shapes)
+            if quality_logits is not None:
+                boxes, scores, labels_out = _postprocess_detections_with_quality(
+                    self, class_logits, box_regression, quality_logits,
+                    proposals, image_shapes)
+            else:
+                boxes, scores, labels_out = self.postprocess_detections(
+                    class_logits, box_regression, proposals, image_shapes)
             for i in range(len(boxes)):
                 result.append({"boxes": boxes[i], "labels": labels_out[i], "scores": scores[i]})
 
@@ -525,6 +642,8 @@ def build_model(
     saalw_rpn_cfg: Optional[dict] = None,
     box_loss_type: str = "metric",
     box_loss_warmup_epochs: int = BOX_LOSS_WARMUP_EPOCHS,
+    use_quality_score: bool = False,
+    quality_loss_weight: float = 0.0,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
@@ -541,6 +660,8 @@ def build_model(
         saalw_rpn_cfg: dict of SAALWAssigner params
         box_loss_type: "metric", "smooth_l1", "ciou", or "diou"
         box_loss_warmup_epochs: number of warmup epochs with pure metric loss
+        use_quality_score: add an auxiliary RoI localization-quality head
+        quality_loss_weight: BCE weight for IoU quality target on positive RoIs
         channels_last: if True, convert backbone to channels_last memory format
     """
     if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
@@ -640,15 +761,21 @@ def build_model(
     base.roi_heads.batch_size_per_image = 256
     base.roi_heads.positive_fraction = 0.5
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
-    base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
+    if use_quality_score:
+        base.roi_heads.box_predictor = QualityFastRCNNPredictor(in_feat, num_classes + 1)
+    else:
+        base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
 
     # ── Replace box regression loss with metric distance ──────────────
-    if use_metric_loss:
+    if use_metric_loss or (use_quality_score and quality_loss_weight > 0):
         _wrap_roi_forward_for_metric_loss(
             base.roi_heads, metric_fn, reliability_thr,
             metric_loss_weight=1.0,
-            box_loss_type=box_loss_type)
+            box_loss_type=box_loss_type,
+            quality_loss_weight=quality_loss_weight if use_quality_score else 0.0)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}")
+        if use_quality_score:
+            print(f"  [quality] score=head enabled, loss_weight={quality_loss_weight}")
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
     if use_metric_nms:

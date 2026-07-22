@@ -52,7 +52,7 @@ CLASS_DISPLAY = {0: "dry-person", 1: "wet-swimmer"}
 # =============================================================================
 # TRAINING SCHEDULE  (giống nhau cho mọi metric)
 # =============================================================================
-EPOCHS              = 20
+EPOCHS              = int(os.environ.get("TOD_EPOCHS", "20"))
 LR                  = 0.005
 MOMENTUM            = 0.9
 WEIGHT_DECAY        = 1e-4
