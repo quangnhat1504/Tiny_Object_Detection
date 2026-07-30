@@ -39,6 +39,7 @@ from .config import (
     RFLA_QUALITY_RATIO, RFLA_MIN_SIM,
     NMS_METRIC_THRESH,
     BOX_LOSS_TYPE, BOX_LOSS_METRIC_WEIGHT, BOX_LOSS_WARMUP_EPOCHS,
+    CBL_ALPHA, CBL_NUM_BINS, CBL_GRID_BETA, CBL_UM_WEIGHT,
 )
 
 EPS = 1e-6
@@ -61,6 +62,55 @@ class QualityFastRCNNPredictor(nn.Module):
             )
         x = x.flatten(start_dim=1)
         return self.cls_score(x), self.bbox_pred(x), self.quality_score(x)
+
+
+def _make_cbl_grid(alpha: float, num_bins: int, beta: float) -> torch.Tensor:
+    """Build the symmetric interval-nonuniform grid used by C-BBL."""
+    if alpha <= 0:
+        raise ValueError("CBL alpha must be positive")
+    if num_bins < 3:
+        raise ValueError("CBL num_bins must be at least 3")
+    uniform = torch.linspace(-alpha, alpha, num_bins, dtype=torch.float32)
+    if beta <= 0:
+        return uniform
+    denom = torch.expm1(torch.tensor(alpha * beta, dtype=torch.float32))
+    magnitude = alpha * torch.expm1(beta * uniform.abs()) / denom
+    return uniform.sign() * magnitude
+
+
+class CBLFastRCNNPredictor(nn.Module):
+    """Fast R-CNN predictor with distributional RoI box localization."""
+
+    is_distributional = True
+
+    def __init__(self, in_channels: int, num_classes: int, *,
+                 alpha: float, num_bins: int, grid_beta: float):
+        super().__init__()
+        self.num_classes = num_classes
+        self.num_bins = num_bins
+        self.cls_score = nn.Linear(in_channels, num_classes)
+        self.bbox_dist = nn.Linear(
+            in_channels, num_classes * 4 * num_bins)
+        self.register_buffer(
+            "cbl_grid",
+            _make_cbl_grid(alpha, num_bins, grid_beta),
+        )
+
+    def forward(self, x):
+        if x.dim() == 4:
+            torch._assert(
+                list(x.shape[2:]) == [1, 1],
+                "CBL predictor expects pooled spatial dimensions [1, 1]",
+            )
+        x = x.flatten(start_dim=1)
+        class_logits = self.cls_score(x)
+        dist_logits = self.bbox_dist(x).reshape(
+            x.shape[0], self.num_classes, 4, self.num_bins)
+        probabilities = F.softmax(dist_logits.float(), dim=-1)
+        box_deltas = (
+            probabilities * self.cbl_grid.float().view(1, 1, 1, -1)
+        ).sum(dim=-1).to(dtype=dist_logits.dtype)
+        return class_logits, box_deltas.flatten(start_dim=1), dist_logits
 
 
 # =============================================================================
@@ -229,15 +279,103 @@ def _paired_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
     return inter / (area1 + area2 - inter).clamp(min=EPS)
 
 
+def _box_geometry_terms(pred_boxes: torch.Tensor, gt_boxes: torch.Tensor):
+    pred_w = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
+    pred_h = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
+    gt_w = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
+    gt_h = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+    xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
+    yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
+    xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
+    yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
+    return xn, yn, pred_w, pred_h, xg, yg, gt_w, gt_h
+
+
+def _metric_aux_loss(pred_boxes: torch.Tensor, gt_boxes: torch.Tensor,
+                     metric_fn, reliability_thr: float) -> torch.Tensor:
+    if metric_fn is None:
+        return torch.zeros(1, device=pred_boxes.device).sum()
+    xn, yn, wn, hn, xg, yg, wg, hg = _box_geometry_terms(pred_boxes, gt_boxes)
+    sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
+                    reliability_thr=reliability_thr)
+    return (1.0 - sim).mean()
+
+
+def _side_aware_smooth_l1_loss(box_delta: torch.Tensor,
+                               target_delta: torch.Tensor,
+                               gt_boxes: torch.Tensor) -> torch.Tensor:
+    """SABL-inspired delta loss with extra weight on tiny-object sides."""
+    gt_w = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=2.0)
+    gt_h = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=2.0)
+    gt_size = (gt_w * gt_h).sqrt()
+    tiny_weight = (16.0 / gt_size).clamp(min=1.0, max=4.0)
+    raw = F.smooth_l1_loss(
+        box_delta, target_delta, beta=1.0, reduction="none")
+    return (raw * tiny_weight[:, None]).mean()
+
+
+def _cbl_localization_loss(
+    distribution_logits: torch.Tensor,
+    target_deltas: torch.Tensor,
+    grid: torch.Tensor,
+    uncertainty_weight: float,
+) -> torch.Tensor:
+    """Two-hot confidence loss plus entropy-matching uncertainty loss."""
+    if distribution_logits.ndim != 3:
+        raise ValueError("CBL logits must have shape [positive_rois, 4, bins]")
+    if distribution_logits.shape[-1] != grid.numel():
+        raise ValueError("CBL logits and grid have incompatible bin counts")
+
+    logits = distribution_logits.float()
+    grid = grid.to(device=logits.device, dtype=logits.dtype)
+    targets = target_deltas.float().clamp(
+        min=float(grid[0]), max=float(grid[-1]))
+
+    right_idx = torch.searchsorted(
+        grid, targets.contiguous(), right=True).clamp(1, grid.numel() - 1)
+    left_idx = right_idx - 1
+    left_grid = grid[left_idx]
+    right_grid = grid[right_idx]
+    right_weight = (
+        (targets - left_grid) / (right_grid - left_grid).clamp(min=EPS)
+    ).clamp(0.0, 1.0)
+    left_weight = 1.0 - right_weight
+
+    log_probs = F.log_softmax(logits, dim=-1)
+    left_log_prob = log_probs.gather(-1, left_idx.unsqueeze(-1)).squeeze(-1)
+    right_log_prob = log_probs.gather(-1, right_idx.unsqueeze(-1)).squeeze(-1)
+    confidence_loss = -(
+        left_weight * left_log_prob + right_weight * right_log_prob
+    ).mean()
+
+    if uncertainty_weight <= 0:
+        return confidence_loss
+
+    probs = log_probs.exp()
+    prediction_entropy = -(probs * log_probs).sum(dim=-1)
+    target_entropy = -(
+        left_weight * left_weight.clamp(min=EPS).log()
+        + right_weight * right_weight.clamp(min=EPS).log()
+    )
+    uncertainty_loss = (
+        prediction_entropy - target_entropy
+    ).abs().mean()
+    return confidence_loss + uncertainty_weight * uncertainty_loss
+
+
 def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
                      box_coder, metric_fn, reliability_thr, metric_loss_weight,
                      proposals, current_epoch=1, box_loss_type=None,
-                     quality_logits=None, quality_loss_weight=0.0):
+                     box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
+                     quality_logits=None, quality_loss_weight=0.0,
+                     distribution_logits=None, cbl_grid=None,
+                     cbl_um_weight=CBL_UM_WEIGHT):
     """Replacement for torchvision's fastrcnn_loss with multi-loss dispatch.
 
     Args:
         current_epoch: used for warmup (pure metric loss first N epochs, then ramp)
-        box_loss_type: "metric", "smooth_l1", "ciou", or "diou" (defaults to config)
+        box_loss_type: "metric", "smooth_l1", "side_smooth_l1", "ciou",
+            "diou", or "cbl"
     """
     if box_loss_type is None:
         box_loss_type = BOX_LOSS_TYPE
@@ -267,7 +405,8 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
     loss_type = box_loss_type
 
     # ── Warmup: pure metric loss for first warmup_epochs ──
-    if loss_type != "metric" and current_epoch <= BOX_LOSS_WARMUP_EPOCHS:
+    if (loss_type != "metric" and box_loss_warmup_epochs > 0 and
+            current_epoch <= box_loss_warmup_epochs):
         loss_type = "metric"
 
     # ── Compute primary box loss ──
@@ -279,44 +418,42 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
         gt_boxes = gt_boxes_for_quality
         pred_boxes_for_quality = pred_boxes
 
-        xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
-        yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
-        wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
-        hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
-        xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
-        yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
-        wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
-        hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+        box_loss = _metric_aux_loss(
+            pred_boxes, gt_boxes, metric_fn, reliability_thr) * metric_loss_weight
 
-        sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
-                         reliability_thr=reliability_thr)
-        box_loss = (1.0 - sim).mean() * metric_loss_weight
-
-    elif loss_type == "smooth_l1":
+    elif loss_type in ("smooth_l1", "side_smooth_l1"):
         # Standard Smooth-L1 on delta space (mirrors RFLA's AP75=18.8)
         # Select the regression output for the positive class
         box_reg_pos_per_class = box_regression_pos[
             torch.arange(K, device=box_regression_pos.device), labels_pos]  # (K, 4)
-        box_loss = F.smooth_l1_loss(
+        delta_loss = F.smooth_l1_loss(
             box_reg_pos_per_class, targets_deltas, beta=1.0)
-        # Add auxiliary metric loss (small weight) to preserve micro stability
         box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
         decoded = box_coder.decode(box_reg_flat, [proposals_pos])
         pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
         gt_boxes = gt_boxes_for_quality
         pred_boxes_for_quality = pred_boxes
-        xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
-        yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
-        wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
-        hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
-        xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
-        yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
-        wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
-        hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
-        sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
-                         reliability_thr=reliability_thr)
-        metric_aux = (1.0 - sim).mean()
-        box_loss = box_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+        metric_aux = _metric_aux_loss(
+            pred_boxes, gt_boxes, metric_fn, reliability_thr)
+        if loss_type == "side_smooth_l1":
+            side_loss = _side_aware_smooth_l1_loss(
+                box_reg_pos_per_class, targets_deltas, gt_boxes)
+            box_loss = side_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+        else:
+            # Add auxiliary metric loss (small weight) to preserve micro stability
+            box_loss = delta_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+
+    elif loss_type == "cbl":
+        if distribution_logits is None or cbl_grid is None:
+            raise ValueError("CBL loss requires distribution logits and a grid")
+        dist_pos = distribution_logits[
+            sampled_pos_inds, labels_pos]  # [K, 4, bins]
+        box_loss = _cbl_localization_loss(
+            dist_pos, targets_deltas, cbl_grid, cbl_um_weight)
+        box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
+        decoded = box_coder.decode(box_reg_flat, [proposals_pos])
+        pred_boxes_for_quality = decoded[
+            torch.arange(K, device=decoded.device), labels_pos]
 
     elif loss_type in ("ciou", "diou"):
         # Entire CIoU/DIoU block must run in float32 outside autocast.
@@ -453,12 +590,16 @@ def _postprocess_detections_with_quality(
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        metric_loss_weight=1.0,
                                        box_loss_type="metric",
-                                       quality_loss_weight=0.0):
+                                       box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
+                                       quality_loss_weight=0.0,
+                                       cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
     # Store on roi_heads for access during training
     roi_heads._box_loss_type = box_loss_type
+    roi_heads._box_loss_warmup_epochs = box_loss_warmup_epochs
     roi_heads._quality_loss_weight = quality_loss_weight
+    roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
         if targets is not None and self.training:
@@ -471,7 +612,11 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
         box_features = self.box_roi_pool(features, proposals_sampled, image_shapes)
         box_features = self.box_head(box_features)
         predictor_out = self.box_predictor(box_features)
-        if len(predictor_out) == 3:
+        distribution_logits = None
+        if getattr(self.box_predictor, "is_distributional", False):
+            class_logits, box_regression, distribution_logits = predictor_out
+            quality_logits = None
+        elif len(predictor_out) == 3:
             class_logits, box_regression, quality_logits = predictor_out
         else:
             class_logits, box_regression = predictor_out
@@ -482,14 +627,21 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
         if self.training:
             current_epoch = getattr(self, '_current_epoch', 1)
             box_loss_type = getattr(self, '_box_loss_type', BOX_LOSS_TYPE)
+            box_loss_warmup_epochs = getattr(
+                self, '_box_loss_warmup_epochs', BOX_LOSS_WARMUP_EPOCHS)
             quality_loss_weight = getattr(self, '_quality_loss_weight', 0.0)
+            cbl_um_weight = getattr(self, '_cbl_um_weight', CBL_UM_WEIGHT)
             loss_classifier, loss_box_reg, loss_quality = _metric_box_loss(
                 class_logits, box_regression, labels, regression_targets,
                 self.box_coder, metric_fn, reliability_thr, metric_loss_weight,
                 proposals_sampled, current_epoch=current_epoch,
                 box_loss_type=box_loss_type,
+                box_loss_warmup_epochs=box_loss_warmup_epochs,
                 quality_logits=quality_logits,
-                quality_loss_weight=quality_loss_weight)
+                quality_loss_weight=quality_loss_weight,
+                distribution_logits=distribution_logits,
+                cbl_grid=getattr(self.box_predictor, "cbl_grid", None),
+                cbl_um_weight=cbl_um_weight)
             losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
             if quality_logits is not None and quality_loss_weight > 0:
                 losses["loss_quality"] = loss_quality
@@ -644,6 +796,10 @@ def build_model(
     box_loss_warmup_epochs: int = BOX_LOSS_WARMUP_EPOCHS,
     use_quality_score: bool = False,
     quality_loss_weight: float = 0.0,
+    cbl_alpha: float = CBL_ALPHA,
+    cbl_num_bins: int = CBL_NUM_BINS,
+    cbl_grid_beta: float = CBL_GRID_BETA,
+    cbl_um_weight: float = CBL_UM_WEIGHT,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
@@ -658,10 +814,15 @@ def build_model(
             - "saalw_assigner":   SAALWAssigner (threshold-based) + box loss
         reliability_thr: passed to metric
         saalw_rpn_cfg: dict of SAALWAssigner params
-        box_loss_type: "metric", "smooth_l1", "ciou", or "diou"
+        box_loss_type: "metric", "smooth_l1", "side_smooth_l1", "ciou",
+            "diou", or "cbl"
         box_loss_warmup_epochs: number of warmup epochs with pure metric loss
         use_quality_score: add an auxiliary RoI localization-quality head
         quality_loss_weight: BCE weight for IoU quality target on positive RoIs
+        cbl_alpha: normalized delta range for confidence-driven localization
+        cbl_num_bins: number of distribution logits per box coordinate
+        cbl_grid_beta: interval-nonuniform grid density around zero
+        cbl_um_weight: entropy-matching uncertainty loss weight
         channels_last: if True, convert backbone to channels_last memory format
     """
     if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
@@ -761,7 +922,16 @@ def build_model(
     base.roi_heads.batch_size_per_image = 256
     base.roi_heads.positive_fraction = 0.5
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
-    if use_quality_score:
+    if box_loss_type == "cbl" and use_quality_score:
+        raise ValueError("CBL and the standalone quality head cannot be combined")
+    if box_loss_type == "cbl":
+        base.roi_heads.box_predictor = CBLFastRCNNPredictor(
+            in_feat, num_classes + 1,
+            alpha=cbl_alpha,
+            num_bins=cbl_num_bins,
+            grid_beta=cbl_grid_beta,
+        )
+    elif use_quality_score:
         base.roi_heads.box_predictor = QualityFastRCNNPredictor(in_feat, num_classes + 1)
     else:
         base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
@@ -772,8 +942,14 @@ def build_model(
             base.roi_heads, metric_fn, reliability_thr,
             metric_loss_weight=1.0,
             box_loss_type=box_loss_type,
-            quality_loss_weight=quality_loss_weight if use_quality_score else 0.0)
-        print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}")
+            box_loss_warmup_epochs=box_loss_warmup_epochs,
+            quality_loss_weight=quality_loss_weight if use_quality_score else 0.0,
+            cbl_um_weight=cbl_um_weight)
+        print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
+              f"warmup_epochs={box_loss_warmup_epochs}")
+        if box_loss_type == "cbl":
+            print(f"  [CBL] alpha={cbl_alpha:g}, bins={cbl_num_bins}, "
+                  f"grid_beta={cbl_grid_beta:g}, um_weight={cbl_um_weight:g}")
         if use_quality_score:
             print(f"  [quality] score=head enabled, loss_weight={quality_loss_weight}")
 

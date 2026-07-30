@@ -26,7 +26,8 @@ from common.config import (
     EPOCHS, LR, MOMENTUM, WEIGHT_DECAY,
     WARMUP_EPOCHS, WARMUP_START_LR,
     BATCH_SIZE, NUM_WORKERS, DEVICE,
-    USE_EMA,
+    USE_EMA, BOX_LOSS_WARMUP_EPOCHS,
+    CBL_ALPHA, CBL_NUM_BINS, CBL_GRID_BETA, CBL_UM_WEIGHT,
     seed_all, make_output_dir,
 )
 from common.dataset import (
@@ -41,8 +42,13 @@ from common.eval_utils import evaluate
 
 def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  box_loss: str = "metric", tag: str = "",
+                 box_loss_warmup_epochs: int | None = None,
                  quality_score: bool = False,
-                 quality_loss_weight: float = 0.5):
+                 quality_loss_weight: float = 0.5,
+                 cbl_alpha: float = CBL_ALPHA,
+                 cbl_num_bins: int = CBL_NUM_BINS,
+                 cbl_grid_beta: float = CBL_GRID_BETA,
+                 cbl_um_weight: float = CBL_UM_WEIGHT):
     metric_name = metric if box_loss == "metric" else f"{metric}__{box_loss}"
     if quality_score:
         metric_name = f"{metric_name}__q{quality_loss_weight:g}"
@@ -56,6 +62,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     print(f"METRIC ABLATION — {metric} @ {placement}")
     print(f"  Seed: {seed}")
     print(f"  Box loss: {box_loss}")
+    if box_loss_warmup_epochs is not None:
+        print(f"  Box loss warmup epochs: {box_loss_warmup_epochs}")
     print(f"  Quality score: {quality_score} (weight={quality_loss_weight:g})")
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
@@ -94,8 +102,16 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         placement=placement,
         reliability_thr=reliability_thr,
         box_loss_type=box_loss,
+        box_loss_warmup_epochs=(
+            BOX_LOSS_WARMUP_EPOCHS if box_loss_warmup_epochs is None
+            else box_loss_warmup_epochs
+        ),
         use_quality_score=quality_score,
         quality_loss_weight=quality_loss_weight,
+        cbl_alpha=cbl_alpha,
+        cbl_num_bins=cbl_num_bins,
+        cbl_grid_beta=cbl_grid_beta,
+        cbl_um_weight=cbl_um_weight,
     ).to(DEVICE)
 
     # ── Optimizer ──
@@ -148,6 +164,26 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     fields = ["epoch", "train_loss", "val_loss", "mAP_50", "mAP_primary",
               "coco_AP", "coco_AP50", "coco_AP75", "coco_AR100",
               "AP_micro", "AP_tiny", "AP_small", "AP_large", "lr", "seconds"]
+    effective_box_loss_warmup_epochs = (
+        BOX_LOSS_WARMUP_EPOCHS if box_loss_warmup_epochs is None
+        else box_loss_warmup_epochs
+    )
+    run_config = {
+        "metric": metric,
+        "placement": placement,
+        "seed": seed,
+        "box_loss": box_loss,
+        "box_loss_warmup_epochs": effective_box_loss_warmup_epochs,
+        "tag": tag,
+        "reliability_thr": reliability_thr,
+        "quality_score": quality_score,
+        "quality_loss_weight": quality_loss_weight,
+        "cbl_alpha": cbl_alpha,
+        "cbl_num_bins": cbl_num_bins,
+        "cbl_grid_beta": cbl_grid_beta,
+        "cbl_um_weight": cbl_um_weight,
+        "use_ema": USE_EMA,
+    }
 
     for epoch in range(start_epoch, EPOCHS + 1):
         # Set current epoch on model for box loss warmup
@@ -217,10 +253,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
             "best_ap75_epoch": best_ap75_epoch,
             "best_coco_ap_epoch": best_coco_ap_epoch,
             "history": history,
-            "config": {"metric": metric, "placement": placement, "seed": seed,
-                        "box_loss": box_loss, "tag": tag,
-                        "quality_score": quality_score,
-                        "quality_loss_weight": quality_loss_weight},
+            "config": run_config,
         }, OUTPUT_DIR / "last.pt")
 
         if mAP50 == best_mAP50 and epoch == best_epoch:
@@ -230,10 +263,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                 "metrics": met, "best_mAP50": best_mAP50,
                 "best_coco_AP75": best_ap75,
                 "best_coco_AP": best_coco_ap,
-                "config": {"metric": metric, "placement": placement, "seed": seed,
-                        "box_loss": box_loss, "tag": tag,
-                        "quality_score": quality_score,
-                        "quality_loss_weight": quality_loss_weight},
+                "config": run_config,
             }, OUTPUT_DIR / "best.pt")
 
         if coco_ap75 == best_ap75 and epoch == best_ap75_epoch:
@@ -243,10 +273,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                 "metrics": met, "best_mAP50": best_mAP50,
                 "best_coco_AP75": best_ap75,
                 "best_coco_AP": best_coco_ap,
-                "config": {"metric": metric, "placement": placement, "seed": seed,
-                        "box_loss": box_loss, "tag": tag,
-                        "quality_score": quality_score,
-                        "quality_loss_weight": quality_loss_weight},
+                "config": run_config,
             }, OUTPUT_DIR / "best_ap75.pt")
 
         if coco_ap == best_coco_ap and epoch == best_coco_ap_epoch:
@@ -256,10 +283,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                 "metrics": met, "best_mAP50": best_mAP50,
                 "best_coco_AP75": best_ap75,
                 "best_coco_AP": best_coco_ap,
-                "config": {"metric": metric, "placement": placement, "seed": seed,
-                        "box_loss": box_loss, "tag": tag,
-                        "quality_score": quality_score,
-                        "quality_loss_weight": quality_loss_weight},
+                "config": run_config,
             }, OUTPUT_DIR / "best_coco_ap.pt")
 
     print(f"\n{'='*70}")
@@ -285,20 +309,35 @@ def main():
     parser.add_argument("--resume", action="store_true",
                         help="Resume from last.pt checkpoint")
     parser.add_argument("--box-loss", type=str, default="metric",
-                        choices=["metric", "smooth_l1", "ciou", "diou"],
+                        choices=["metric", "smooth_l1", "side_smooth_l1", "ciou", "diou", "cbl"],
                         help="Box regression loss type (decoupled from metric)")
+    parser.add_argument("--box-loss-warmup-epochs", type=int, default=None,
+                        help="Override metric-loss warmup epochs before decoupled box loss")
     parser.add_argument("--tag", type=str, default="",
                         help="Optional suffix for output dir")
     parser.add_argument("--quality-score", action="store_true",
                         help="Enable auxiliary RoI localization-quality head")
     parser.add_argument("--quality-loss-weight", type=float, default=0.5,
                         help="Weight for quality IoU target loss")
+    parser.add_argument("--cbl-alpha", type=float, default=CBL_ALPHA,
+                        help="CBL normalized delta range")
+    parser.add_argument("--cbl-num-bins", type=int, default=CBL_NUM_BINS,
+                        help="CBL distribution bins per coordinate")
+    parser.add_argument("--cbl-grid-beta", type=float, default=CBL_GRID_BETA,
+                        help="CBL interval-nonuniform grid density")
+    parser.add_argument("--cbl-um-weight", type=float, default=CBL_UM_WEIGHT,
+                        help="CBL uncertainty matching loss weight")
     args = parser.parse_args()
 
     train_metric(args.metric, args.placement, args.seed, args.resume,
                  box_loss=args.box_loss, tag=args.tag,
+                 box_loss_warmup_epochs=args.box_loss_warmup_epochs,
                  quality_score=args.quality_score,
-                 quality_loss_weight=args.quality_loss_weight)
+                 quality_loss_weight=args.quality_loss_weight,
+                 cbl_alpha=args.cbl_alpha,
+                 cbl_num_bins=args.cbl_num_bins,
+                 cbl_grid_beta=args.cbl_grid_beta,
+                 cbl_um_weight=args.cbl_um_weight)
 
 
 if __name__ == "__main__":
