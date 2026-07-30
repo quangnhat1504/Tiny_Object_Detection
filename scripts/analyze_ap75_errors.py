@@ -390,7 +390,12 @@ def main() -> None:
                         use_quality_focal=bool(config.get("quality_focal", False)),
                         quality_focal_beta=float(config.get("quality_focal_beta", 2.0)),
                         use_rank_sort=bool(config.get("rank_sort", False)),
-                        rank_sort_delta=float(config.get("rank_sort_delta", 0.5))).to(device)
+                        rank_sort_delta=float(config.get("rank_sort_delta", 0.5)),
+                        use_double_head=bool(config.get("double_head", False)),
+                        double_head_reg_roi_scale=float(
+                            config.get("double_head_reg_roi_scale", 1.3)),
+                        double_head_num_convs=int(
+                            config.get("double_head_num_convs", 4))).to(device)
     model.load_state_dict(ckpt["model"])
 
     preds, gts = collect_predictions(model, loader, device, args.score_thr, args.topk)

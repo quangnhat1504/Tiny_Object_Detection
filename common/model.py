@@ -22,6 +22,7 @@ from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor, RoIHeads)
 from torchvision.models.detection.rpn import (
     AnchorGenerator, RegionProposalNetwork, RPNHead)
+from torchvision.models.resnet import Bottleneck
 from torchvision.ops import (
     batched_nms, box_iou, boxes as box_ops,
     complete_box_iou_loss, distance_box_iou_loss,
@@ -111,6 +112,118 @@ class CBLFastRCNNPredictor(nn.Module):
             probabilities * self.cbl_grid.float().view(1, 1, 1, -1)
         ).sum(dim=-1).to(dtype=dist_logits.dtype)
         return class_logits, box_deltas.flatten(start_dim=1), dist_logits
+
+
+class _DoubleHeadResidualBlock(nn.Module):
+    """Project pooled RoI features to the Double-Head regression width."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.conv1 = nn.Conv2d(
+            in_channels, in_channels, kernel_size=3, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv2 = nn.Conv2d(
+            in_channels, out_channels, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.identity = nn.Conv2d(
+            in_channels, out_channels, kernel_size=1, bias=False)
+        self.identity_bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        identity = self.identity_bn(self.identity(x))
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.bn2(self.conv2(x))
+        return self.relu(x + identity)
+
+
+class DoubleHeadCBLPredictor(nn.Module):
+    """FC classification plus a convolutional distributional box head."""
+
+    is_distributional = True
+    is_double_head = True
+
+    def __init__(self, cls_in_channels: int, reg_in_channels: int,
+                 num_classes: int, *, alpha: float, num_bins: int,
+                 grid_beta: float, num_convs: int = 4,
+                 reg_out_channels: int = 1024):
+        super().__init__()
+        if num_convs < 1:
+            raise ValueError("Double-Head num_convs must be positive")
+        if reg_out_channels % 4 != 0:
+            raise ValueError("Double-Head reg_out_channels must be divisible by 4")
+
+        self.num_classes = num_classes
+        self.num_bins = num_bins
+        self.cls_score = nn.Linear(cls_in_channels, num_classes)
+        self.reg_projection = _DoubleHeadResidualBlock(
+            reg_in_channels, reg_out_channels)
+        self.reg_convs = nn.ModuleList([
+            Bottleneck(
+                inplanes=reg_out_channels,
+                planes=reg_out_channels // 4,
+                norm_layer=nn.BatchNorm2d,
+            )
+            for _ in range(num_convs)
+        ])
+        self.reg_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.bbox_dist = nn.Linear(
+            reg_out_channels, num_classes * 4 * num_bins)
+        self.register_buffer(
+            "cbl_grid",
+            _make_cbl_grid(alpha, num_bins, grid_beta),
+        )
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(
+                    module.weight, mode="fan_out", nonlinearity="relu")
+            elif isinstance(module, nn.BatchNorm2d):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
+        nn.init.normal_(self.cls_score.weight, std=0.01)
+        nn.init.zeros_(self.cls_score.bias)
+        nn.init.normal_(self.bbox_dist.weight, std=0.001)
+        nn.init.zeros_(self.bbox_dist.bias)
+
+    def forward(self, cls_features, reg_features):
+        cls_features = cls_features.flatten(start_dim=1)
+        class_logits = self.cls_score(cls_features)
+
+        reg_features = self.reg_projection(reg_features)
+        for block in self.reg_convs:
+            reg_features = block(reg_features)
+        reg_features = self.reg_pool(reg_features).flatten(start_dim=1)
+        dist_logits = self.bbox_dist(reg_features).reshape(
+            reg_features.shape[0], self.num_classes, 4, self.num_bins)
+        probabilities = F.softmax(dist_logits.float(), dim=-1)
+        box_deltas = (
+            probabilities * self.cbl_grid.float().view(1, 1, 1, -1)
+        ).sum(dim=-1).to(dtype=dist_logits.dtype)
+        return class_logits, box_deltas.flatten(start_dim=1), dist_logits
+
+
+def _scale_roi_boxes(proposals, image_shapes, scale_factor: float):
+    """Scale proposal boxes around their centers and clip to each image."""
+    if scale_factor <= 0:
+        raise ValueError("RoI scale factor must be positive")
+    if scale_factor == 1.0:
+        return proposals
+
+    scaled = []
+    for boxes, (height, width) in zip(proposals, image_shapes):
+        if boxes.numel() == 0:
+            scaled.append(boxes)
+            continue
+        centers = (boxes[:, :2] + boxes[:, 2:]) * 0.5
+        half_sizes = (boxes[:, 2:] - boxes[:, :2]) * (0.5 * scale_factor)
+        enlarged = torch.cat((centers - half_sizes, centers + half_sizes), dim=1)
+        enlarged[:, 0::2].clamp_(min=0, max=width)
+        enlarged[:, 1::2].clamp_(min=0, max=height)
+        scaled.append(enlarged)
+    return scaled
 
 
 # =============================================================================
@@ -838,6 +951,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        quality_focal_beta=2.0,
                                        use_rank_sort=False,
                                        rank_sort_delta=0.5,
+                                       use_double_head=False,
+                                       double_head_reg_roi_scale=1.3,
                                        cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
@@ -849,6 +964,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
     roi_heads._quality_focal_beta = quality_focal_beta
     roi_heads._use_rank_sort = use_rank_sort
     roi_heads._rank_sort_delta = rank_sort_delta
+    roi_heads._use_double_head = use_double_head
+    roi_heads._double_head_reg_roi_scale = double_head_reg_roi_scale
     roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
@@ -859,9 +976,20 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             labels = None; regression_targets = None; matched_idxs = None
             proposals_sampled = proposals
 
-        box_features = self.box_roi_pool(features, proposals_sampled, image_shapes)
-        box_features = self.box_head(box_features)
-        predictor_out = self.box_predictor(box_features)
+        box_features = self.box_roi_pool(
+            features, proposals_sampled, image_shapes)
+        cls_features = self.box_head(box_features)
+        if getattr(self, "_use_double_head", False):
+            regression_proposals = _scale_roi_boxes(
+                proposals_sampled,
+                image_shapes,
+                getattr(self, "_double_head_reg_roi_scale", 1.3),
+            )
+            reg_features = self.box_roi_pool(
+                features, regression_proposals, image_shapes)
+            predictor_out = self.box_predictor(cls_features, reg_features)
+        else:
+            predictor_out = self.box_predictor(cls_features)
         distribution_logits = None
         if getattr(self.box_predictor, "is_distributional", False):
             class_logits, box_regression, distribution_logits = predictor_out
@@ -1065,6 +1193,9 @@ def build_model(
     quality_focal_beta: float = 2.0,
     use_rank_sort: bool = False,
     rank_sort_delta: float = 0.5,
+    use_double_head: bool = False,
+    double_head_reg_roi_scale: float = 1.3,
+    double_head_num_convs: int = 4,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -1092,6 +1223,9 @@ def build_model(
         quality_focal_beta: QFL modulating exponent
         use_rank_sort: replace RoI softmax CE with sampled Rank & Sort loss
         rank_sort_delta: smoothing width for Rank & Sort score comparisons
+        use_double_head: use FC classification and convolutional CBL regression
+        double_head_reg_roi_scale: proposal enlargement for regression features
+        double_head_num_convs: residual bottlenecks in the regression branch
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -1199,8 +1333,13 @@ def build_model(
         raise ValueError("The bounded QFL experiment requires CBL localization")
     if use_rank_sort and box_loss_type != "cbl":
         raise ValueError("The bounded Rank & Sort experiment requires CBL localization")
+    if use_double_head and box_loss_type != "cbl":
+        raise ValueError("The Double-Head experiment requires CBL localization")
     if use_quality_focal and use_rank_sort:
         raise ValueError("QFL and Rank & Sort are mutually exclusive")
+    if use_double_head and (use_quality_focal or use_rank_sort):
+        raise ValueError(
+            "Double-Head must be evaluated without QFL or Rank & Sort")
     if use_quality_focal and use_quality_score:
         raise ValueError("QFL cannot be combined with the standalone quality head")
     if use_rank_sort and use_quality_score:
@@ -1210,19 +1349,30 @@ def build_model(
     if box_loss_type == "cbl" and use_quality_score:
         raise ValueError("CBL and the standalone quality head cannot be combined")
     if box_loss_type == "cbl":
-        base.roi_heads.box_predictor = CBLFastRCNNPredictor(
-            in_feat, num_classes + 1,
-            alpha=cbl_alpha,
-            num_bins=cbl_num_bins,
-            grid_beta=cbl_grid_beta,
-        )
+        if use_double_head:
+            base.roi_heads.box_predictor = DoubleHeadCBLPredictor(
+                in_feat,
+                base.backbone.out_channels,
+                num_classes + 1,
+                alpha=cbl_alpha,
+                num_bins=cbl_num_bins,
+                grid_beta=cbl_grid_beta,
+                num_convs=double_head_num_convs,
+            )
+        else:
+            base.roi_heads.box_predictor = CBLFastRCNNPredictor(
+                in_feat, num_classes + 1,
+                alpha=cbl_alpha,
+                num_bins=cbl_num_bins,
+                grid_beta=cbl_grid_beta,
+            )
     elif use_quality_score:
         base.roi_heads.box_predictor = QualityFastRCNNPredictor(in_feat, num_classes + 1)
     else:
         base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
 
     # ── Replace box regression loss with metric distance ──────────────
-    if (use_metric_loss or use_quality_focal or use_rank_sort or
+    if (use_metric_loss or use_quality_focal or use_rank_sort or use_double_head or
             (use_quality_score and quality_loss_weight > 0)):
         _wrap_roi_forward_for_metric_loss(
             base.roi_heads, metric_fn, reliability_thr,
@@ -1234,6 +1384,8 @@ def build_model(
             quality_focal_beta=quality_focal_beta,
             use_rank_sort=use_rank_sort,
             rank_sort_delta=rank_sort_delta,
+            use_double_head=use_double_head,
+            double_head_reg_roi_scale=double_head_reg_roi_scale,
             cbl_um_weight=cbl_um_weight)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
               f"warmup_epochs={box_loss_warmup_epochs}")
@@ -1246,6 +1398,12 @@ def build_model(
             print(f"  [QFL] joint class-IoU score enabled, beta={quality_focal_beta:g}")
         if use_rank_sort:
             print(f"  [RankSort] sampled RoI ranking enabled, delta={rank_sort_delta:g}")
+        if use_double_head:
+            print(
+                "  [DoubleHead] FC classification + convolutional CBL "
+                f"regression, roi_scale={double_head_reg_roi_scale:g}, "
+                f"bottlenecks={double_head_num_convs}"
+            )
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
     if use_metric_nms:

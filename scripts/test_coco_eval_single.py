@@ -105,6 +105,11 @@ def main():
         quality_focal_beta=float(stored_config.get("quality_focal_beta", 2.0)),
         use_rank_sort=bool(stored_config.get("rank_sort", False)),
         rank_sort_delta=float(stored_config.get("rank_sort_delta", 0.5)),
+        use_double_head=bool(stored_config.get("double_head", False)),
+        double_head_reg_roi_scale=float(
+            stored_config.get("double_head_reg_roi_scale", 1.3)),
+        double_head_num_convs=int(
+            stored_config.get("double_head_num_convs", 4)),
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),

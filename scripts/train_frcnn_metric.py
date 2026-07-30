@@ -56,6 +56,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  quality_focal_beta: float = 2.0,
                  rank_sort: bool = False,
                  rank_sort_delta: float = 0.5,
+                 double_head: bool = False,
+                 double_head_reg_roi_scale: float = 1.3,
+                 double_head_num_convs: int = 4,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
@@ -67,6 +70,11 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         metric_name = f"{metric_name}__qflb{quality_focal_beta:g}"
     if rank_sort:
         metric_name = f"{metric_name}__rsd{rank_sort_delta:g}"
+    if double_head:
+        metric_name = (
+            f"{metric_name}__dh{double_head_num_convs}"
+            f"s{double_head_reg_roi_scale:g}"
+        )
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
         output_name = f"{output_name}__{tag}"
@@ -82,6 +90,11 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     print(f"  Quality score: {quality_score} (weight={quality_loss_weight:g})")
     print(f"  Quality focal: {quality_focal} (beta={quality_focal_beta:g})")
     print(f"  Rank & Sort: {rank_sort} (delta={rank_sort_delta:g})")
+    print(
+        f"  Double-Head: {double_head} "
+        f"(scale={double_head_reg_roi_scale:g}, "
+        f"bottlenecks={double_head_num_convs})"
+    )
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
     print(f"{'='*70}\n")
@@ -129,6 +142,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         quality_focal_beta=quality_focal_beta,
         use_rank_sort=rank_sort,
         rank_sort_delta=rank_sort_delta,
+        use_double_head=double_head,
+        double_head_reg_roi_scale=double_head_reg_roi_scale,
+        double_head_num_convs=double_head_num_convs,
         cbl_alpha=cbl_alpha,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
@@ -203,6 +219,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "quality_focal_beta": quality_focal_beta,
         "rank_sort": rank_sort,
         "rank_sort_delta": rank_sort_delta,
+        "double_head": double_head,
+        "double_head_reg_roi_scale": double_head_reg_roi_scale,
+        "double_head_num_convs": double_head_num_convs,
         "cbl_alpha": cbl_alpha,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
@@ -357,6 +376,12 @@ def main():
                         help="Train sampled RoI classification with Rank & Sort loss")
     parser.add_argument("--rank-sort-delta", type=float, default=0.5,
                         help="Rank & Sort comparison smoothing width")
+    parser.add_argument("--double-head", action="store_true",
+                        help="Use a convolutional CBL box-regression head")
+    parser.add_argument("--double-head-reg-roi-scale", type=float, default=1.3,
+                        help="Proposal scale used for Double-Head regression")
+    parser.add_argument("--double-head-num-convs", type=int, default=4,
+                        help="Residual bottlenecks in Double-Head regression")
     parser.add_argument("--cbl-alpha", type=float, default=CBL_ALPHA,
                         help="CBL normalized delta range")
     parser.add_argument("--cbl-num-bins", type=int, default=CBL_NUM_BINS,
@@ -376,6 +401,9 @@ def main():
                  quality_focal_beta=args.quality_focal_beta,
                  rank_sort=args.rank_sort,
                  rank_sort_delta=args.rank_sort_delta,
+                 double_head=args.double_head,
+                 double_head_reg_roi_scale=args.double_head_reg_roi_scale,
+                 double_head_num_convs=args.double_head_num_convs,
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,
