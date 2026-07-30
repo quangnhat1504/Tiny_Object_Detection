@@ -69,9 +69,19 @@ def main():
     effective_metric = stored_config.get("metric", args.metric)
     effective_placement = stored_config.get("placement", "la_loss")
     reliability_thr = stored_config.get("reliability_thr", 16.0)
+    checkpoint_model_source = ck.get("model_source", "legacy_unspecified")
+    stored_metrics_source = (
+        "ema" if stored_config.get("use_ema", False) else "raw")
 
     print(f"Stored config: metric={effective_metric}, placement={effective_placement}")
     print(f"Checkpoint epoch: {ck.get('epoch', 'unknown')}")
+    print(
+        f"Checkpoint model source: {checkpoint_model_source}; "
+        f"stored metrics source: {stored_metrics_source}")
+    if checkpoint_model_source != stored_metrics_source:
+        print(
+            "WARNING: stored metrics may not describe checkpoint['model']; "
+            "use the independent evaluation below.")
     print(f"Val best mAP50: {round(ck.get('best_mAP50', ck.get('best_metric_value', 0.0)) or 0.0, 4)}")
 
     # Build metric function
@@ -127,6 +137,10 @@ def main():
         "metric": effective_metric,
         "placement": effective_placement,
         "ckpt_epoch": ck.get("epoch", "unknown"),
+        "checkpoint_model_source": checkpoint_model_source,
+        "stored_metrics_source": stored_metrics_source,
+        "stored_metrics_match_checkpoint": (
+            checkpoint_model_source == stored_metrics_source),
         "val_best_mAP50": round(ck.get("best_mAP50", ck.get("best_metric_value", 0.0)) or 0.0, 4),
         "coco_AP": round(coco_ap, 4),
         "coco_AP50": round(coco_ap50, 4),

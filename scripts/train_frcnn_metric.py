@@ -40,6 +40,13 @@ from common.train_utils import ModelEMA, WarmupCosineLR, train_one_epoch
 from common.eval_utils import evaluate
 
 
+def _select_evaluation_model(model, ema):
+    """Return the exact model used for validation and its checkpoint label."""
+    if ema is None:
+        return model, "raw"
+    return ema.get_model(), "ema"
+
+
 def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  box_loss: str = "metric", tag: str = "",
                  box_loss_warmup_epochs: int | None = None,
@@ -195,7 +202,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         sched.step_epoch()
         cur_lr = opt.param_groups[0]["lr"]
 
-        eval_model = ema.get_model() if ema else model
+        eval_model, eval_model_source = _select_evaluation_model(model, ema)
         met = evaluate(eval_model, val_loader, DEVICE, measure_fps_flag=(epoch == EPOCHS))
         elapsed = time.time() - t0
 
@@ -243,6 +250,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         # always save last.pt for resume
         torch.save({
             "epoch": epoch, "model": model.state_dict(),
+            "model_source": "raw",
+            "eval_model_source": eval_model_source,
             "optimizer": opt.state_dict(),
             "scaler": scaler.state_dict(),
             "ema": ema.state_dict() if ema else None,
@@ -258,7 +267,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
 
         if mAP50 == best_mAP50 and epoch == best_epoch:
             torch.save({
-                "epoch": epoch, "model": model.state_dict(),
+                "epoch": epoch, "model": eval_model.state_dict(),
+                "model_source": eval_model_source,
                 "optimizer": opt.state_dict(),
                 "metrics": met, "best_mAP50": best_mAP50,
                 "best_coco_AP75": best_ap75,
@@ -268,7 +278,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
 
         if coco_ap75 == best_ap75 and epoch == best_ap75_epoch:
             torch.save({
-                "epoch": epoch, "model": model.state_dict(),
+                "epoch": epoch, "model": eval_model.state_dict(),
+                "model_source": eval_model_source,
                 "optimizer": opt.state_dict(),
                 "metrics": met, "best_mAP50": best_mAP50,
                 "best_coco_AP75": best_ap75,
@@ -278,7 +289,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
 
         if coco_ap == best_coco_ap and epoch == best_coco_ap_epoch:
             torch.save({
-                "epoch": epoch, "model": model.state_dict(),
+                "epoch": epoch, "model": eval_model.state_dict(),
+                "model_source": eval_model_source,
                 "optimizer": opt.state_dict(),
                 "metrics": met, "best_mAP50": best_mAP50,
                 "best_coco_AP75": best_ap75,
