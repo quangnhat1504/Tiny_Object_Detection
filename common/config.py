@@ -162,7 +162,7 @@ USE_EMA   = os.environ.get("TOD_USE_EMA", "1").lower() not in ("0", "false", "no
 EMA_DECAY = 0.9998
 
 EVAL_EVERY        = 1
-EMPTY_CACHE_EVERY = 50
+EMPTY_CACHE_EVERY = int(os.environ.get("TOD_EMPTY_CACHE_EVERY", "0"))
 
 # =============================================================================
 # SPEED OPTIMIZATIONS (opt-in; default off for reproducibility)

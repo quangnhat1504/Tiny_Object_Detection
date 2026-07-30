@@ -123,9 +123,9 @@ def train_one_epoch(model: nn.Module, optimizer, loader, scaler,
             optimizer.zero_grad()
             if ema:
                 ema.update(model)
-            # Avoid CUDA allocator crash on Windows during long training.
-            # if step % EMPTY_CACHE_EVERY == 0:
-            #     torch.cuda.empty_cache()
+            if (device.type == "cuda" and EMPTY_CACHE_EVERY > 0
+                    and (step + 1) % EMPTY_CACHE_EVERY == 0):
+                torch.cuda.empty_cache()
             total += loss.item()
             n += 1
             for k in breakdown:
