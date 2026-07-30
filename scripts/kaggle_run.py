@@ -104,7 +104,7 @@ RUNS = {
             "TOD_EPOCHS": "2",
             "TOD_USE_EMA": "0",
             "TOD_NUM_WORKERS": "0",
-            "TOD_EMPTY_CACHE_EVERY": "50",
+            "TOD_EMPTY_CACHE_EVERY": "1",
             "TOD_USE_COPY_PASTE": "1",
             "TOD_TINY_TILE_OVERSAMPLE": "2.0",
             "TOD_COPY_PASTE_PROB": None,
