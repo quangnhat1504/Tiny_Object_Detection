@@ -30,6 +30,27 @@ RUNS = {
         "ckpt": "runs/sa_alw_full__cbl__la_loss__seed42__cbl_full/best_ap75.pt",
         "analysis": "runs/ap75_analysis_cbl_full_valid",
     },
+    "cbl_ema8": {
+        "env": {
+            "TOD_EPOCHS": "8",
+            "TOD_USE_EMA": "1",
+            "TOD_USE_COPY_PASTE": "1",
+            "TOD_TINY_TILE_OVERSAMPLE": "2.0",
+            "TOD_COPY_PASTE_PROB": None,
+            "TOD_COPY_PASTE_MAX_PER": None,
+        },
+        "train": [
+            "scripts/train_frcnn_metric.py",
+            "--metric", "sa_alw_full",
+            "--placement", "la_loss",
+            "--seed", "42",
+            "--box-loss", "cbl",
+            "--box-loss-warmup-epochs", "0",
+            "--tag", "cbl_ema8",
+        ],
+        "ckpt": "runs/sa_alw_full__cbl__la_loss__seed42__cbl_ema8/best_ap75.pt",
+        "analysis": "runs/ap75_analysis_cbl_ema8_valid",
+    },
     "smooth_l1_ap75": {
         "env": {
             "TOD_USE_COPY_PASTE": None,
