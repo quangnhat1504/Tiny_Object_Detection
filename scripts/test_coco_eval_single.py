@@ -34,6 +34,8 @@ def main():
                         help="Dataset split (default: test)")
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device (default: cuda)")
+    parser.add_argument("--cbl-refine-steps", type=int, default=0,
+                        help="Inference-only repeated CBL box-regression passes")
     parser.add_argument("--out", type=str, default=None,
                         help="Output JSON path (default: runs/test_coco_<metric>.json)")
     args = parser.parse_args()
@@ -110,6 +112,7 @@ def main():
             stored_config.get("double_head_reg_roi_scale", 1.3)),
         double_head_num_convs=int(
             stored_config.get("double_head_num_convs", 4)),
+        cbl_refine_steps=args.cbl_refine_steps,
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),
@@ -145,6 +148,7 @@ def main():
         "split": args.split,
         "metric": effective_metric,
         "placement": effective_placement,
+        "cbl_refine_steps": args.cbl_refine_steps,
         "ckpt_epoch": ck.get("epoch", "unknown"),
         "checkpoint_model_source": checkpoint_model_source,
         "stored_metrics_source": stored_metrics_source,

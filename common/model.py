@@ -942,6 +942,71 @@ def _postprocess_detections_with_joint_scores(
     return all_boxes, all_scores, all_labels
 
 
+def _iteratively_refine_cbl_detections(
+    roi_heads,
+    features,
+    boxes,
+    scores,
+    labels,
+    image_shapes,
+    steps,
+):
+    """Reapply the trained CBL regressor while preserving labels and scores."""
+    current_boxes = boxes
+    for _ in range(steps):
+        if not any(boxes_per_image.numel() for boxes_per_image in current_boxes):
+            break
+        pooled = roi_heads.box_roi_pool(
+            features, current_boxes, image_shapes)
+        box_features = roi_heads.box_head(pooled)
+        predictor_out = roi_heads.box_predictor(box_features)
+        if (not getattr(roi_heads.box_predictor, "is_distributional", False)
+                or len(predictor_out) != 3):
+            raise RuntimeError(
+                "Iterative CBL refinement requires a distributional predictor")
+
+        _, box_regression, _ = predictor_out
+        decoded = roi_heads.box_coder.decode(box_regression, current_boxes)
+        decoded_per_image = decoded.split(
+            [len(boxes_per_image) for boxes_per_image in current_boxes], 0)
+
+        refined_boxes = []
+        for decoded_boxes, labels_per_image, image_shape in zip(
+                decoded_per_image, labels, image_shapes):
+            if decoded_boxes.numel() == 0:
+                refined_boxes.append(decoded_boxes.reshape(0, 4))
+                continue
+            row_ids = torch.arange(
+                len(labels_per_image), device=decoded_boxes.device)
+            selected = decoded_boxes[row_ids, labels_per_image]
+            refined_boxes.append(
+                box_ops.clip_boxes_to_image(selected, image_shape))
+        current_boxes = refined_boxes
+
+    final_boxes, final_scores, final_labels = [], [], []
+    for boxes_per_image, scores_per_image, labels_per_image in zip(
+            current_boxes, scores, labels):
+        finite = torch.isfinite(boxes_per_image).all(dim=1)
+        boxes_per_image = boxes_per_image[finite]
+        scores_per_image = scores_per_image[finite]
+        labels_per_image = labels_per_image[finite]
+        keep = box_ops.remove_small_boxes(boxes_per_image, min_size=1e-2)
+        boxes_per_image = boxes_per_image[keep]
+        scores_per_image = scores_per_image[keep]
+        labels_per_image = labels_per_image[keep]
+        keep = box_ops.batched_nms(
+            boxes_per_image,
+            scores_per_image,
+            labels_per_image,
+            roi_heads.nms_thresh,
+        )
+        keep = keep[:roi_heads.detections_per_img]
+        final_boxes.append(boxes_per_image[keep])
+        final_scores.append(scores_per_image[keep])
+        final_labels.append(labels_per_image[keep])
+    return final_boxes, final_scores, final_labels
+
+
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        metric_loss_weight=1.0,
                                        box_loss_type="metric",
@@ -953,6 +1018,7 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        rank_sort_delta=0.5,
                                        use_double_head=False,
                                        double_head_reg_roi_scale=1.3,
+                                       cbl_refine_steps=0,
                                        cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
@@ -966,6 +1032,7 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
     roi_heads._rank_sort_delta = rank_sort_delta
     roi_heads._use_double_head = use_double_head
     roi_heads._double_head_reg_roi_scale = double_head_reg_roi_scale
+    roi_heads._cbl_refine_steps = cbl_refine_steps
     roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
@@ -1046,6 +1113,17 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             else:
                 boxes, scores, labels_out = self.postprocess_detections(
                     class_logits, box_regression, proposals, image_shapes)
+            refine_steps = getattr(self, "_cbl_refine_steps", 0)
+            if refine_steps > 0:
+                boxes, scores, labels_out = _iteratively_refine_cbl_detections(
+                    self,
+                    features,
+                    boxes,
+                    scores,
+                    labels_out,
+                    image_shapes,
+                    refine_steps,
+                )
             for i in range(len(boxes)):
                 result.append({"boxes": boxes[i], "labels": labels_out[i], "scores": scores[i]})
 
@@ -1196,6 +1274,7 @@ def build_model(
     use_double_head: bool = False,
     double_head_reg_roi_scale: float = 1.3,
     double_head_num_convs: int = 4,
+    cbl_refine_steps: int = 0,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -1226,6 +1305,7 @@ def build_model(
         use_double_head: use FC classification and convolutional CBL regression
         double_head_reg_roi_scale: proposal enlargement for regression features
         double_head_num_convs: residual bottlenecks in the regression branch
+        cbl_refine_steps: inference-only repeated CBL box-regression passes
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -1335,11 +1415,19 @@ def build_model(
         raise ValueError("The bounded Rank & Sort experiment requires CBL localization")
     if use_double_head and box_loss_type != "cbl":
         raise ValueError("The Double-Head experiment requires CBL localization")
+    if cbl_refine_steps < 0:
+        raise ValueError("CBL refine steps cannot be negative")
+    if cbl_refine_steps > 0 and box_loss_type != "cbl":
+        raise ValueError("Iterative CBL refinement requires CBL localization")
     if use_quality_focal and use_rank_sort:
         raise ValueError("QFL and Rank & Sort are mutually exclusive")
     if use_double_head and (use_quality_focal or use_rank_sort):
         raise ValueError(
             "Double-Head must be evaluated without QFL or Rank & Sort")
+    if cbl_refine_steps > 0 and (
+            use_double_head or use_quality_focal or use_rank_sort):
+        raise ValueError(
+            "Iterative CBL refinement requires the standard softmax CBL head")
     if use_quality_focal and use_quality_score:
         raise ValueError("QFL cannot be combined with the standalone quality head")
     if use_rank_sort and use_quality_score:
@@ -1386,6 +1474,7 @@ def build_model(
             rank_sort_delta=rank_sort_delta,
             use_double_head=use_double_head,
             double_head_reg_roi_scale=double_head_reg_roi_scale,
+            cbl_refine_steps=cbl_refine_steps,
             cbl_um_weight=cbl_um_weight)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
               f"warmup_epochs={box_loss_warmup_epochs}")
@@ -1403,6 +1492,11 @@ def build_model(
                 "  [DoubleHead] FC classification + convolutional CBL "
                 f"regression, roi_scale={double_head_reg_roi_scale:g}, "
                 f"bottlenecks={double_head_num_convs}"
+            )
+        if cbl_refine_steps > 0:
+            print(
+                f"  [CBL refine] inference passes={cbl_refine_steps}, "
+                "classification scores preserved"
             )
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────

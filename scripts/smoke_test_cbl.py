@@ -81,6 +81,21 @@ def main() -> None:
     assert len(predictions) == len(images)
     assert all(torch.isfinite(pred["boxes"]).all() for pred in predictions)
 
+    model.roi_heads._cbl_refine_steps = 2
+    with torch.no_grad(), torch.amp.autocast(
+            "cuda", enabled=(DEVICE.type == "cuda")):
+        refined_predictions = model(images)
+    assert len(refined_predictions) == len(images)
+    assert all(
+        torch.isfinite(prediction["boxes"]).all()
+        for prediction in refined_predictions
+    )
+    assert all(
+        len(prediction["boxes"]) <= model.roi_heads.detections_per_img
+        for prediction in refined_predictions
+    )
+    model.roi_heads._cbl_refine_steps = 0
+
     with tempfile.TemporaryDirectory() as temp_dir:
         checkpoint_path = Path(temp_dir) / "cbl_smoke.pt"
         torch.save({"model": model.state_dict()}, checkpoint_path)
