@@ -417,7 +417,10 @@ def main() -> None:
                         cbl_refine_score_threshold=(
                             refine_score_threshold),
                         cbl_refine_train_weight=float(
-                            config.get("cbl_refine_train_weight", 0.0))).to(device)
+                            config.get("cbl_refine_train_weight", 0.0)),
+                        cbl_refine_separate_head=bool(
+                            config.get(
+                                "cbl_refine_separate_head", False))).to(device)
     model.load_state_dict(ckpt["model"])
 
     preds, gts = collect_predictions(model, loader, device, args.score_thr, args.topk)

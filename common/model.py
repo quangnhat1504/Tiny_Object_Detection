@@ -11,6 +11,8 @@ Metric loss implementation: we override torchvision's RoIHeads.compute_loss
 to replace Smooth-L1 with metric-distance loss.
 """
 from __future__ import annotations
+
+import copy
 from typing import Callable, Optional
 
 import torch
@@ -954,15 +956,19 @@ def _iteratively_refine_cbl_detections(
     score_threshold,
 ):
     """Reapply the trained CBL regressor while preserving labels and scores."""
+    refine_box_head = getattr(
+        roi_heads, "refine_box_head", roi_heads.box_head)
+    refine_box_predictor = getattr(
+        roi_heads, "refine_box_predictor", roi_heads.box_predictor)
     current_boxes = boxes
     for _ in range(steps):
         if not any(boxes_per_image.numel() for boxes_per_image in current_boxes):
             break
         pooled = roi_heads.box_roi_pool(
             features, current_boxes, image_shapes)
-        box_features = roi_heads.box_head(pooled)
-        predictor_out = roi_heads.box_predictor(box_features)
-        if (not getattr(roi_heads.box_predictor, "is_distributional", False)
+        box_features = refine_box_head(pooled)
+        predictor_out = refine_box_predictor(box_features)
+        if (not getattr(refine_box_predictor, "is_distributional", False)
                 or len(predictor_out) != 3):
             raise RuntimeError(
                 "Iterative CBL refinement requires a distributional predictor")
@@ -1034,7 +1040,7 @@ def _iterative_cbl_training_loss(
     uncertainty_weight,
     loss_weight,
 ):
-    """Train the shared CBL head on its detached first-pass box proposals."""
+    """Train a CBL head on detached first-pass box proposals."""
     if loss_weight <= 0:
         return box_regression.sum() * 0.0
 
@@ -1092,11 +1098,15 @@ def _iterative_cbl_training_loss(
     if not any(len(boxes) for boxes in refined_proposals):
         return box_regression.sum() * 0.0
 
+    refine_box_head = getattr(
+        roi_heads, "refine_box_head", roi_heads.box_head)
+    refine_box_predictor = getattr(
+        roi_heads, "refine_box_predictor", roi_heads.box_predictor)
     refined_features = roi_heads.box_roi_pool(
         features, refined_proposals, image_shapes)
-    refined_features = roi_heads.box_head(refined_features)
-    predictor_out = roi_heads.box_predictor(refined_features)
-    if (not getattr(roi_heads.box_predictor, "is_distributional", False)
+    refined_features = refine_box_head(refined_features)
+    predictor_out = refine_box_predictor(refined_features)
+    if (not getattr(refine_box_predictor, "is_distributional", False)
             or len(predictor_out) != 3):
         raise RuntimeError(
             "Iterative CBL training requires a distributional predictor")
@@ -1113,7 +1123,7 @@ def _iterative_cbl_training_loss(
     return loss_weight * _cbl_localization_loss(
         selected_logits,
         refined_targets,
-        roi_heads.box_predictor.cbl_grid,
+        refine_box_predictor.cbl_grid,
         uncertainty_weight,
     )
 
@@ -1133,6 +1143,7 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        cbl_refine_blend=1.0,
                                        cbl_refine_score_threshold=0.0,
                                        cbl_refine_train_weight=0.0,
+                                       cbl_refine_separate_head=False,
                                        cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
@@ -1150,6 +1161,7 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
     roi_heads._cbl_refine_blend = cbl_refine_blend
     roi_heads._cbl_refine_score_threshold = cbl_refine_score_threshold
     roi_heads._cbl_refine_train_weight = cbl_refine_train_weight
+    roi_heads._cbl_refine_separate_head = cbl_refine_separate_head
     roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
@@ -1411,6 +1423,7 @@ def build_model(
     cbl_refine_blend: float = 1.0,
     cbl_refine_score_threshold: float = 0.0,
     cbl_refine_train_weight: float = 0.0,
+    cbl_refine_separate_head: bool = False,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -1445,6 +1458,7 @@ def build_model(
         cbl_refine_blend: fraction of each predicted refinement update
         cbl_refine_score_threshold: preserve boxes below this class score
         cbl_refine_train_weight: auxiliary shared-head second-pass CBL weight
+        cbl_refine_separate_head: specialize a cloned head for the second pass
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -1562,6 +1576,11 @@ def build_model(
         raise ValueError("CBL refine score threshold must be in [0, 1]")
     if cbl_refine_train_weight < 0:
         raise ValueError("CBL refine training weight cannot be negative")
+    if cbl_refine_separate_head and (
+            cbl_refine_train_weight <= 0 or cbl_refine_steps != 1):
+        raise ValueError(
+            "Stage-specific CBL refinement requires positive training weight "
+            "and exactly one inference step")
     if cbl_refine_steps > 0 and box_loss_type != "cbl":
         raise ValueError("Iterative CBL refinement requires CBL localization")
     if use_quality_focal and use_rank_sort:
@@ -1609,6 +1628,13 @@ def build_model(
     else:
         base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
 
+    if cbl_refine_separate_head:
+        base.roi_heads.refine_box_head = copy.deepcopy(
+            base.roi_heads.box_head)
+        base.roi_heads.refine_box_predictor = copy.deepcopy(
+            base.roi_heads.box_predictor)
+        base.roi_heads.refine_box_predictor.cls_score.requires_grad_(False)
+
     # ── Replace box regression loss with metric distance ──────────────
     if (use_metric_loss or use_quality_focal or use_rank_sort or use_double_head or
             (use_quality_score and quality_loss_weight > 0)):
@@ -1628,6 +1654,7 @@ def build_model(
             cbl_refine_blend=cbl_refine_blend,
             cbl_refine_score_threshold=cbl_refine_score_threshold,
             cbl_refine_train_weight=cbl_refine_train_weight,
+            cbl_refine_separate_head=cbl_refine_separate_head,
             cbl_um_weight=cbl_um_weight)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
               f"warmup_epochs={box_loss_warmup_epochs}")
@@ -1654,8 +1681,9 @@ def build_model(
             )
         if cbl_refine_train_weight > 0:
             print(
-                "  [CBL refine train] shared-head second pass, "
-                f"loss_weight={cbl_refine_train_weight:g}"
+                "  [CBL refine train] "
+                f"{'stage-specific' if cbl_refine_separate_head else 'shared-head'} "
+                f"second pass, loss_weight={cbl_refine_train_weight:g}"
             )
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
