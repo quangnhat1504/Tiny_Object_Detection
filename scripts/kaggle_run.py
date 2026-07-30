@@ -128,6 +128,36 @@ RUNS = {
         ),
         "analysis": "runs/ap75_analysis_cbl_double_head_local_gate_valid",
     },
+    "cbl_iterative_train_local_gate": {
+        "env": {
+            "TOD_EPOCHS": "2",
+            "TOD_USE_EMA": "0",
+            "TOD_NUM_WORKERS": "0",
+            "TOD_EMPTY_CACHE_EVERY": "1",
+            "TOD_USE_COPY_PASTE": "1",
+            "TOD_TINY_TILE_OVERSAMPLE": "2.0",
+            "TOD_COPY_PASTE_PROB": None,
+            "TOD_COPY_PASTE_MAX_PER": None,
+        },
+        "train": [
+            "scripts/train_frcnn_metric.py",
+            "--metric", "sa_alw_full",
+            "--placement", "la_loss",
+            "--seed", "42",
+            "--box-loss", "cbl",
+            "--box-loss-warmup-epochs", "0",
+            "--cbl-refine-train-weight", "0.5",
+            "--cbl-refine-steps", "1",
+            "--cbl-refine-blend", "1.0",
+            "--cbl-refine-score-threshold", "0.3",
+            "--tag", "cbl_iterative_train_local_gate",
+        ],
+        "ckpt": (
+            "runs/sa_alw_full__cbl__irtw0.5ir1s0.3__la_loss__seed42"
+            "__cbl_iterative_train_local_gate/best_ap75.pt"
+        ),
+        "analysis": "runs/ap75_analysis_cbl_iterative_train_local_gate_valid",
+    },
     "smooth_l1_ap75": {
         "env": {
             "TOD_USE_COPY_PASTE": None,

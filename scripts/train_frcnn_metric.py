@@ -59,6 +59,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  double_head: bool = False,
                  double_head_reg_roi_scale: float = 1.3,
                  double_head_num_convs: int = 4,
+                 cbl_refine_train_weight: float = 0.0,
+                 cbl_refine_steps: int = 0,
+                 cbl_refine_blend: float = 1.0,
+                 cbl_refine_score_threshold: float = 0.0,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
@@ -74,6 +78,11 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         metric_name = (
             f"{metric_name}__dh{double_head_num_convs}"
             f"s{double_head_reg_roi_scale:g}"
+        )
+    if cbl_refine_train_weight > 0:
+        metric_name = (
+            f"{metric_name}__irtw{cbl_refine_train_weight:g}"
+            f"ir{cbl_refine_steps}s{cbl_refine_score_threshold:g}"
         )
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
@@ -94,6 +103,12 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         f"  Double-Head: {double_head} "
         f"(scale={double_head_reg_roi_scale:g}, "
         f"bottlenecks={double_head_num_convs})"
+    )
+    print(
+        f"  CBL iterative train: weight={cbl_refine_train_weight:g}; "
+        f"inference steps={cbl_refine_steps}, "
+        f"blend={cbl_refine_blend:g}, "
+        f"score threshold={cbl_refine_score_threshold:g}"
     )
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
@@ -145,6 +160,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         use_double_head=double_head,
         double_head_reg_roi_scale=double_head_reg_roi_scale,
         double_head_num_convs=double_head_num_convs,
+        cbl_refine_train_weight=cbl_refine_train_weight,
+        cbl_refine_steps=cbl_refine_steps,
+        cbl_refine_blend=cbl_refine_blend,
+        cbl_refine_score_threshold=cbl_refine_score_threshold,
         cbl_alpha=cbl_alpha,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
@@ -222,6 +241,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "double_head": double_head,
         "double_head_reg_roi_scale": double_head_reg_roi_scale,
         "double_head_num_convs": double_head_num_convs,
+        "cbl_refine_train_weight": cbl_refine_train_weight,
+        "cbl_refine_steps": cbl_refine_steps,
+        "cbl_refine_blend": cbl_refine_blend,
+        "cbl_refine_score_threshold": cbl_refine_score_threshold,
         "cbl_alpha": cbl_alpha,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
@@ -382,6 +405,14 @@ def main():
                         help="Proposal scale used for Double-Head regression")
     parser.add_argument("--double-head-num-convs", type=int, default=4,
                         help="Residual bottlenecks in Double-Head regression")
+    parser.add_argument("--cbl-refine-train-weight", type=float, default=0.0,
+                        help="Auxiliary shared-head second-pass CBL loss weight")
+    parser.add_argument("--cbl-refine-steps", type=int, default=0,
+                        help="Inference-time repeated CBL regression passes")
+    parser.add_argument("--cbl-refine-blend", type=float, default=1.0,
+                        help="Fraction of each inference refinement update")
+    parser.add_argument("--cbl-refine-score-threshold", type=float, default=0.0,
+                        help="Preserve detections below this score")
     parser.add_argument("--cbl-alpha", type=float, default=CBL_ALPHA,
                         help="CBL normalized delta range")
     parser.add_argument("--cbl-num-bins", type=int, default=CBL_NUM_BINS,
@@ -404,6 +435,11 @@ def main():
                  double_head=args.double_head,
                  double_head_reg_roi_scale=args.double_head_reg_roi_scale,
                  double_head_num_convs=args.double_head_num_convs,
+                 cbl_refine_train_weight=args.cbl_refine_train_weight,
+                 cbl_refine_steps=args.cbl_refine_steps,
+                 cbl_refine_blend=args.cbl_refine_blend,
+                 cbl_refine_score_threshold=(
+                     args.cbl_refine_score_threshold),
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,

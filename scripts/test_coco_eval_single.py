@@ -34,11 +34,11 @@ def main():
                         help="Dataset split (default: test)")
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device (default: cuda)")
-    parser.add_argument("--cbl-refine-steps", type=int, default=0,
+    parser.add_argument("--cbl-refine-steps", type=int, default=None,
                         help="Inference-only repeated CBL box-regression passes")
-    parser.add_argument("--cbl-refine-blend", type=float, default=1.0,
+    parser.add_argument("--cbl-refine-blend", type=float, default=None,
                         help="Fraction of each iterative CBL box update")
-    parser.add_argument("--cbl-refine-score-threshold", type=float, default=0.0,
+    parser.add_argument("--cbl-refine-score-threshold", type=float, default=None,
                         help="Preserve detections below this score")
     parser.add_argument("--out", type=str, default=None,
                         help="Output JSON path (default: runs/test_coco_<metric>.json)")
@@ -78,6 +78,19 @@ def main():
     checkpoint_model_source = ck.get("model_source", "legacy_unspecified")
     stored_metrics_source = (
         "ema" if stored_config.get("use_ema", False) else "raw")
+    refine_steps = (
+        int(stored_config.get("cbl_refine_steps", 0))
+        if args.cbl_refine_steps is None else args.cbl_refine_steps
+    )
+    refine_blend = (
+        float(stored_config.get("cbl_refine_blend", 1.0))
+        if args.cbl_refine_blend is None else args.cbl_refine_blend
+    )
+    refine_score_threshold = (
+        float(stored_config.get("cbl_refine_score_threshold", 0.0))
+        if args.cbl_refine_score_threshold is None
+        else args.cbl_refine_score_threshold
+    )
 
     print(f"Stored config: metric={effective_metric}, placement={effective_placement}")
     print(f"Checkpoint epoch: {ck.get('epoch', 'unknown')}")
@@ -116,9 +129,9 @@ def main():
             stored_config.get("double_head_reg_roi_scale", 1.3)),
         double_head_num_convs=int(
             stored_config.get("double_head_num_convs", 4)),
-        cbl_refine_steps=args.cbl_refine_steps,
-        cbl_refine_blend=args.cbl_refine_blend,
-        cbl_refine_score_threshold=args.cbl_refine_score_threshold,
+        cbl_refine_steps=refine_steps,
+        cbl_refine_blend=refine_blend,
+        cbl_refine_score_threshold=refine_score_threshold,
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),
@@ -154,9 +167,9 @@ def main():
         "split": args.split,
         "metric": effective_metric,
         "placement": effective_placement,
-        "cbl_refine_steps": args.cbl_refine_steps,
-        "cbl_refine_blend": args.cbl_refine_blend,
-        "cbl_refine_score_threshold": args.cbl_refine_score_threshold,
+        "cbl_refine_steps": refine_steps,
+        "cbl_refine_blend": refine_blend,
+        "cbl_refine_score_threshold": refine_score_threshold,
         "ckpt_epoch": ck.get("epoch", "unknown"),
         "checkpoint_model_source": checkpoint_model_source,
         "stored_metrics_source": stored_metrics_source,
