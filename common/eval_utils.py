@@ -1,12 +1,16 @@
 """Evaluation utilities — shared across all experiments."""
 from __future__ import annotations
+import io
 import time
+from contextlib import redirect_stdout
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchvision.ops import box_iou
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 
 try:
     from torchmetrics.detection.mean_ap import MeanAveragePrecision
@@ -211,6 +215,100 @@ def compute_scale_ap(preds: List[Dict], gts: List[Dict]) -> Dict:
     return out
 
 
+def compute_class_aware_scale_ap(
+    preds: List[Dict],
+    gts: List[Dict],
+) -> Dict:
+    """Compute category-aware AP in the project's four custom scale bins."""
+    bins = {
+        "micro": (0.0, 6.0, 0.25),
+        "tiny": (6.0, 16.0, 0.25),
+        "small": (16.0, 64.0, 0.35),
+        "large": (64.0, 1e5, 0.50),
+    }
+    categories = sorted({
+        int(label)
+        for target in gts
+        for label in target.get("labels", torch.empty(0, dtype=torch.int64))
+    })
+    images = [{"id": image_id} for image_id in range(len(gts))]
+    annotations = []
+    detections = []
+    annotation_id = 1
+
+    for image_id, (pred, target) in enumerate(zip(preds, gts)):
+        for box, label in zip(target["boxes"], target["labels"]):
+            x1, y1, x2, y2 = [float(value) for value in box]
+            width = max(x2 - x1, 0.0)
+            height = max(y2 - y1, 0.0)
+            annotations.append({
+                "id": annotation_id,
+                "image_id": image_id,
+                "category_id": int(label),
+                "bbox": [x1, y1, width, height],
+                "area": width * height,
+                "iscrowd": 0,
+            })
+            annotation_id += 1
+        for box, label, score in zip(
+            pred.get("boxes", torch.empty(0, 4)),
+            pred.get("labels", torch.empty(0, dtype=torch.int64)),
+            pred.get("scores", torch.empty(0)),
+        ):
+            x1, y1, x2, y2 = [float(value) for value in box]
+            detections.append({
+                "image_id": image_id,
+                "category_id": int(label),
+                "bbox": [x1, y1, max(x2 - x1, 0.0), max(y2 - y1, 0.0)],
+                "score": float(score),
+            })
+
+    output: Dict[str, float | int] = {}
+    if not annotations or not categories:
+        for name in bins:
+            output[f"AP_{name}_class_aware"] = 0.0
+            output[f"n_gt_{name}_class_aware"] = 0
+        return output
+
+    coco_gt = COCO()
+    coco_gt.dataset = {
+        "images": images,
+        "annotations": annotations,
+        "categories": [
+            {"id": category_id, "name": str(category_id)}
+            for category_id in categories
+        ],
+    }
+    with redirect_stdout(io.StringIO()):
+        coco_gt.createIndex()
+        coco_dt = coco_gt.loadRes(detections) if detections else COCO()
+
+    for name, (lower, upper, iou_threshold) in bins.items():
+        n_gt = sum(
+            lower * lower <= annotation["area"] < upper * upper
+            for annotation in annotations
+        )
+        output[f"n_gt_{name}_class_aware"] = n_gt
+        if not detections or n_gt == 0:
+            output[f"AP_{name}_class_aware"] = 0.0
+            continue
+        evaluator = COCOeval(coco_gt, coco_dt, iouType="bbox")
+        evaluator.params.imgIds = list(range(len(gts)))
+        evaluator.params.catIds = categories
+        evaluator.params.iouThrs = np.array([iou_threshold])
+        evaluator.params.maxDets = [1, 10, 500]
+        evaluator.params.areaRng = [[lower * lower, upper * upper]]
+        evaluator.params.areaRngLbl = [name]
+        with redirect_stdout(io.StringIO()):
+            evaluator.evaluate()
+            evaluator.accumulate()
+        precision = evaluator.eval["precision"][..., -1]
+        valid = precision[precision > -1]
+        output[f"AP_{name}_class_aware"] = round(
+            float(valid.mean()) if valid.size else 0.0, 4)
+    return output
+
+
 # =============================================================================
 # COCO mAP@50:75 (using torchmetrics if available)
 # =============================================================================
@@ -338,10 +436,23 @@ def evaluate(model, loader, device, measure_fps_flag: bool = False,
 
     # Scale AP
     sap = compute_scale_ap(preds, gts)
+    sap_class_aware = compute_class_aware_scale_ap(preds, gts)
     tgt = sum(sap.get(f"n_gt_{s}", 0) for s in ("micro", "tiny", "small", "large"))
     prim = (sum(sap.get(f"AP_{s}", 0.0) * sap.get(f"n_gt_{s}", 0)
                 for s in ("micro", "tiny", "small", "large")) / tgt
             if tgt > 0 else 0.0)
+    tgt_class_aware = sum(
+        sap_class_aware.get(f"n_gt_{s}_class_aware", 0)
+        for s in ("micro", "tiny", "small", "large")
+    )
+    prim_class_aware = (
+        sum(
+            sap_class_aware.get(f"AP_{s}_class_aware", 0.0)
+            * sap_class_aware.get(f"n_gt_{s}_class_aware", 0)
+            for s in ("micro", "tiny", "small", "large")
+        ) / tgt_class_aware
+        if tgt_class_aware > 0 else 0.0
+    )
 
     # COCO mAP
     coco = evaluate_coco(preds, gts, class_metrics=True)
@@ -357,8 +468,10 @@ def evaluate(model, loader, device, measure_fps_flag: bool = False,
     metrics = {
         "val_loss": round(val_loss, 4),
         "mAP_primary": round(prim, 6),
+        "mAP_primary_class_aware": round(prim_class_aware, 6),
         "mAP_50":      round(mAP50, 6),
         **sap,
+        **sap_class_aware,
         **coco,
         **pr,
     }
@@ -369,11 +482,20 @@ def evaluate(model, loader, device, measure_fps_flag: bool = False,
     print(f"\n{'='*50}\nEVAL\n{'='*50}")
     print(f"  val_loss    : {metrics['val_loss']:.4f}")
     print(f"  mAP(scale)  : {metrics['mAP_primary']:.4f}")
+    print(f"  mAP(scale, class-aware): "
+          f"{metrics['mAP_primary_class_aware']:.4f}")
     print(f"  mAP@50      : {metrics['mAP_50']:.4f}")
     print(f"  AP_micro(n={metrics.get('n_gt_micro',0):4d}): {metrics.get('AP_micro',0):.4f}")
     print(f"  AP_tiny (n={metrics.get('n_gt_tiny',0):4d}): {metrics.get('AP_tiny',0):.4f}")
     print(f"  AP_small(n={metrics.get('n_gt_small',0):4d}): {metrics.get('AP_small',0):.4f}")
     print(f"  AP_large(n={metrics.get('n_gt_large',0):4d}): {metrics.get('AP_large',0):.4f}")
+    print(
+        "  Class-aware scale AP: "
+        + ", ".join(
+            f"{name}={metrics.get(f'AP_{name}_class_aware', 0):.4f}"
+            for name in ("micro", "tiny", "small", "large")
+        )
+    )
     print(f"\n  COCO AP     : {coco.get('coco_AP', 0):.4f}")
     print(f"  COCO AP@50  : {coco.get('coco_AP50', 0):.4f}")
     print(f"  COCO AP@75  : {coco.get('coco_AP75', 0):.4f}")
