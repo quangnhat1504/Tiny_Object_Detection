@@ -401,12 +401,145 @@ def _quality_focal_loss(
     return loss.sum(dim=1).mean()
 
 
+class _RankSortFunction(torch.autograd.Function):
+    """Device-agnostic Rank & Sort identity-update autograd function."""
+
+    @staticmethod
+    def forward(ctx, logits, targets, delta=0.5, eps=1e-10):
+        logits = logits.reshape(-1)
+        targets = targets.reshape(-1)
+        classification_grads = torch.zeros_like(logits)
+
+        foreground_mask = targets > 0
+        foreground_logits = logits[foreground_mask]
+        foreground_targets = targets[foreground_mask]
+        foreground_count = foreground_logits.numel()
+        if foreground_count == 0:
+            ctx.save_for_backward(classification_grads)
+            zero = logits.new_zeros(())
+            return zero, zero
+
+        threshold = foreground_logits.min() - delta
+        relevant_background_mask = (targets == 0) & (logits >= threshold)
+        relevant_background_logits = logits[relevant_background_mask]
+        relevant_background_grad = torch.zeros_like(relevant_background_logits)
+        ranking_error = torch.zeros_like(foreground_logits)
+        sorting_error = torch.zeros_like(foreground_logits)
+        foreground_grad = torch.zeros_like(foreground_logits)
+
+        order = torch.argsort(foreground_logits)
+        for index in order:
+            foreground_relations = foreground_logits - foreground_logits[index]
+            background_relations = (
+                relevant_background_logits - foreground_logits[index]
+            )
+            if delta > 0:
+                foreground_relations = torch.clamp(
+                    foreground_relations / (2 * delta) + 0.5, min=0, max=1
+                )
+                background_relations = torch.clamp(
+                    background_relations / (2 * delta) + 0.5, min=0, max=1
+                )
+            else:
+                foreground_relations = (foreground_relations >= 0).to(logits.dtype)
+                background_relations = (background_relations >= 0).to(logits.dtype)
+
+            positive_rank = foreground_relations.sum()
+            false_positive_count = background_relations.sum()
+            rank = positive_rank + false_positive_count
+            ranking_error[index] = false_positive_count / rank.clamp(min=eps)
+
+            current_sorting_error = (
+                foreground_relations * (1 - foreground_targets)
+            ).sum() / positive_rank.clamp(min=eps)
+            iou_relations = foreground_targets >= foreground_targets[index]
+            target_sorted_order = iou_relations.to(logits.dtype) * foreground_relations
+            target_positive_rank = target_sorted_order.sum()
+            target_sorting_error = (
+                target_sorted_order * (1 - foreground_targets)
+            ).sum() / target_positive_rank.clamp(min=eps)
+            sorting_error[index] = current_sorting_error - target_sorting_error
+
+            if false_positive_count > eps:
+                foreground_grad[index] -= ranking_error[index]
+                relevant_background_grad += (
+                    background_relations
+                    * (ranking_error[index] / false_positive_count)
+                )
+
+            missorted = (~iou_relations).to(logits.dtype) * foreground_relations
+            sorting_denom = missorted.sum()
+            if sorting_denom > eps:
+                foreground_grad[index] -= sorting_error[index]
+                foreground_grad += missorted * (
+                    sorting_error[index] / sorting_denom
+                )
+
+        classification_grads[foreground_mask] = (
+            foreground_grad / foreground_count
+        )
+        classification_grads[relevant_background_mask] = (
+            relevant_background_grad / foreground_count
+        )
+        ctx.save_for_backward(classification_grads)
+        return ranking_error.mean(), sorting_error.mean()
+
+    @staticmethod
+    def backward(ctx, ranking_grad, sorting_grad):
+        del sorting_grad
+        (classification_grads,) = ctx.saved_tensors
+        # The saved identity update already contains ranking and sorting terms.
+        return classification_grads * ranking_grad, None, None, None
+
+
+def _rank_sort_loss(
+    class_logits: torch.Tensor,
+    labels: torch.Tensor,
+    quality_targets: torch.Tensor,
+    delta: float = 0.5,
+) -> torch.Tensor:
+    """Rank foreground classes and sort positives by paired localization IoU."""
+    if delta < 0:
+        raise ValueError("Rank & Sort delta must be non-negative")
+    if class_logits.ndim != 2 or class_logits.shape[1] < 2:
+        raise ValueError(
+            "Rank & Sort expects logits for background plus foreground classes"
+        )
+    if labels.shape != quality_targets.shape:
+        raise ValueError(
+            "Rank & Sort labels and quality targets must have the same shape"
+        )
+    if labels.numel() != class_logits.shape[0]:
+        raise ValueError(
+            "Rank & Sort targets and logits have incompatible batch sizes"
+        )
+
+    foreground_logits = class_logits[:, 1:].float()
+    targets = torch.zeros_like(foreground_logits)
+    positive = torch.where(labels > 0)[0]
+    if positive.numel() > 0:
+        foreground_labels = labels[positive] - 1
+        if foreground_labels.max() >= foreground_logits.shape[1]:
+            raise ValueError(
+                "Rank & Sort foreground label exceeds classifier dimensions"
+            )
+        targets[positive, foreground_labels] = quality_targets[positive].float().clamp(
+            0.0, 1.0
+        )
+
+    ranking_loss, sorting_loss = _RankSortFunction.apply(
+        foreground_logits.reshape(-1), targets.reshape(-1), delta
+    )
+    return ranking_loss + sorting_loss
+
+
 def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
                      box_coder, metric_fn, reliability_thr, metric_loss_weight,
                      proposals, current_epoch=1, box_loss_type=None,
                      box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
                      quality_logits=None, quality_loss_weight=0.0,
                      use_quality_focal=False, quality_focal_beta=2.0,
+                     use_rank_sort=False, rank_sort_delta=0.5,
                      distribution_logits=None, cbl_grid=None,
                      cbl_um_weight=CBL_UM_WEIGHT):
     """Replacement for torchvision's fastrcnn_loss with multi-loss dispatch.
@@ -422,7 +555,7 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
     regression_targets = torch.cat(regression_targets, dim=0)
     classification_loss = (
         class_logits.sum() * 0.0
-        if use_quality_focal
+        if use_quality_focal or use_rank_sort
         else F.cross_entropy(class_logits, labels)
     )
 
@@ -432,6 +565,10 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
             quality_targets = class_logits.new_zeros(labels.shape)
             classification_loss = _quality_focal_loss(
                 class_logits, labels, quality_targets, quality_focal_beta)
+        elif use_rank_sort:
+            quality_targets = class_logits.new_zeros(labels.shape)
+            classification_loss = _rank_sort_loss(
+                class_logits, labels, quality_targets, rank_sort_delta)
         zero = torch.zeros(1, device=class_logits.device).sum()
         return classification_loss, zero, zero
 
@@ -575,7 +712,7 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
 
     quality_loss = torch.zeros(1, device=class_logits.device).sum()
     paired_quality_targets = None
-    if use_quality_focal or (
+    if use_quality_focal or use_rank_sort or (
             quality_logits is not None and quality_loss_weight > 0):
         if pred_boxes_for_quality is None:
             box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
@@ -593,6 +730,13 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
             dtype=class_logits.dtype)
         classification_loss = _quality_focal_loss(
             class_logits, labels, quality_targets, quality_focal_beta)
+
+    if use_rank_sort:
+        quality_targets = class_logits.new_zeros(labels.shape)
+        quality_targets[sampled_pos_inds] = paired_quality_targets.to(
+            dtype=class_logits.dtype)
+        classification_loss = _rank_sort_loss(
+            class_logits, labels, quality_targets, rank_sort_delta)
 
     if quality_logits is not None and quality_loss_weight > 0:
         q_targets = paired_quality_targets.to(dtype=quality_logits.dtype)
@@ -692,6 +836,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        quality_loss_weight=0.0,
                                        use_quality_focal=False,
                                        quality_focal_beta=2.0,
+                                       use_rank_sort=False,
+                                       rank_sort_delta=0.5,
                                        cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
@@ -701,6 +847,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
     roi_heads._quality_loss_weight = quality_loss_weight
     roi_heads._use_quality_focal = use_quality_focal
     roi_heads._quality_focal_beta = quality_focal_beta
+    roi_heads._use_rank_sort = use_rank_sort
+    roi_heads._rank_sort_delta = rank_sort_delta
     roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
@@ -735,6 +883,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             use_quality_focal = getattr(self, '_use_quality_focal', False)
             quality_focal_beta = getattr(
                 self, '_quality_focal_beta', 2.0)
+            use_rank_sort = getattr(self, '_use_rank_sort', False)
+            rank_sort_delta = getattr(self, '_rank_sort_delta', 0.5)
             cbl_um_weight = getattr(self, '_cbl_um_weight', CBL_UM_WEIGHT)
             loss_classifier, loss_box_reg, loss_quality = _metric_box_loss(
                 class_logits, box_regression, labels, regression_targets,
@@ -746,6 +896,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                 quality_loss_weight=quality_loss_weight,
                 use_quality_focal=use_quality_focal,
                 quality_focal_beta=quality_focal_beta,
+                use_rank_sort=use_rank_sort,
+                rank_sort_delta=rank_sort_delta,
                 distribution_logits=distribution_logits,
                 cbl_grid=getattr(self.box_predictor, "cbl_grid", None),
                 cbl_um_weight=cbl_um_weight)
@@ -753,7 +905,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             if quality_logits is not None and quality_loss_weight > 0:
                 losses["loss_quality"] = loss_quality
         else:
-            if getattr(self, '_use_quality_focal', False):
+            if (getattr(self, '_use_quality_focal', False) or
+                    getattr(self, '_use_rank_sort', False)):
                 boxes, scores, labels_out = \
                     _postprocess_detections_with_joint_scores(
                         self, class_logits, box_regression,
@@ -910,6 +1063,8 @@ def build_model(
     quality_loss_weight: float = 0.0,
     use_quality_focal: bool = False,
     quality_focal_beta: float = 2.0,
+    use_rank_sort: bool = False,
+    rank_sort_delta: float = 0.5,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -935,6 +1090,8 @@ def build_model(
         quality_loss_weight: BCE weight for IoU quality target on positive RoIs
         use_quality_focal: replace RoI softmax CE with joint class-IoU QFL
         quality_focal_beta: QFL modulating exponent
+        use_rank_sort: replace RoI softmax CE with sampled Rank & Sort loss
+        rank_sort_delta: smoothing width for Rank & Sort score comparisons
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -1040,8 +1197,16 @@ def build_model(
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
     if use_quality_focal and box_loss_type != "cbl":
         raise ValueError("The bounded QFL experiment requires CBL localization")
+    if use_rank_sort and box_loss_type != "cbl":
+        raise ValueError("The bounded Rank & Sort experiment requires CBL localization")
+    if use_quality_focal and use_rank_sort:
+        raise ValueError("QFL and Rank & Sort are mutually exclusive")
     if use_quality_focal and use_quality_score:
         raise ValueError("QFL cannot be combined with the standalone quality head")
+    if use_rank_sort and use_quality_score:
+        raise ValueError(
+            "Rank & Sort cannot be combined with the standalone quality head"
+        )
     if box_loss_type == "cbl" and use_quality_score:
         raise ValueError("CBL and the standalone quality head cannot be combined")
     if box_loss_type == "cbl":
@@ -1057,7 +1222,7 @@ def build_model(
         base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
 
     # ── Replace box regression loss with metric distance ──────────────
-    if (use_metric_loss or use_quality_focal or
+    if (use_metric_loss or use_quality_focal or use_rank_sort or
             (use_quality_score and quality_loss_weight > 0)):
         _wrap_roi_forward_for_metric_loss(
             base.roi_heads, metric_fn, reliability_thr,
@@ -1067,6 +1232,8 @@ def build_model(
             quality_loss_weight=quality_loss_weight if use_quality_score else 0.0,
             use_quality_focal=use_quality_focal,
             quality_focal_beta=quality_focal_beta,
+            use_rank_sort=use_rank_sort,
+            rank_sort_delta=rank_sort_delta,
             cbl_um_weight=cbl_um_weight)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
               f"warmup_epochs={box_loss_warmup_epochs}")
@@ -1077,6 +1244,8 @@ def build_model(
             print(f"  [quality] score=head enabled, loss_weight={quality_loss_weight}")
         if use_quality_focal:
             print(f"  [QFL] joint class-IoU score enabled, beta={quality_focal_beta:g}")
+        if use_rank_sort:
+            print(f"  [RankSort] sampled RoI ranking enabled, delta={rank_sort_delta:g}")
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
     if use_metric_nms:

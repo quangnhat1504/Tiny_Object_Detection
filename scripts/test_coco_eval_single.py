@@ -103,6 +103,8 @@ def main():
         quality_loss_weight=float(stored_config.get("quality_loss_weight", 0.0) or 0.0),
         use_quality_focal=bool(stored_config.get("quality_focal", False)),
         quality_focal_beta=float(stored_config.get("quality_focal_beta", 2.0)),
+        use_rank_sort=bool(stored_config.get("rank_sort", False)),
+        rank_sort_delta=float(stored_config.get("rank_sort_delta", 0.5)),
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),
