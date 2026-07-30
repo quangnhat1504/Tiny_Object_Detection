@@ -51,6 +51,30 @@ RUNS = {
         "ckpt": "runs/sa_alw_full__cbl__la_loss__seed42__cbl_ema8/best_ap75.pt",
         "analysis": "runs/ap75_analysis_cbl_ema8_valid",
     },
+    "cbl_qfl_local_gate": {
+        "env": {
+            "TOD_EPOCHS": "2",
+            "TOD_USE_EMA": "0",
+            "TOD_NUM_WORKERS": "0",
+            "TOD_USE_COPY_PASTE": "1",
+            "TOD_TINY_TILE_OVERSAMPLE": "2.0",
+            "TOD_COPY_PASTE_PROB": None,
+            "TOD_COPY_PASTE_MAX_PER": None,
+        },
+        "train": [
+            "scripts/train_frcnn_metric.py",
+            "--metric", "sa_alw_full",
+            "--placement", "la_loss",
+            "--seed", "42",
+            "--box-loss", "cbl",
+            "--box-loss-warmup-epochs", "0",
+            "--quality-focal",
+            "--quality-focal-beta", "2.0",
+            "--tag", "cbl_qfl_local_gate",
+        ],
+        "ckpt": "runs/sa_alw_full__cbl__qflb2__la_loss__seed42__cbl_qfl_local_gate/best_ap75.pt",
+        "analysis": "runs/ap75_analysis_cbl_qfl_local_gate_valid",
+    },
     "smooth_l1_ap75": {
         "env": {
             "TOD_USE_COPY_PASTE": None,

@@ -363,11 +363,50 @@ def _cbl_localization_loss(
     return confidence_loss + uncertainty_weight * uncertainty_loss
 
 
+def _quality_focal_loss(
+    class_logits: torch.Tensor,
+    labels: torch.Tensor,
+    quality_targets: torch.Tensor,
+    beta: float = 2.0,
+) -> torch.Tensor:
+    """Quality Focal Loss over foreground classes with IoU soft targets."""
+    if beta < 0:
+        raise ValueError("Quality Focal Loss beta must be non-negative")
+    if class_logits.ndim != 2 or class_logits.shape[1] < 2:
+        raise ValueError("QFL expects logits for background plus foreground classes")
+    if labels.shape != quality_targets.shape:
+        raise ValueError("QFL labels and quality targets must have the same shape")
+    if labels.numel() != class_logits.shape[0]:
+        raise ValueError("QFL targets and logits have incompatible batch sizes")
+
+    foreground_logits = class_logits[:, 1:].float()
+    probabilities = foreground_logits.sigmoid()
+    zero_targets = torch.zeros_like(foreground_logits)
+    loss = F.binary_cross_entropy_with_logits(
+        foreground_logits, zero_targets, reduction="none"
+    ) * probabilities.pow(beta)
+
+    positive = torch.where(labels > 0)[0]
+    if positive.numel() > 0:
+        foreground_labels = labels[positive] - 1
+        if foreground_labels.max() >= foreground_logits.shape[1]:
+            raise ValueError("QFL foreground label exceeds classifier dimensions")
+        targets = quality_targets[positive].float().clamp(0.0, 1.0)
+        positive_logits = foreground_logits[positive, foreground_labels]
+        positive_probabilities = probabilities[positive, foreground_labels]
+        loss[positive, foreground_labels] = F.binary_cross_entropy_with_logits(
+            positive_logits, targets, reduction="none"
+        ) * (targets - positive_probabilities).abs().pow(beta)
+
+    return loss.sum(dim=1).mean()
+
+
 def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
                      box_coder, metric_fn, reliability_thr, metric_loss_weight,
                      proposals, current_epoch=1, box_loss_type=None,
                      box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
                      quality_logits=None, quality_loss_weight=0.0,
+                     use_quality_focal=False, quality_focal_beta=2.0,
                      distribution_logits=None, cbl_grid=None,
                      cbl_um_weight=CBL_UM_WEIGHT):
     """Replacement for torchvision's fastrcnn_loss with multi-loss dispatch.
@@ -381,10 +420,18 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
         box_loss_type = BOX_LOSS_TYPE
     labels = torch.cat(labels, dim=0)
     regression_targets = torch.cat(regression_targets, dim=0)
-    classification_loss = F.cross_entropy(class_logits, labels)
+    classification_loss = (
+        class_logits.sum() * 0.0
+        if use_quality_focal
+        else F.cross_entropy(class_logits, labels)
+    )
 
     sampled_pos_inds = torch.where(labels > 0)[0]
     if sampled_pos_inds.numel() == 0:
+        if use_quality_focal:
+            quality_targets = class_logits.new_zeros(labels.shape)
+            classification_loss = _quality_focal_loss(
+                class_logits, labels, quality_targets, quality_focal_beta)
         zero = torch.zeros(1, device=class_logits.device).sum()
         return classification_loss, zero, zero
 
@@ -527,16 +574,28 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
         raise ValueError(f"Unknown BOX_LOSS_TYPE: {loss_type}")
 
     quality_loss = torch.zeros(1, device=class_logits.device).sum()
-    if quality_logits is not None and quality_loss_weight > 0:
+    paired_quality_targets = None
+    if use_quality_focal or (
+            quality_logits is not None and quality_loss_weight > 0):
         if pred_boxes_for_quality is None:
             box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
             decoded = box_coder.decode(box_reg_flat, [proposals_pos])
             pred_boxes_for_quality = decoded[
                 torch.arange(K, device=decoded.device), labels_pos]
-        q_targets = _paired_iou(
+        paired_quality_targets = _paired_iou(
             pred_boxes_for_quality.detach().float(),
             gt_boxes_for_quality.detach().float(),
-        ).clamp(0, 1).to(dtype=quality_logits.dtype)
+        ).clamp(0, 1)
+
+    if use_quality_focal:
+        quality_targets = class_logits.new_zeros(labels.shape)
+        quality_targets[sampled_pos_inds] = paired_quality_targets.to(
+            dtype=class_logits.dtype)
+        classification_loss = _quality_focal_loss(
+            class_logits, labels, quality_targets, quality_focal_beta)
+
+    if quality_logits is not None and quality_loss_weight > 0:
+        q_targets = paired_quality_targets.to(dtype=quality_logits.dtype)
         q_pred = quality_logits[sampled_pos_inds, labels_pos]
         quality_loss = F.binary_cross_entropy_with_logits(q_pred, q_targets)
         quality_loss = quality_loss * quality_loss_weight
@@ -587,11 +646,52 @@ def _postprocess_detections_with_quality(
     return all_boxes, all_scores, all_labels
 
 
+def _postprocess_detections_with_joint_scores(
+    roi_heads, class_logits, box_regression, proposals, image_shapes
+):
+    """Postprocess detections using QFL's joint class-localization score."""
+    device = class_logits.device
+    num_classes = class_logits.shape[-1]
+
+    boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
+    pred_boxes = roi_heads.box_coder.decode(box_regression, proposals)
+    pred_scores = torch.sigmoid(class_logits)
+
+    pred_boxes_list = pred_boxes.split(boxes_per_image, 0)
+    pred_scores_list = pred_scores.split(boxes_per_image, 0)
+
+    all_boxes, all_scores, all_labels = [], [], []
+    for boxes, scores, image_shape in zip(
+            pred_boxes_list, pred_scores_list, image_shapes):
+        boxes = box_ops.clip_boxes_to_image(boxes, image_shape)
+        labels = torch.arange(num_classes, device=device)
+        labels = labels.view(1, -1).expand_as(scores)
+
+        boxes = boxes[:, 1:].reshape(-1, 4)
+        scores = scores[:, 1:].reshape(-1)
+        labels = labels[:, 1:].reshape(-1)
+
+        keep = torch.where(scores > roi_heads.score_thresh)[0]
+        boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+        keep = box_ops.remove_small_boxes(boxes, min_size=1e-2)
+        boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+        keep = box_ops.batched_nms(
+            boxes, scores, labels, roi_heads.nms_thresh)
+        keep = keep[:roi_heads.detections_per_img]
+        all_boxes.append(boxes[keep])
+        all_scores.append(scores[keep])
+        all_labels.append(labels[keep])
+
+    return all_boxes, all_scores, all_labels
+
+
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        metric_loss_weight=1.0,
                                        box_loss_type="metric",
                                        box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
                                        quality_loss_weight=0.0,
+                                       use_quality_focal=False,
+                                       quality_focal_beta=2.0,
                                        cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
@@ -599,6 +699,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
     roi_heads._box_loss_type = box_loss_type
     roi_heads._box_loss_warmup_epochs = box_loss_warmup_epochs
     roi_heads._quality_loss_weight = quality_loss_weight
+    roi_heads._use_quality_focal = use_quality_focal
+    roi_heads._quality_focal_beta = quality_focal_beta
     roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
@@ -630,6 +732,9 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             box_loss_warmup_epochs = getattr(
                 self, '_box_loss_warmup_epochs', BOX_LOSS_WARMUP_EPOCHS)
             quality_loss_weight = getattr(self, '_quality_loss_weight', 0.0)
+            use_quality_focal = getattr(self, '_use_quality_focal', False)
+            quality_focal_beta = getattr(
+                self, '_quality_focal_beta', 2.0)
             cbl_um_weight = getattr(self, '_cbl_um_weight', CBL_UM_WEIGHT)
             loss_classifier, loss_box_reg, loss_quality = _metric_box_loss(
                 class_logits, box_regression, labels, regression_targets,
@@ -639,6 +744,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                 box_loss_warmup_epochs=box_loss_warmup_epochs,
                 quality_logits=quality_logits,
                 quality_loss_weight=quality_loss_weight,
+                use_quality_focal=use_quality_focal,
+                quality_focal_beta=quality_focal_beta,
                 distribution_logits=distribution_logits,
                 cbl_grid=getattr(self.box_predictor, "cbl_grid", None),
                 cbl_um_weight=cbl_um_weight)
@@ -646,7 +753,12 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             if quality_logits is not None and quality_loss_weight > 0:
                 losses["loss_quality"] = loss_quality
         else:
-            if quality_logits is not None:
+            if getattr(self, '_use_quality_focal', False):
+                boxes, scores, labels_out = \
+                    _postprocess_detections_with_joint_scores(
+                        self, class_logits, box_regression,
+                        proposals, image_shapes)
+            elif quality_logits is not None:
                 boxes, scores, labels_out = _postprocess_detections_with_quality(
                     self, class_logits, box_regression, quality_logits,
                     proposals, image_shapes)
@@ -796,6 +908,8 @@ def build_model(
     box_loss_warmup_epochs: int = BOX_LOSS_WARMUP_EPOCHS,
     use_quality_score: bool = False,
     quality_loss_weight: float = 0.0,
+    use_quality_focal: bool = False,
+    quality_focal_beta: float = 2.0,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -819,6 +933,8 @@ def build_model(
         box_loss_warmup_epochs: number of warmup epochs with pure metric loss
         use_quality_score: add an auxiliary RoI localization-quality head
         quality_loss_weight: BCE weight for IoU quality target on positive RoIs
+        use_quality_focal: replace RoI softmax CE with joint class-IoU QFL
+        quality_focal_beta: QFL modulating exponent
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -922,6 +1038,10 @@ def build_model(
     base.roi_heads.batch_size_per_image = 256
     base.roi_heads.positive_fraction = 0.5
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
+    if use_quality_focal and box_loss_type != "cbl":
+        raise ValueError("The bounded QFL experiment requires CBL localization")
+    if use_quality_focal and use_quality_score:
+        raise ValueError("QFL cannot be combined with the standalone quality head")
     if box_loss_type == "cbl" and use_quality_score:
         raise ValueError("CBL and the standalone quality head cannot be combined")
     if box_loss_type == "cbl":
@@ -937,13 +1057,16 @@ def build_model(
         base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
 
     # ── Replace box regression loss with metric distance ──────────────
-    if use_metric_loss or (use_quality_score and quality_loss_weight > 0):
+    if (use_metric_loss or use_quality_focal or
+            (use_quality_score and quality_loss_weight > 0)):
         _wrap_roi_forward_for_metric_loss(
             base.roi_heads, metric_fn, reliability_thr,
             metric_loss_weight=1.0,
             box_loss_type=box_loss_type,
             box_loss_warmup_epochs=box_loss_warmup_epochs,
             quality_loss_weight=quality_loss_weight if use_quality_score else 0.0,
+            use_quality_focal=use_quality_focal,
+            quality_focal_beta=quality_focal_beta,
             cbl_um_weight=cbl_um_weight)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
               f"warmup_epochs={box_loss_warmup_epochs}")
@@ -952,6 +1075,8 @@ def build_model(
                   f"grid_beta={cbl_grid_beta:g}, um_weight={cbl_um_weight:g}")
         if use_quality_score:
             print(f"  [quality] score=head enabled, loss_weight={quality_loss_weight}")
+        if use_quality_focal:
+            print(f"  [QFL] joint class-IoU score enabled, beta={quality_focal_beta:g}")
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
     if use_metric_nms:

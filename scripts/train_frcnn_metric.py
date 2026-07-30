@@ -52,6 +52,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  box_loss_warmup_epochs: int | None = None,
                  quality_score: bool = False,
                  quality_loss_weight: float = 0.5,
+                 quality_focal: bool = False,
+                 quality_focal_beta: float = 2.0,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
@@ -59,6 +61,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     metric_name = metric if box_loss == "metric" else f"{metric}__{box_loss}"
     if quality_score:
         metric_name = f"{metric_name}__q{quality_loss_weight:g}"
+    if quality_focal:
+        metric_name = f"{metric_name}__qflb{quality_focal_beta:g}"
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
         output_name = f"{output_name}__{tag}"
@@ -72,6 +76,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     if box_loss_warmup_epochs is not None:
         print(f"  Box loss warmup epochs: {box_loss_warmup_epochs}")
     print(f"  Quality score: {quality_score} (weight={quality_loss_weight:g})")
+    print(f"  Quality focal: {quality_focal} (beta={quality_focal_beta:g})")
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
     print(f"{'='*70}\n")
@@ -115,6 +120,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         ),
         use_quality_score=quality_score,
         quality_loss_weight=quality_loss_weight,
+        use_quality_focal=quality_focal,
+        quality_focal_beta=quality_focal_beta,
         cbl_alpha=cbl_alpha,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
@@ -185,6 +192,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "reliability_thr": reliability_thr,
         "quality_score": quality_score,
         "quality_loss_weight": quality_loss_weight,
+        "quality_focal": quality_focal,
+        "quality_focal_beta": quality_focal_beta,
         "cbl_alpha": cbl_alpha,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
@@ -331,6 +340,10 @@ def main():
                         help="Enable auxiliary RoI localization-quality head")
     parser.add_argument("--quality-loss-weight", type=float, default=0.5,
                         help="Weight for quality IoU target loss")
+    parser.add_argument("--quality-focal", action="store_true",
+                        help="Train a joint class-IoU score with Quality Focal Loss")
+    parser.add_argument("--quality-focal-beta", type=float, default=2.0,
+                        help="Quality Focal Loss modulating exponent")
     parser.add_argument("--cbl-alpha", type=float, default=CBL_ALPHA,
                         help="CBL normalized delta range")
     parser.add_argument("--cbl-num-bins", type=int, default=CBL_NUM_BINS,
@@ -346,6 +359,8 @@ def main():
                  box_loss_warmup_epochs=args.box_loss_warmup_epochs,
                  quality_score=args.quality_score,
                  quality_loss_weight=args.quality_loss_weight,
+                 quality_focal=args.quality_focal,
+                 quality_focal_beta=args.quality_focal_beta,
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,

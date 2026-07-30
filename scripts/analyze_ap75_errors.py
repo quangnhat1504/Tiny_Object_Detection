@@ -386,7 +386,9 @@ def main() -> None:
                         reliability_thr=reliability_thr,
                         box_loss_type=box_loss,
                         use_quality_score=bool(config.get("quality_score", False)),
-                        quality_loss_weight=float(config.get("quality_loss_weight", 0.0) or 0.0)).to(device)
+                        quality_loss_weight=float(config.get("quality_loss_weight", 0.0) or 0.0),
+                        use_quality_focal=bool(config.get("quality_focal", False)),
+                        quality_focal_beta=float(config.get("quality_focal_beta", 2.0))).to(device)
     model.load_state_dict(ckpt["model"])
 
     preds, gts = collect_predictions(model, loader, device, args.score_thr, args.topk)
