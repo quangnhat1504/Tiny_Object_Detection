@@ -82,6 +82,8 @@ def main() -> None:
     assert all(torch.isfinite(pred["boxes"]).all() for pred in predictions)
 
     model.roi_heads._cbl_refine_steps = 2
+    model.roi_heads._cbl_refine_blend = 0.75
+    model.roi_heads._cbl_refine_score_threshold = 0.05
     with torch.no_grad(), torch.amp.autocast(
             "cuda", enabled=(DEVICE.type == "cuda")):
         refined_predictions = model(images)
@@ -95,6 +97,8 @@ def main() -> None:
         for prediction in refined_predictions
     )
     model.roi_heads._cbl_refine_steps = 0
+    model.roi_heads._cbl_refine_blend = 1.0
+    model.roi_heads._cbl_refine_score_threshold = 0.0
 
     with tempfile.TemporaryDirectory() as temp_dir:
         checkpoint_path = Path(temp_dir) / "cbl_smoke.pt"

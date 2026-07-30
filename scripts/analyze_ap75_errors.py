@@ -47,6 +47,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--score-thr", type=float, default=0.05)
     parser.add_argument("--topk", type=int, default=100)
+    parser.add_argument("--cbl-refine-steps", type=int, default=0)
+    parser.add_argument("--cbl-refine-blend", type=float, default=1.0)
+    parser.add_argument("--cbl-refine-score-threshold", type=float, default=0.0)
     parser.add_argument("--edge-margin", type=float, default=4.0,
                         help="Pixels from tile boundary counted as edge-touching")
     parser.add_argument("--out-dir", type=Path, default=None)
@@ -395,7 +398,11 @@ def main() -> None:
                         double_head_reg_roi_scale=float(
                             config.get("double_head_reg_roi_scale", 1.3)),
                         double_head_num_convs=int(
-                            config.get("double_head_num_convs", 4))).to(device)
+                            config.get("double_head_num_convs", 4)),
+                        cbl_refine_steps=args.cbl_refine_steps,
+                        cbl_refine_blend=args.cbl_refine_blend,
+                        cbl_refine_score_threshold=(
+                            args.cbl_refine_score_threshold)).to(device)
     model.load_state_dict(ckpt["model"])
 
     preds, gts = collect_predictions(model, loader, device, args.score_thr, args.topk)
@@ -413,6 +420,9 @@ def main() -> None:
         "box_loss": box_loss,
         "score_thr": args.score_thr,
         "topk": args.topk,
+        "cbl_refine_steps": args.cbl_refine_steps,
+        "cbl_refine_blend": args.cbl_refine_blend,
+        "cbl_refine_score_threshold": args.cbl_refine_score_threshold,
         "coco": coco,
         "coco_class_agnostic": coco_class_agnostic,
         "dataset": dataset_summary,
