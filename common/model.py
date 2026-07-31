@@ -304,42 +304,100 @@ def _hierarchical_assignment(sim, xn, yn, wn, hn, xg, yg, wg, hg,
 # Metric RPN — label assignment via metric similarity (hierarchical top-k)
 # =============================================================================
 class MetricRPN(RegionProposalNetwork):
-    def __init__(self, *args, metric_fn=None, reliability_thr=16.0, **kwargs):
+    def __init__(
+        self,
+        *args,
+        metric_fn=None,
+        reliability_thr=16.0,
+        snip_ignore_iou_thresh: Optional[float] = None,
+        snip_collect_stats: bool = False,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.metric_fn = metric_fn
         self.reliability_thr = reliability_thr
+        self.snip_ignore_iou_thresh = snip_ignore_iou_thresh
+        self.snip_collect_stats = snip_collect_stats
+        self._snip_last_assignment_stats = []
 
     def assign_targets_to_anchors(self, anchors, targets):
         labels_list, matched_boxes_list = [], []
+        self._snip_last_assignment_stats = []
         for anchors_img, targets_img in zip(anchors, targets):
             gt_boxes = targets_img["boxes"]
             dev = anchors_img.device
-            if gt_boxes.numel() == 0:
-                labels_list.append(
-                    torch.zeros(len(anchors_img), dtype=torch.float32, device=dev))
-                matched_boxes_list.append(torch.zeros_like(anchors_img))
-                continue
-
-            xn = (anchors_img[:, 0] + anchors_img[:, 2]) / 2.0
-            yn = (anchors_img[:, 1] + anchors_img[:, 3]) / 2.0
-            wn = (anchors_img[:, 2] - anchors_img[:, 0]).clamp(min=1.0)
-            hn = (anchors_img[:, 3] - anchors_img[:, 1]).clamp(min=1.0)
-            xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
-            yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
-            wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
-            hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
-
-            sim = self.metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
-                                 reliability_thr=self.reliability_thr)
-            mgt = _hierarchical_assignment(
-                sim, xn, yn, wn, hn, xg, yg, wg, hg,
-                metric_fn=self.metric_fn,
-                reliability_thr=self.reliability_thr)
+            snip_valid = targets_img.get("_snip_valid")
+            if snip_valid is None:
+                snip_valid = torch.ones(
+                    len(gt_boxes), dtype=torch.bool, device=gt_boxes.device)
+            else:
+                snip_valid = snip_valid.to(
+                    device=gt_boxes.device, dtype=torch.bool)
+                if snip_valid.shape != (len(gt_boxes),):
+                    raise ValueError(
+                        "SNIP validity mask must match the number of GT boxes")
+            valid_gt_boxes = gt_boxes[snip_valid]
+            invalid_gt_boxes = gt_boxes[~snip_valid]
 
             lbl = torch.zeros(len(anchors_img), dtype=torch.float32, device=dev)
-            lbl[mgt >= 0] = 1.0
+            matched_boxes = torch.zeros_like(anchors_img)
+            if valid_gt_boxes.numel() > 0:
+                xn = (anchors_img[:, 0] + anchors_img[:, 2]) / 2.0
+                yn = (anchors_img[:, 1] + anchors_img[:, 3]) / 2.0
+                wn = (anchors_img[:, 2] - anchors_img[:, 0]).clamp(min=1.0)
+                hn = (anchors_img[:, 3] - anchors_img[:, 1]).clamp(min=1.0)
+                xg = (
+                    valid_gt_boxes[:, 0] + valid_gt_boxes[:, 2]
+                ) / 2.0
+                yg = (
+                    valid_gt_boxes[:, 1] + valid_gt_boxes[:, 3]
+                ) / 2.0
+                wg = (
+                    valid_gt_boxes[:, 2] - valid_gt_boxes[:, 0]
+                ).clamp(min=1.0)
+                hg = (
+                    valid_gt_boxes[:, 3] - valid_gt_boxes[:, 1]
+                ).clamp(min=1.0)
+
+                sim = self.metric_fn(
+                    xn, yn, wn, hn, xg, yg, wg, hg,
+                    reliability_thr=self.reliability_thr)
+                mgt = _hierarchical_assignment(
+                    sim, xn, yn, wn, hn, xg, yg, wg, hg,
+                    metric_fn=self.metric_fn,
+                    reliability_thr=self.reliability_thr)
+                positive = mgt >= 0
+                lbl[positive] = 1.0
+                matched_boxes = valid_gt_boxes[mgt.clamp(min=0)]
+
+            ignored = torch.zeros(
+                len(anchors_img), dtype=torch.bool, device=dev)
+            if (
+                self.snip_ignore_iou_thresh is not None
+                and invalid_gt_boxes.numel() > 0
+            ):
+                invalid_iou = box_iou(invalid_gt_boxes, anchors_img)
+                invalid_overlap = invalid_iou.max(dim=0).values
+                if valid_gt_boxes.numel() > 0:
+                    valid_overlap = box_iou(
+                        valid_gt_boxes, anchors_img).max(dim=0).values
+                else:
+                    valid_overlap = torch.zeros_like(invalid_overlap)
+                ignored = (
+                    (invalid_overlap >= self.snip_ignore_iou_thresh)
+                    & (invalid_overlap > valid_overlap)
+                )
+                lbl[ignored] = -1.0
+
             labels_list.append(lbl)
-            matched_boxes_list.append(gt_boxes[mgt.clamp(min=0)])
+            matched_boxes_list.append(matched_boxes)
+            if self.snip_collect_stats:
+                self._snip_last_assignment_stats.append({
+                    "valid_gt": int(snip_valid.sum().item()),
+                    "invalid_gt": int((~snip_valid).sum().item()),
+                    "positive_anchors": int((lbl == 1).sum().item()),
+                    "ignored_anchors": int(ignored.sum().item()),
+                })
         return labels_list, matched_boxes_list
 
 
@@ -1464,6 +1522,125 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
     roi_heads.forward = patched_forward.__get__(roi_heads, type(roi_heads))
 
 
+def _wrap_transform_for_snip(
+    transform,
+    min_sizes: tuple[int, ...],
+    valid_ranges: tuple[tuple[float, float], ...],
+    collect_stats: bool = False,
+):
+    """Attach scale-specific validity metadata after torchvision resizing."""
+    original_forward = type(transform).forward
+    configured_min_sizes = tuple(int(size) for size in min_sizes)
+    configured_ranges = tuple(
+        (float(lower), float(upper)) for lower, upper in valid_ranges)
+    transform._snip_last_transform_stats = []
+
+    def patched_forward(self, images, targets=None):
+        original_sizes = [tuple(image.shape[-2:]) for image in images]
+        image_list, resized_targets = original_forward(
+            self, images, targets)
+        self._snip_last_transform_stats = []
+        if not self.training or resized_targets is None:
+            return image_list, resized_targets
+
+        for original_size, resized_size, target in zip(
+            original_sizes, image_list.image_sizes, resized_targets
+        ):
+            original_short = float(min(original_size))
+            original_long = float(max(original_size))
+            actual_scale = min(
+                resized_size[0] / original_size[0],
+                resized_size[1] / original_size[1],
+            )
+            expected_scales = [
+                min(
+                    min_size / original_short,
+                    float(self.max_size) / original_long,
+                )
+                for min_size in configured_min_sizes
+            ]
+            scale_index = min(
+                range(len(expected_scales)),
+                key=lambda index: abs(expected_scales[index] - actual_scale),
+            )
+            lower, upper = configured_ranges[scale_index]
+            boxes = target["boxes"]
+            widths = (boxes[:, 2] - boxes[:, 0]).clamp(min=0)
+            heights = (boxes[:, 3] - boxes[:, 1]).clamp(min=0)
+            sqrt_areas = (widths * heights).sqrt()
+            valid = (sqrt_areas >= lower) & (sqrt_areas <= upper)
+            target["_snip_valid"] = valid
+            target["_snip_valid_range"] = boxes.new_tensor([lower, upper])
+            target["_snip_scale_index"] = torch.tensor(
+                scale_index, dtype=torch.int64, device=boxes.device)
+            if collect_stats:
+                self._snip_last_transform_stats.append({
+                    "min_size": configured_min_sizes[scale_index],
+                    "valid_gt": int(valid.sum().item()),
+                    "invalid_gt": int((~valid).sum().item()),
+                })
+        return image_list, resized_targets
+
+    transform.forward = patched_forward.__get__(transform, type(transform))
+
+
+def _wrap_roi_assignment_for_snip(roi_heads, collect_stats: bool = False):
+    """Ignore RoI proposals outside the active scale-normalized size range."""
+    original_select = type(roi_heads).select_training_samples
+    original_assign = type(roi_heads).assign_targets_to_proposals
+    roi_heads._snip_current_ranges = None
+    roi_heads._snip_last_assignment_stats = []
+
+    def patched_select(self, proposals, targets):
+        ranges = [target.get("_snip_valid_range") for target in targets]
+        if any(valid_range is None for valid_range in ranges):
+            raise ValueError(
+                "SNIP RoI assignment requires transform validity ranges")
+        self._snip_current_ranges = ranges
+        try:
+            return original_select(self, proposals, targets)
+        finally:
+            self._snip_current_ranges = None
+
+    def patched_assign(self, proposals, gt_boxes, gt_labels):
+        matched_idxs, labels = original_assign(
+            self, proposals, gt_boxes, gt_labels)
+        ranges = self._snip_current_ranges
+        if ranges is None or len(ranges) != len(proposals):
+            raise ValueError("SNIP RoI ranges are unavailable or misaligned")
+
+        self._snip_last_assignment_stats = []
+        for proposals_img, labels_img, valid_range in zip(
+            proposals, labels, ranges
+        ):
+            lower, upper = valid_range.to(
+                device=proposals_img.device,
+                dtype=proposals_img.dtype,
+            )
+            widths = (
+                proposals_img[:, 2] - proposals_img[:, 0]
+            ).clamp(min=0)
+            heights = (
+                proposals_img[:, 3] - proposals_img[:, 1]
+            ).clamp(min=0)
+            sqrt_areas = (widths * heights).sqrt()
+            outside = (sqrt_areas < lower) | (sqrt_areas > upper)
+            labels_img[outside] = -1
+            if collect_stats:
+                self._snip_last_assignment_stats.append({
+                    "proposals": len(proposals_img),
+                    "ignored_proposals": int(outside.sum().item()),
+                    "positive_proposals": int((labels_img > 0).sum().item()),
+                    "negative_proposals": int((labels_img == 0).sum().item()),
+                })
+        return matched_idxs, labels
+
+    roi_heads.select_training_samples = patched_select.__get__(
+        roi_heads, type(roi_heads))
+    roi_heads.assign_targets_to_proposals = patched_assign.__get__(
+        roi_heads, type(roi_heads))
+
+
 # =============================================================================
 # Metric-based NMS (hard suppression)
 # =============================================================================
@@ -1598,6 +1775,11 @@ def build_model(
     cbl_um_weight: float = CBL_UM_WEIGHT,
     transform_min_sizes: Optional[tuple[int, ...]] = None,
     transform_max_size: Optional[int] = None,
+    snip_valid_ranges: Optional[
+        tuple[tuple[float, float], ...]
+    ] = None,
+    snip_rpn_ignore_iou_thresh: float = RPN_BG_IOU,
+    snip_collect_stats: bool = False,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
@@ -1644,6 +1826,11 @@ def build_model(
         transform_min_sizes: resize choices used by GeneralizedRCNNTransform
             in training; evaluation uses the final entry unless overridden
         transform_max_size: maximum transformed image side
+        snip_valid_ranges: transformed sqrt-area ranges corresponding to each
+            training minimum size; enables scale-normalized supervision
+        snip_rpn_ignore_iou_thresh: IoU at which anchors overlapping invalid
+            scale-specific GT are ignored
+        snip_collect_stats: synchronize and retain assignment counts for audits
         channels_last: if True, convert backbone to channels_last memory format
     """
     if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
@@ -1687,6 +1874,25 @@ def build_model(
     use_metric_nms  = placement in ("la_loss_nms",) and metric_fn is not None
     use_soft_nms    = placement in ("la_loss_soft_nms",) and metric_fn is not None
     use_saalw_rpn   = placement == "saalw_assigner"
+    snip_enabled = snip_valid_ranges is not None
+    effective_min_sizes = (
+        (MIN_SIZE,)
+        if transform_min_sizes is None
+        else tuple(int(size) for size in transform_min_sizes)
+    )
+    if snip_enabled:
+        if not use_metric_rpn:
+            raise ValueError(
+                "SNIP supervision currently requires metric RPN placement")
+        if len(snip_valid_ranges) != len(effective_min_sizes):
+            raise ValueError(
+                "SNIP ranges must correspond one-to-one with training sizes")
+        for lower, upper in snip_valid_ranges:
+            if lower < 0 or upper <= lower:
+                raise ValueError(
+                    "Each SNIP range must satisfy 0 <= lower < upper")
+        if not 0 <= snip_rpn_ignore_iou_thresh <= 1:
+            raise ValueError("SNIP RPN ignore IoU must be in [0, 1]")
 
     if use_saalw_rpn and metric_fn is not None:
         from .assigner import SAALWAssigner
@@ -1728,6 +1934,10 @@ def build_model(
             nms_thresh=RPN_NMS_THRESH,
             metric_fn=metric_fn,
             reliability_thr=reliability_thr,
+            snip_ignore_iou_thresh=(
+                snip_rpn_ignore_iou_thresh if snip_enabled else None
+            ),
+            snip_collect_stats=snip_collect_stats,
         )
     else:
         base.rpn = RegionProposalNetwork(
@@ -1747,6 +1957,24 @@ def build_model(
     base.roi_heads.bg_iou_thresh = ROI_BG_IOU_THRESH
     base.roi_heads.batch_size_per_image = 256
     base.roi_heads.positive_fraction = 0.5
+    if snip_enabled:
+        _wrap_transform_for_snip(
+            base.transform,
+            effective_min_sizes,
+            snip_valid_ranges,
+            collect_stats=snip_collect_stats,
+        )
+        _wrap_roi_assignment_for_snip(
+            base.roi_heads, collect_stats=snip_collect_stats)
+        print(
+            "  [SNIP] scale-normalized supervision: "
+            + ", ".join(
+                f"{size}=[{lower:g},{upper:g}]"
+                for size, (lower, upper) in zip(
+                    effective_min_sizes, snip_valid_ranges)
+            )
+            + f"; RPN invalid-IoU>={snip_rpn_ignore_iou_thresh:g}"
+        )
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
     if use_quality_focal and box_loss_type != "cbl":
         raise ValueError("The bounded QFL experiment requires CBL localization")
