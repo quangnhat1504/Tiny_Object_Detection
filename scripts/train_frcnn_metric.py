@@ -62,6 +62,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  cbl_refine_train_weight: float = 0.0,
                  cbl_refine_steps: int = 0,
                  cbl_refine_blend: float = 1.0,
+                 cbl_refine_last_step_blend: float | None = None,
                  cbl_refine_score_threshold: float = 0.0,
                  cbl_refine_extra_min_size_ratio: float = 0.0,
                  cbl_alpha: float = CBL_ALPHA,
@@ -111,6 +112,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         f"  CBL iterative train: weight={cbl_refine_train_weight:g}; "
         f"inference steps={cbl_refine_steps}, "
         f"blend={cbl_refine_blend:g}, "
+        f"last step blend={cbl_refine_last_step_blend}, "
         f"score threshold={cbl_refine_score_threshold:g}, "
         f"extra min size ratio={cbl_refine_extra_min_size_ratio:g}"
     )
@@ -167,6 +169,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         cbl_refine_train_weight=cbl_refine_train_weight,
         cbl_refine_steps=cbl_refine_steps,
         cbl_refine_blend=cbl_refine_blend,
+        cbl_refine_last_step_blend=cbl_refine_last_step_blend,
         cbl_refine_score_threshold=cbl_refine_score_threshold,
         cbl_refine_extra_min_size_ratio=cbl_refine_extra_min_size_ratio,
         cbl_alpha=cbl_alpha,
@@ -249,6 +252,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "cbl_refine_train_weight": cbl_refine_train_weight,
         "cbl_refine_steps": cbl_refine_steps,
         "cbl_refine_blend": cbl_refine_blend,
+        "cbl_refine_last_step_blend": cbl_refine_last_step_blend,
         "cbl_refine_score_threshold": cbl_refine_score_threshold,
         "cbl_refine_extra_min_size_ratio": (
             cbl_refine_extra_min_size_ratio
@@ -419,6 +423,12 @@ def main():
                         help="Inference-time repeated CBL regression passes")
     parser.add_argument("--cbl-refine-blend", type=float, default=1.0,
                         help="Fraction of each inference refinement update")
+    parser.add_argument(
+        "--cbl-refine-last-step-blend",
+        type=float,
+        default=None,
+        help="Final inference update fraction; defaults to the shared blend",
+    )
     parser.add_argument("--cbl-refine-score-threshold", type=float, default=0.0,
                         help="Preserve detections below this score")
     parser.add_argument(
@@ -455,6 +465,8 @@ def main():
                  cbl_refine_train_weight=args.cbl_refine_train_weight,
                  cbl_refine_steps=args.cbl_refine_steps,
                  cbl_refine_blend=args.cbl_refine_blend,
+                 cbl_refine_last_step_blend=(
+                     args.cbl_refine_last_step_blend),
                  cbl_refine_score_threshold=(
                      args.cbl_refine_score_threshold),
                  cbl_refine_extra_min_size_ratio=(

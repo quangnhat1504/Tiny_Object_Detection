@@ -83,6 +83,7 @@ def main() -> None:
 
     model.roi_heads._cbl_refine_steps = 2
     model.roi_heads._cbl_refine_blend = 0.75
+    model.roi_heads._cbl_refine_last_step_blend = 0.5
     model.roi_heads._cbl_refine_score_threshold = 0.05
     with torch.no_grad(), torch.amp.autocast(
             "cuda", enabled=(DEVICE.type == "cuda")):
@@ -98,6 +99,7 @@ def main() -> None:
     )
     model.roi_heads._cbl_refine_steps = 0
     model.roi_heads._cbl_refine_blend = 1.0
+    model.roi_heads._cbl_refine_last_step_blend = 1.0
     model.roi_heads._cbl_refine_score_threshold = 0.0
 
     with tempfile.TemporaryDirectory() as temp_dir:

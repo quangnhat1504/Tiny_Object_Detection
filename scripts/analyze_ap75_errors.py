@@ -49,6 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--topk", type=int, default=100)
     parser.add_argument("--cbl-refine-steps", type=int, default=None)
     parser.add_argument("--cbl-refine-blend", type=float, default=None)
+    parser.add_argument("--cbl-refine-last-step-blend", type=float, default=None)
     parser.add_argument("--cbl-refine-score-threshold", type=float, default=None)
     parser.add_argument(
         "--cbl-refine-extra-min-size-ratio", type=float, default=None
@@ -386,6 +387,14 @@ def main() -> None:
         float(config.get("cbl_refine_blend", 1.0))
         if args.cbl_refine_blend is None else args.cbl_refine_blend
     )
+    refine_last_step_blend = (
+        config.get("cbl_refine_last_step_blend")
+        if args.cbl_refine_last_step_blend is None
+        else args.cbl_refine_last_step_blend
+    )
+    if refine_last_step_blend is None:
+        refine_last_step_blend = refine_blend
+    refine_last_step_blend = float(refine_last_step_blend)
     refine_score_threshold = (
         float(config.get("cbl_refine_score_threshold", 0.0))
         if args.cbl_refine_score_threshold is None
@@ -422,6 +431,7 @@ def main() -> None:
                             config.get("double_head_num_convs", 4)),
                         cbl_refine_steps=refine_steps,
                         cbl_refine_blend=refine_blend,
+                        cbl_refine_last_step_blend=refine_last_step_blend,
                         cbl_refine_score_threshold=(
                             refine_score_threshold),
                         cbl_refine_extra_min_size_ratio=(
@@ -447,6 +457,7 @@ def main() -> None:
         "topk": args.topk,
         "cbl_refine_steps": refine_steps,
         "cbl_refine_blend": refine_blend,
+        "cbl_refine_last_step_blend": refine_last_step_blend,
         "cbl_refine_score_threshold": refine_score_threshold,
         "cbl_refine_extra_min_size_ratio": refine_extra_min_size_ratio,
         "coco": coco,

@@ -208,6 +208,9 @@ def _build_model_from_checkpoint(
         double_head_num_convs=int(config.get("double_head_num_convs", 4)),
         cbl_refine_steps=int(config.get("cbl_refine_steps", 0)),
         cbl_refine_blend=float(config.get("cbl_refine_blend", 1.0)),
+        cbl_refine_last_step_blend=config.get(
+            "cbl_refine_last_step_blend"
+        ),
         cbl_refine_score_threshold=float(
             config.get("cbl_refine_score_threshold", 0.0)
         ),
@@ -359,6 +362,7 @@ def main() -> None:
         image_shapes,
         steps,
         blend,
+        last_step_blend,
         score_threshold,
         extra_min_size_ratio,
     ):
@@ -371,6 +375,7 @@ def main() -> None:
             image_shapes,
             steps,
             blend,
+            last_step_blend,
             score_threshold,
             extra_min_size_ratio,
         )
