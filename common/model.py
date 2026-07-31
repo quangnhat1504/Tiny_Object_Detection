@@ -1596,6 +1596,8 @@ def build_model(
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
     cbl_um_weight: float = CBL_UM_WEIGHT,
+    transform_min_sizes: Optional[tuple[int, ...]] = None,
+    transform_max_size: Optional[int] = None,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
@@ -1639,6 +1641,9 @@ def build_model(
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
         cbl_um_weight: entropy-matching uncertainty loss weight
+        transform_min_sizes: resize choices used by GeneralizedRCNNTransform
+            in training; evaluation uses the final entry unless overridden
+        transform_max_size: maximum transformed image side
         channels_last: if True, convert backbone to channels_last memory format
     """
     if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
@@ -1646,7 +1651,12 @@ def build_model(
 
     base = fasterrcnn_resnet50_fpn(
         weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
-        min_size=MIN_SIZE, max_size=MAX_SIZE,
+        min_size=(
+            MIN_SIZE if transform_min_sizes is None else transform_min_sizes
+        ),
+        max_size=(
+            MAX_SIZE if transform_max_size is None else transform_max_size
+        ),
         box_detections_per_img=BOX_DETECTIONS_PER_IMG,
         box_nms_thresh=NMS_THRESH_TEST,
         box_score_thresh=SCORE_THRESH_TRAIN,
