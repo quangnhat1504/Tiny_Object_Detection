@@ -22,7 +22,12 @@ from common.eval_utils import (
 )
 from scripts.analyze_ap75_errors import analyze_matches
 from scripts.analyze_refinement_consistency import _build_model_from_checkpoint
-from scripts.eval_cbl_flip_tta import _cpu_prediction, _pair_fuse
+from scripts.eval_cbl_flip_tta import (
+    _cpu_prediction,
+    _finalize,
+    _greedy_cross_view_pairs,
+    _pair_fuse,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,6 +54,23 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--detector-score-threshold", type=float, default=0.001)
     parser.add_argument("--pair-threshold", type=float, default=0.50)
+    parser.add_argument(
+        "--pair-size-cutoff",
+        type=float,
+        default=None,
+        help=(
+            "Use fixed scale-coordinate alpha below/above this predicted "
+            "base-box sqrt-area; default keeps score-weighted coordinates"
+        ),
+    )
+    parser.add_argument("--pair-small-scale-alpha", type=float, default=0.75)
+    parser.add_argument("--pair-large-scale-alpha", type=float, default=0.40)
+    parser.add_argument(
+        "--include-unmatched-scale",
+        action="store_true",
+        help="Keep unpaired scale-view detections after score calibration",
+    )
+    parser.add_argument("--unmatched-scale-weight", type=float, default=0.75)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
         "--save-predictions",
@@ -62,6 +84,71 @@ def parse_args() -> argparse.Namespace:
 def _set_transform_size(model: torch.nn.Module, min_size: int, max_size: int) -> None:
     model.transform.min_size = (min_size,)
     model.transform.max_size = max_size
+
+
+def _size_aware_pair_fuse(
+    base: dict[str, torch.Tensor],
+    scale: dict[str, torch.Tensor],
+    *,
+    pair_threshold: float,
+    size_cutoff: float,
+    small_scale_alpha: float,
+    large_scale_alpha: float,
+    include_unmatched_scale: bool,
+    unmatched_scale_weight: float,
+    detections_per_image: int,
+    pairing: tuple[dict[int, int], set[int]] | None = None,
+) -> dict[str, torch.Tensor]:
+    matches, used_scale = (
+        _greedy_cross_view_pairs(base, scale, pair_threshold)
+        if pairing is None
+        else pairing
+    )
+    boxes, scores, labels = [], [], []
+    for base_index in range(len(base["boxes"])):
+        box = base["boxes"][base_index]
+        score = base["scores"][base_index]
+        scale_index = matches.get(base_index)
+        if scale_index is not None:
+            scale_box = scale["boxes"][scale_index]
+            scale_score = scale["scores"][scale_index]
+            width = (box[2] - box[0]).clamp(min=0.0)
+            height = (box[3] - box[1]).clamp(min=0.0)
+            alpha = (
+                small_scale_alpha
+                if float((width * height).sqrt()) < size_cutoff
+                else large_scale_alpha
+            )
+            alpha = score.new_tensor(float(alpha))
+            box = (1.0 - alpha) * box + alpha * scale_box
+            score = (score + scale_score) / 2
+        boxes.append(box)
+        scores.append(score)
+        labels.append(base["labels"][base_index])
+
+    if include_unmatched_scale:
+        for scale_index in range(len(scale["boxes"])):
+            if scale_index in used_scale:
+                continue
+            boxes.append(scale["boxes"][scale_index])
+            scores.append(
+                scale["scores"][scale_index] * unmatched_scale_weight
+            )
+            labels.append(scale["labels"][scale_index])
+
+    if not boxes:
+        return {
+            "boxes": torch.zeros((0, 4)),
+            "scores": torch.zeros((0,)),
+            "labels": torch.zeros((0,), dtype=torch.int64),
+        }
+    return _finalize(
+        torch.stack(boxes),
+        torch.stack(scores),
+        torch.stack(labels),
+        nms_threshold=0.50,
+        detections_per_image=detections_per_image,
+    )
 
 
 def _audit_predictions(
@@ -98,6 +185,16 @@ def _evaluate_details(
 
 def main() -> None:
     args = parse_args()
+    if args.pair_size_cutoff is not None and args.pair_size_cutoff <= 0:
+        raise ValueError("--pair-size-cutoff must be positive")
+    for name, value in (
+        ("--pair-small-scale-alpha", args.pair_small_scale_alpha),
+        ("--pair-large-scale-alpha", args.pair_large_scale_alpha),
+    ):
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be in [0, 1]")
+    if args.unmatched_scale_weight < 0:
+        raise ValueError("--unmatched-scale-weight must be non-negative")
     seed_all(SEED)
     device = torch.device(
         args.device if torch.cuda.is_available() else "cpu"
@@ -171,18 +268,30 @@ def main() -> None:
             scale_prediction = _cpu_prediction(scale)
             base_predictions.append(base_prediction)
             scale_predictions.append(scale_prediction)
-            fused_predictions.append(
-                _pair_fuse(
+            if args.pair_size_cutoff is None:
+                fused_prediction = _pair_fuse(
                     base_prediction,
                     scale_prediction,
                     pair_threshold=args.pair_threshold,
                     coordinate_mode="score_weighted",
                     score_mode="mean",
-                    include_unmatched_flip=False,
-                    unmatched_flip_weight=1.0,
+                    include_unmatched_flip=args.include_unmatched_scale,
+                    unmatched_flip_weight=args.unmatched_scale_weight,
                     detections_per_image=detections_per_image,
                 )
-            )
+            else:
+                fused_prediction = _size_aware_pair_fuse(
+                    base_prediction,
+                    scale_prediction,
+                    pair_threshold=args.pair_threshold,
+                    size_cutoff=args.pair_size_cutoff,
+                    small_scale_alpha=args.pair_small_scale_alpha,
+                    large_scale_alpha=args.pair_large_scale_alpha,
+                    include_unmatched_scale=args.include_unmatched_scale,
+                    unmatched_scale_weight=args.unmatched_scale_weight,
+                    detections_per_image=detections_per_image,
+                )
+            fused_predictions.append(fused_prediction)
             targets.append(
                 {
                     key: value.cpu() if isinstance(value, torch.Tensor) else value
@@ -228,6 +337,11 @@ def main() -> None:
             "tta_min_size": args.tta_min_size,
             "tta_max_size": args.tta_max_size,
             "pair_threshold": args.pair_threshold,
+            "pair_size_cutoff": args.pair_size_cutoff,
+            "pair_small_scale_alpha": args.pair_small_scale_alpha,
+            "pair_large_scale_alpha": args.pair_large_scale_alpha,
+            "include_unmatched_scale": args.include_unmatched_scale,
+            "unmatched_scale_weight": args.unmatched_scale_weight,
             "cbl_refine_steps": args.cbl_refine_steps,
             "cbl_refine_blend": args.cbl_refine_blend,
             "cbl_refine_last_step_blend": args.cbl_refine_last_step_blend,
