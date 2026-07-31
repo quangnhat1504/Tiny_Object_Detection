@@ -58,6 +58,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional torch cache for original, flip, selected, and targets",
     )
+    parser.add_argument(
+        "--tiny-keep-box-size-cutoff",
+        type=float,
+        default=None,
+        help=(
+            "For matched original/flip pairs below this sqrt-area pixel size, "
+            "keep the original box coordinates but still average scores."
+        ),
+    )
     parser.add_argument("--out", type=Path, required=True)
     return parser.parse_args()
 
@@ -170,6 +179,7 @@ def _pair_fuse(
     include_unmatched_flip: bool,
     unmatched_flip_weight: float,
     detections_per_image: int,
+    tiny_keep_box_size_cutoff: float | None = None,
     pairing: tuple[dict[int, int], set[int]] | None = None,
 ) -> dict[str, torch.Tensor]:
     matches, used_flipped = (
@@ -185,7 +195,16 @@ def _pair_fuse(
         if flipped_index is not None:
             flipped_box = flipped["boxes"][flipped_index]
             flipped_score = flipped["scores"][flipped_index]
-            if coordinate_mode == "score_weighted":
+            box_width = (box[2] - box[0]).clamp(min=0.0)
+            box_height = (box[3] - box[1]).clamp(min=0.0)
+            is_tiny_kept = (
+                tiny_keep_box_size_cutoff is not None
+                and float((box_width * box_height).sqrt())
+                < tiny_keep_box_size_cutoff
+            )
+            if is_tiny_kept:
+                pass
+            elif coordinate_mode == "score_weighted":
                 weights = torch.stack((score, flipped_score)).clamp(min=1e-8)
                 box = (
                     weights[0] * box + weights[1] * flipped_box
@@ -234,6 +253,7 @@ def _merge_predictions(
     flipped: list[dict[str, torch.Tensor]],
     detections_per_image: int,
     selected_only: bool,
+    tiny_keep_box_size_cutoff: float | None,
 ) -> dict[str, list[dict[str, torch.Tensor]]]:
     merged = {
         "original": originals,
@@ -242,14 +262,15 @@ def _merge_predictions(
         "union_nms060": [],
     }
     if selected_only:
+        selected_name = _selected_prediction_name(tiny_keep_box_size_cutoff)
         merged = {
             "original": originals,
             "flip": flipped,
-            "pair_score_weighted_mean_iou50": [],
+            selected_name: [],
         }
         for original, flip in zip(originals, flipped):
             pairing = _greedy_cross_view_pairs(original, flip, 0.50)
-            merged["pair_score_weighted_mean_iou50"].append(
+            merged[selected_name].append(
                 _pair_fuse(
                     original,
                     flip,
@@ -259,6 +280,7 @@ def _merge_predictions(
                     include_unmatched_flip=False,
                     unmatched_flip_weight=1.0,
                     detections_per_image=detections_per_image,
+                    tiny_keep_box_size_cutoff=tiny_keep_box_size_cutoff,
                     pairing=pairing,
                 )
             )
@@ -272,6 +294,9 @@ def _merge_predictions(
                     f"iou{int(threshold * 100):02d}"
                 )
                 merged[name] = []
+    selected_tiny_name = _selected_prediction_name(tiny_keep_box_size_cutoff)
+    if tiny_keep_box_size_cutoff is not None:
+        merged[selected_tiny_name] = []
     merged["pair_score_weighted_max_iou060_plus_flip090"] = []
 
     for original, flip in zip(originals, flipped):
@@ -304,9 +329,25 @@ def _merge_predictions(
                             include_unmatched_flip=False,
                             unmatched_flip_weight=1.0,
                             detections_per_image=detections_per_image,
+                            tiny_keep_box_size_cutoff=None,
                             pairing=pairings[threshold],
                         )
                     )
+        if tiny_keep_box_size_cutoff is not None:
+            merged[selected_tiny_name].append(
+                _pair_fuse(
+                    original,
+                    flip,
+                    pair_threshold=0.50,
+                    coordinate_mode="score_weighted",
+                    score_mode="mean",
+                    include_unmatched_flip=False,
+                    unmatched_flip_weight=1.0,
+                    detections_per_image=detections_per_image,
+                    tiny_keep_box_size_cutoff=tiny_keep_box_size_cutoff,
+                    pairing=pairings[0.50],
+                )
+            )
         merged["pair_score_weighted_max_iou060_plus_flip090"].append(
             _pair_fuse(
                 original,
@@ -317,10 +358,24 @@ def _merge_predictions(
                 include_unmatched_flip=True,
                 unmatched_flip_weight=0.90,
                 detections_per_image=detections_per_image,
+                tiny_keep_box_size_cutoff=None,
                 pairing=pairings[0.60],
             )
         )
     return merged
+
+
+def _selected_prediction_name(
+    tiny_keep_box_size_cutoff: float | None,
+) -> str:
+    if tiny_keep_box_size_cutoff is None:
+        return "pair_score_weighted_mean_iou50"
+    cutoff = (
+        str(int(tiny_keep_box_size_cutoff))
+        if float(tiny_keep_box_size_cutoff).is_integer()
+        else str(tiny_keep_box_size_cutoff).replace(".", "p")
+    )
+    return f"tiny_keep_box_lt{cutoff}_pair_score_weighted_mean_iou50"
 
 
 def _audit_predictions(
@@ -438,6 +493,7 @@ def main() -> None:
         flipped_predictions,
         int(model.roi_heads.detections_per_img),
         args.selected_only,
+        args.tiny_keep_box_size_cutoff,
     )
     metrics = {}
     for name, predictions in all_predictions.items():
@@ -480,11 +536,12 @@ def main() -> None:
                 args.cbl_refine_extra_min_size_ratio
             ),
             "detector_score_threshold": args.detector_score_threshold,
+            "tiny_keep_box_size_cutoff": args.tiny_keep_box_size_cutoff,
         },
         "metrics": metrics,
         "leader_details": leader_details,
     }
-    selected_name = "pair_score_weighted_mean_iou50"
+    selected_name = _selected_prediction_name(args.tiny_keep_box_size_cutoff)
     if args.max_tiles is None:
         summary["ap75_audit"] = {
             "original": _audit_predictions(
