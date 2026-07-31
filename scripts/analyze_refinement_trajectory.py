@@ -91,6 +91,86 @@ def _self_iou_rows(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
     return intersection / union.clamp(min=1e-12)
 
 
+def _box_parameters(
+    boxes: torch.Tensor,
+    image_shape: tuple[int, int],
+) -> torch.Tensor:
+    """Represent boxes as normalized center coordinates and log side lengths."""
+    image_h, image_w = image_shape
+    widths_heights = (boxes[:, 2:] - boxes[:, :2]).clamp(min=1e-6)
+    centers = (boxes[:, :2] + boxes[:, 2:]) / 2
+    scale = boxes.new_tensor((image_w, image_h))
+    return torch.cat(
+        (
+            centers / scale,
+            torch.log(widths_heights / scale),
+        ),
+        dim=1,
+    )
+
+
+def _blend_center_size(
+    tile: dict,
+    center_blend: float,
+    size_blend: float,
+    log_size: bool = False,
+) -> torch.Tensor:
+    """Blend the final B2->B3 center and size updates independently."""
+    before = tile["trajectory"][2]
+    after = tile["trajectory"][3]
+    before_size = (before[:, 2:] - before[:, :2]).clamp(min=1e-6)
+    after_size = (after[:, 2:] - after[:, :2]).clamp(min=1e-6)
+    before_center = (before[:, :2] + before[:, 2:]) / 2
+    after_center = (after[:, :2] + after[:, 2:]) / 2
+    center = before_center + center_blend * (after_center - before_center)
+    if log_size:
+        size = torch.exp(
+            torch.log(before_size)
+            + size_blend * (torch.log(after_size) - torch.log(before_size))
+        )
+    else:
+        size = before_size + size_blend * (after_size - before_size)
+    boxes = torch.cat((center - size / 2, center + size / 2), dim=1)
+    return box_ops.clip_boxes_to_image(boxes, tile["image_shape"])
+
+
+def _motion_statistics(tile: dict) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return final-step direction cosine and update-magnitude ratio."""
+    pass1 = _box_parameters(tile["trajectory"][1], tile["image_shape"])
+    pass2 = _box_parameters(tile["trajectory"][2], tile["image_shape"])
+    pass3 = _box_parameters(tile["trajectory"][3], tile["image_shape"])
+    previous = pass2 - pass1
+    final = pass3 - pass2
+    previous_norm = torch.linalg.vector_norm(previous, dim=1)
+    final_norm = torch.linalg.vector_norm(final, dim=1)
+    cosine = (previous * final).sum(dim=1) / (
+        previous_norm * final_norm
+    ).clamp(min=1e-12)
+    ratio = final_norm / previous_norm.clamp(min=1e-12)
+    return cosine, ratio
+
+
+def _select_motion_gate(
+    tile: dict,
+    score_threshold: float,
+    *,
+    cosine_threshold: float | None = None,
+    ratio_threshold: float | None = None,
+    damped_blend: float = 0.5,
+) -> torch.Tensor:
+    """Damp the final coordinate update only when a motion test fires."""
+    cosine, ratio = _motion_statistics(tile)
+    damp = tile["scores"] >= score_threshold
+    if cosine_threshold is not None:
+        damp &= cosine < cosine_threshold
+    if ratio_threshold is not None:
+        damp &= ratio > ratio_threshold
+    before = tile["trajectory"][2]
+    after = tile["trajectory"][3]
+    damped = before + damped_blend * (after - before)
+    return torch.where(damp.unsqueeze(1), damped, after)
+
+
 def _same_class_iou_matrix(
     trajectory: list[torch.Tensor],
     labels: torch.Tensor,
@@ -140,10 +220,17 @@ def _trajectory_refiner(captures: list[dict]):
         steps,
         blend,
         last_step_blend,
+        last_center_blend,
+        last_size_blend,
         score_threshold,
         extra_min_size_ratio,
     ):
-        del last_step_blend, extra_min_size_ratio
+        del (
+            last_step_blend,
+            last_center_blend,
+            last_size_blend,
+            extra_min_size_ratio,
+        )
         current_boxes = boxes
         trajectory = [[value.detach().cpu() for value in current_boxes]]
         for _ in range(steps):
@@ -581,6 +668,64 @@ def main() -> None:
             lambda tile, _tile_index: torch.stack(
                 tile["trajectory"][1:4], dim=0
             ).median(dim=0).values
+        ),
+        "center025_size050": (
+            lambda tile, _tile_index: _blend_center_size(tile, 0.25, 0.50)
+        ),
+        "center050_size025": (
+            lambda tile, _tile_index: _blend_center_size(tile, 0.50, 0.25)
+        ),
+        "center050_size075": (
+            lambda tile, _tile_index: _blend_center_size(tile, 0.50, 0.75)
+        ),
+        "center075_size050": (
+            lambda tile, _tile_index: _blend_center_size(tile, 0.75, 0.50)
+        ),
+        "center050_size100": (
+            lambda tile, _tile_index: _blend_center_size(tile, 0.50, 1.00)
+        ),
+        "center100_size050": (
+            lambda tile, _tile_index: _blend_center_size(tile, 1.00, 0.50)
+        ),
+        "center050_logsize050": (
+            lambda tile, _tile_index: _blend_center_size(
+                tile, 0.50, 0.50, log_size=True
+            )
+        ),
+        "direction_cos_m050_half": (
+            lambda tile, _tile_index: _select_motion_gate(
+                tile,
+                score_threshold,
+                cosine_threshold=-0.50,
+            )
+        ),
+        "direction_cos_000_half": (
+            lambda tile, _tile_index: _select_motion_gate(
+                tile,
+                score_threshold,
+                cosine_threshold=0.00,
+            )
+        ),
+        "direction_cos_050_half": (
+            lambda tile, _tile_index: _select_motion_gate(
+                tile,
+                score_threshold,
+                cosine_threshold=0.50,
+            )
+        ),
+        "growth_ratio_075_half": (
+            lambda tile, _tile_index: _select_motion_gate(
+                tile,
+                score_threshold,
+                ratio_threshold=0.75,
+            )
+        ),
+        "growth_ratio_100_half": (
+            lambda tile, _tile_index: _select_motion_gate(
+                tile,
+                score_threshold,
+                ratio_threshold=1.00,
+            )
         ),
         "crossfit_size": (
             lambda tile, tile_index: _select_crossfit(

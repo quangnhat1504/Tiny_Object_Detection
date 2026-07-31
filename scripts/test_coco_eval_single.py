@@ -44,6 +44,18 @@ def main():
         default=None,
         help="Fraction of only the final iterative CBL box update",
     )
+    parser.add_argument(
+        "--cbl-refine-last-center-blend",
+        type=float,
+        default=None,
+        help="Fraction of only the final center update",
+    )
+    parser.add_argument(
+        "--cbl-refine-last-size-blend",
+        type=float,
+        default=None,
+        help="Fraction of only the final width/height update",
+    )
     parser.add_argument("--cbl-refine-score-threshold", type=float, default=None,
                         help="Preserve detections below this score")
     parser.add_argument(
@@ -109,6 +121,22 @@ def main():
     if refine_last_step_blend is None:
         refine_last_step_blend = refine_blend
     refine_last_step_blend = float(refine_last_step_blend)
+    refine_last_center_blend = (
+        stored_config.get("cbl_refine_last_center_blend")
+        if args.cbl_refine_last_center_blend is None
+        else args.cbl_refine_last_center_blend
+    )
+    if refine_last_center_blend is None:
+        refine_last_center_blend = refine_last_step_blend
+    refine_last_center_blend = float(refine_last_center_blend)
+    refine_last_size_blend = (
+        stored_config.get("cbl_refine_last_size_blend")
+        if args.cbl_refine_last_size_blend is None
+        else args.cbl_refine_last_size_blend
+    )
+    if refine_last_size_blend is None:
+        refine_last_size_blend = refine_last_step_blend
+    refine_last_size_blend = float(refine_last_size_blend)
     refine_score_threshold = (
         float(stored_config.get("cbl_refine_score_threshold", 0.0))
         if args.cbl_refine_score_threshold is None
@@ -160,6 +188,8 @@ def main():
         cbl_refine_steps=refine_steps,
         cbl_refine_blend=refine_blend,
         cbl_refine_last_step_blend=refine_last_step_blend,
+        cbl_refine_last_center_blend=refine_last_center_blend,
+        cbl_refine_last_size_blend=refine_last_size_blend,
         cbl_refine_score_threshold=refine_score_threshold,
         cbl_refine_extra_min_size_ratio=refine_extra_min_size_ratio,
         cbl_refine_train_weight=float(
@@ -202,6 +232,8 @@ def main():
         "cbl_refine_steps": refine_steps,
         "cbl_refine_blend": refine_blend,
         "cbl_refine_last_step_blend": refine_last_step_blend,
+        "cbl_refine_last_center_blend": refine_last_center_blend,
+        "cbl_refine_last_size_blend": refine_last_size_blend,
         "cbl_refine_score_threshold": refine_score_threshold,
         "cbl_refine_extra_min_size_ratio": refine_extra_min_size_ratio,
         "ckpt_epoch": ck.get("epoch", "unknown"),

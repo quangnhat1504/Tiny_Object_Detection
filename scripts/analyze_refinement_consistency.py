@@ -211,6 +211,12 @@ def _build_model_from_checkpoint(
         cbl_refine_last_step_blend=config.get(
             "cbl_refine_last_step_blend"
         ),
+        cbl_refine_last_center_blend=config.get(
+            "cbl_refine_last_center_blend"
+        ),
+        cbl_refine_last_size_blend=config.get(
+            "cbl_refine_last_size_blend"
+        ),
         cbl_refine_score_threshold=float(
             config.get("cbl_refine_score_threshold", 0.0)
         ),
@@ -363,6 +369,8 @@ def main() -> None:
         steps,
         blend,
         last_step_blend,
+        last_center_blend,
+        last_size_blend,
         score_threshold,
         extra_min_size_ratio,
     ):
@@ -376,6 +384,8 @@ def main() -> None:
             steps,
             blend,
             last_step_blend,
+            last_center_blend,
+            last_size_blend,
             score_threshold,
             extra_min_size_ratio,
         )
