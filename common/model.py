@@ -1050,8 +1050,10 @@ def _iterative_cbl_training_loss(
     image_shapes,
     uncertainty_weight,
     loss_weight,
+    train_steps,
+    extra_min_size_ratio,
 ):
-    """Train the shared CBL head on its detached first-pass box proposals."""
+    """Train the shared CBL head on detached iterative box proposals."""
     if loss_weight <= 0:
         return box_regression.sum() * 0.0
 
@@ -1060,9 +1062,9 @@ def _iterative_cbl_training_loss(
     box_regression_per_image = box_regression.reshape(
         -1, num_classes, 4).split(counts, 0)
 
-    refined_proposals = []
-    refined_gt_boxes = []
-    refined_labels = []
+    current_proposals = []
+    current_gt_boxes = []
+    current_labels = []
     for (
         proposals_per_image,
         labels_per_image,
@@ -1078,9 +1080,9 @@ def _iterative_cbl_training_loss(
     ):
         positive = torch.where(labels_per_image > 0)[0]
         if positive.numel() == 0:
-            refined_proposals.append(proposals_per_image.new_zeros((0, 4)))
-            refined_gt_boxes.append(proposals_per_image.new_zeros((0, 4)))
-            refined_labels.append(labels_per_image.new_zeros((0,)))
+            current_proposals.append(proposals_per_image.new_zeros((0, 4)))
+            current_gt_boxes.append(proposals_per_image.new_zeros((0, 4)))
+            current_labels.append(labels_per_image.new_zeros((0,)))
             continue
 
         positive_proposals = proposals_per_image[positive]
@@ -1102,37 +1104,117 @@ def _iterative_cbl_training_loss(
             & ((first_pass_boxes[:, 2:] - first_pass_boxes[:, :2]).min(dim=1).values
                > 1e-2)
         )
-        refined_proposals.append(first_pass_boxes[valid])
-        refined_gt_boxes.append(gt_boxes[valid])
-        refined_labels.append(positive_labels[valid])
+        current_proposals.append(first_pass_boxes[valid])
+        current_gt_boxes.append(gt_boxes[valid])
+        current_labels.append(positive_labels[valid])
 
-    if not any(len(boxes) for boxes in refined_proposals):
+    if not any(len(boxes) for boxes in current_proposals):
         return box_regression.sum() * 0.0
 
-    refined_features = roi_heads.box_roi_pool(
-        features, refined_proposals, image_shapes)
-    refined_features = roi_heads.box_head(refined_features)
-    predictor_out = roi_heads.box_predictor(refined_features)
-    if (not getattr(roi_heads.box_predictor, "is_distributional", False)
-            or len(predictor_out) != 3):
-        raise RuntimeError(
-            "Iterative CBL training requires a distributional predictor")
+    pass_losses = []
+    pass_counts = []
+    for pass_index in range(train_steps):
+        counts = [len(boxes) for boxes in current_proposals]
+        num_active = sum(counts)
+        if num_active == 0:
+            break
 
-    _, _, refined_distribution_logits = predictor_out
-    labels_flat = torch.cat(refined_labels, dim=0)
-    rows = torch.arange(
-        len(labels_flat), device=refined_distribution_logits.device)
-    selected_logits = refined_distribution_logits[rows, labels_flat]
-    refined_targets = torch.cat(
-        roi_heads.box_coder.encode(refined_gt_boxes, refined_proposals),
-        dim=0,
-    )
-    return loss_weight * _cbl_localization_loss(
-        selected_logits,
-        refined_targets,
-        roi_heads.box_predictor.cbl_grid,
-        uncertainty_weight,
-    )
+        refined_features = roi_heads.box_roi_pool(
+            features, current_proposals, image_shapes)
+        refined_features = roi_heads.box_head(refined_features)
+        predictor_out = roi_heads.box_predictor(refined_features)
+        if (not getattr(roi_heads.box_predictor, "is_distributional", False)
+                or len(predictor_out) != 3):
+            raise RuntimeError(
+                "Iterative CBL training requires a distributional predictor")
+
+        _, next_box_regression, refined_distribution_logits = predictor_out
+        labels_flat = torch.cat(current_labels, dim=0)
+        rows = torch.arange(
+            len(labels_flat), device=refined_distribution_logits.device)
+        selected_logits = refined_distribution_logits[rows, labels_flat]
+        refined_targets = torch.cat(
+            roi_heads.box_coder.encode(
+                current_gt_boxes, current_proposals),
+            dim=0,
+        )
+        pass_losses.append(_cbl_localization_loss(
+            selected_logits,
+            refined_targets,
+            roi_heads.box_predictor.cbl_grid,
+            uncertainty_weight,
+        ))
+        pass_counts.append(num_active)
+
+        if pass_index + 1 >= train_steps:
+            break
+
+        regression_per_image = next_box_regression.reshape(
+            -1, num_classes, 4).split(counts, 0)
+        next_proposals = []
+        next_gt_boxes = []
+        next_labels = []
+        for (
+            proposals_per_image,
+            gt_boxes_per_image,
+            labels_per_image,
+            regression_per_image,
+            image_shape,
+        ) in zip(
+            current_proposals,
+            current_gt_boxes,
+            current_labels,
+            regression_per_image,
+            image_shapes,
+        ):
+            if len(proposals_per_image) == 0:
+                next_proposals.append(proposals_per_image)
+                next_gt_boxes.append(gt_boxes_per_image)
+                next_labels.append(labels_per_image)
+                continue
+
+            row_ids = torch.arange(
+                len(labels_per_image), device=regression_per_image.device)
+            selected_deltas = regression_per_image[
+                row_ids, labels_per_image]
+            predicted_boxes = roi_heads.box_coder.decode(
+                selected_deltas, [proposals_per_image])[:, 0]
+            predicted_boxes = box_ops.clip_boxes_to_image(
+                predicted_boxes.detach(), image_shape)
+            valid = (
+                torch.isfinite(predicted_boxes).all(dim=1)
+                & ((predicted_boxes[:, 2:] - predicted_boxes[:, :2])
+                   .min(dim=1).values > 1e-2)
+            )
+            if extra_min_size_ratio > 0:
+                widths_heights = (
+                    predicted_boxes[:, 2:] - predicted_boxes[:, :2]
+                ).clamp(min=0)
+                normalized_size = (
+                    widths_heights.prod(dim=1).sqrt()
+                    / math.sqrt(image_shape[0] * image_shape[1])
+                )
+                valid &= normalized_size >= extra_min_size_ratio
+
+            next_proposals.append(predicted_boxes[valid])
+            next_gt_boxes.append(gt_boxes_per_image[valid])
+            next_labels.append(labels_per_image[valid])
+
+        current_proposals = next_proposals
+        current_gt_boxes = next_gt_boxes
+        current_labels = next_labels
+
+    roi_heads._last_cbl_refine_train_counts = pass_counts
+    roi_heads._last_cbl_refine_train_losses = [
+        float(loss.detach()) for loss in pass_losses
+    ]
+    if not pass_losses:
+        return box_regression.sum() * 0.0
+    total_count = sum(pass_counts)
+    weighted_loss = sum(
+        loss * count for loss, count in zip(pass_losses, pass_counts)
+    ) / total_count
+    return loss_weight * weighted_loss
 
 
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
@@ -1151,6 +1233,7 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        cbl_refine_score_threshold=0.0,
                                        cbl_refine_extra_min_size_ratio=0.0,
                                        cbl_refine_train_weight=0.0,
+                                       cbl_refine_train_steps=1,
                                        cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
@@ -1171,6 +1254,7 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
         cbl_refine_extra_min_size_ratio
     )
     roi_heads._cbl_refine_train_weight = cbl_refine_train_weight
+    roi_heads._cbl_refine_train_steps = cbl_refine_train_steps
     roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
@@ -1248,6 +1332,12 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                     image_shapes,
                     cbl_um_weight,
                     refine_train_weight,
+                    getattr(self, "_cbl_refine_train_steps", 1),
+                    getattr(
+                        self,
+                        "_cbl_refine_extra_min_size_ratio",
+                        0.0,
+                    ),
                 )
             if quality_logits is not None and quality_loss_weight > 0:
                 losses["loss_quality"] = loss_quality
@@ -1438,6 +1528,7 @@ def build_model(
     cbl_refine_score_threshold: float = 0.0,
     cbl_refine_extra_min_size_ratio: float = 0.0,
     cbl_refine_train_weight: float = 0.0,
+    cbl_refine_train_steps: int = 1,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -1474,6 +1565,7 @@ def build_model(
         cbl_refine_extra_min_size_ratio: after pass one, refine only boxes
             whose sqrt area divided by sqrt image area reaches this value
         cbl_refine_train_weight: auxiliary shared-head second-pass CBL weight
+        cbl_refine_train_steps: detached refined-proposal supervision passes
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -1595,6 +1687,8 @@ def build_model(
         )
     if cbl_refine_train_weight < 0:
         raise ValueError("CBL refine training weight cannot be negative")
+    if cbl_refine_train_steps < 1:
+        raise ValueError("CBL refine training steps must be at least one")
     if cbl_refine_steps > 0 and box_loss_type != "cbl":
         raise ValueError("Iterative CBL refinement requires CBL localization")
     if use_quality_focal and use_rank_sort:
@@ -1664,6 +1758,7 @@ def build_model(
                 cbl_refine_extra_min_size_ratio
             ),
             cbl_refine_train_weight=cbl_refine_train_weight,
+            cbl_refine_train_steps=cbl_refine_train_steps,
             cbl_um_weight=cbl_um_weight)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
               f"warmup_epochs={box_loss_warmup_epochs}")
@@ -1691,8 +1786,11 @@ def build_model(
             )
         if cbl_refine_train_weight > 0:
             print(
-                "  [CBL refine train] shared-head second pass, "
-                f"loss_weight={cbl_refine_train_weight:g}"
+                "  [CBL refine train] detached shared-head passes="
+                f"{cbl_refine_train_steps}, "
+                f"loss_weight={cbl_refine_train_weight:g}, "
+                "extra_min_size_ratio="
+                f"{cbl_refine_extra_min_size_ratio:g}"
             )
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
