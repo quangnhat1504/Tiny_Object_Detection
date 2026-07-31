@@ -99,6 +99,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  rpn_quality_preserve_below_size_ratio: float = 0.0,
                  rpn_cascade: bool = False,
                  rpn_cascade_stage1_weight: float = 1.0,
+                 rpn_iou_prediction: bool = False,
+                 rpn_iou_prediction_loss_weight: float = 0.5,
+                 rpn_iou_prediction_fusion_weight: float = 1.0,
+                 rpn_iou_prediction_detached_tower: bool = False,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
@@ -156,6 +160,13 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     if rpn_cascade:
         metric_name = (
             f"{metric_name}__rpncasw{rpn_cascade_stage1_weight:g}")
+    if rpn_iou_prediction:
+        metric_name = (
+            f"{metric_name}__rpniouw{rpn_iou_prediction_loss_weight:g}")
+        if rpn_iou_prediction_fusion_weight != 1:
+            metric_name += f"f{rpn_iou_prediction_fusion_weight:g}"
+        if rpn_iou_prediction_detached_tower:
+            metric_name += "dt"
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
         output_name = f"{output_name}__{tag}"
@@ -199,6 +210,12 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     print(
         f"  RPN cascade: {rpn_cascade}; "
         f"stage-1 weight={rpn_cascade_stage1_weight:g}"
+    )
+    print(
+        f"  RPN IoU prediction: {rpn_iou_prediction}; "
+        f"loss weight={rpn_iou_prediction_loss_weight:g}; "
+        f"fusion weight={rpn_iou_prediction_fusion_weight:g}; "
+        f"detached tower={rpn_iou_prediction_detached_tower}"
     )
     print(
         f"  Transform: train min={train_min_sizes}, "
@@ -280,6 +297,13 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
             rpn_quality_preserve_below_size_ratio),
         rpn_cascade=rpn_cascade,
         rpn_cascade_stage1_weight=rpn_cascade_stage1_weight,
+        rpn_iou_prediction=rpn_iou_prediction,
+        rpn_iou_prediction_loss_weight=(
+            rpn_iou_prediction_loss_weight),
+        rpn_iou_prediction_fusion_weight=(
+            rpn_iou_prediction_fusion_weight),
+        rpn_iou_prediction_detached_tower=(
+            rpn_iou_prediction_detached_tower),
         cbl_alpha=cbl_alpha,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
@@ -379,6 +403,13 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
             rpn_quality_preserve_below_size_ratio),
         "rpn_cascade": rpn_cascade,
         "rpn_cascade_stage1_weight": rpn_cascade_stage1_weight,
+        "rpn_iou_prediction": rpn_iou_prediction,
+        "rpn_iou_prediction_loss_weight": (
+            rpn_iou_prediction_loss_weight),
+        "rpn_iou_prediction_fusion_weight": (
+            rpn_iou_prediction_fusion_weight),
+        "rpn_iou_prediction_detached_tower": (
+            rpn_iou_prediction_detached_tower),
         "cbl_alpha": cbl_alpha,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
@@ -657,6 +688,37 @@ def main():
         help="Loss weight for cascade RPN stage-1 box regression",
     )
     parser.add_argument(
+        "--rpn-iou-prediction",
+        action="store_true",
+        help=(
+            "Add PAA-style positive IoU prediction and unified proposal "
+            "ranking"
+        ),
+    )
+    parser.add_argument(
+        "--rpn-iou-prediction-loss-weight",
+        type=float,
+        default=0.5,
+        help="Loss weight for positive-only RPN IoU prediction BCE",
+    )
+    parser.add_argument(
+        "--rpn-iou-prediction-fusion-weight",
+        type=float,
+        default=1.0,
+        help=(
+            "Geometric blend strength from presence-only (0) to PAA "
+            "presence-IoU ranking (1)"
+        ),
+    )
+    parser.add_argument(
+        "--rpn-iou-prediction-detached-tower",
+        action="store_true",
+        help=(
+            "Use a separate IoU conv tower and stop its loss gradient at "
+            "the backbone feature"
+        ),
+    )
+    parser.add_argument(
         "--train-max-size",
         type=int,
         default=None,
@@ -718,6 +780,13 @@ def main():
                  rpn_cascade=args.rpn_cascade,
                  rpn_cascade_stage1_weight=(
                      args.rpn_cascade_stage1_weight),
+                 rpn_iou_prediction=args.rpn_iou_prediction,
+                 rpn_iou_prediction_loss_weight=(
+                     args.rpn_iou_prediction_loss_weight),
+                 rpn_iou_prediction_fusion_weight=(
+                     args.rpn_iou_prediction_fusion_weight),
+                 rpn_iou_prediction_detached_tower=(
+                     args.rpn_iou_prediction_detached_tower),
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,

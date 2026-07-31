@@ -58,6 +58,12 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--rpn-iou-prediction-fusion-weight",
+        type=float,
+        default=None,
+        help="Override the checkpoint's geometric presence-IoU fusion weight",
+    )
+    parser.add_argument(
         "--verify-pass1-parity", action="store_true",
         help="Require custom pass-1 proposals to match model.rpn exactly")
     parser.add_argument(
@@ -69,7 +75,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_checkpoint_model(
-    checkpoint: dict, device: torch.device
+    checkpoint: dict,
+    device: torch.device,
+    iou_fusion_weight: float | None = None,
 ) -> torch.nn.Module:
     config = checkpoint.get("config", {})
     refine_blend = float(config.get("cbl_refine_blend", 1.0))
@@ -135,6 +143,18 @@ def build_checkpoint_model(
         rpn_cascade=bool(config.get("rpn_cascade", False)),
         rpn_cascade_stage1_weight=float(
             config.get("rpn_cascade_stage1_weight", 1.0)),
+        rpn_iou_prediction=bool(
+            config.get("rpn_iou_prediction", False)),
+        rpn_iou_prediction_loss_weight=float(
+            config.get("rpn_iou_prediction_loss_weight", 0.5)),
+        rpn_iou_prediction_fusion_weight=(
+            float(config.get(
+                "rpn_iou_prediction_fusion_weight", 1.0))
+            if iou_fusion_weight is None
+            else iou_fusion_weight
+        ),
+        rpn_iou_prediction_detached_tower=bool(
+            config.get("rpn_iou_prediction_detached_tower", False)),
         cbl_alpha=float(config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(config.get("cbl_grid_beta", 1.0)),
@@ -184,6 +204,12 @@ def main() -> None:
         raise ValueError("--rpn-refine-passes must be positive")
     if args.rpn_refine_min_size_ratio < 0:
         raise ValueError("--rpn-refine-min-size-ratio must be non-negative")
+    if (
+        args.rpn_iou_prediction_fusion_weight is not None
+        and not 0 <= args.rpn_iou_prediction_fusion_weight <= 1
+    ):
+        raise ValueError(
+            "--rpn-iou-prediction-fusion-weight must be in [0, 1]")
     if args.verify_pass1_parity and args.rpn_refine_passes != 1:
         raise ValueError("--verify-pass1-parity requires exactly one pass")
 
@@ -210,9 +236,15 @@ def main() -> None:
 
     checkpoint = torch.load(
         checkpoint_path, map_location="cpu", weights_only=False)
-    model = build_checkpoint_model(checkpoint, device)
+    model = build_checkpoint_model(
+        checkpoint,
+        device,
+        iou_fusion_weight=args.rpn_iou_prediction_fusion_weight,
+    )
     config = checkpoint.get("config", {})
     cascade_enabled = bool(getattr(model.rpn, "cascade_refinement", False))
+    iou_prediction_enabled = bool(
+        getattr(model.rpn, "iou_prediction", False))
     native_rpn = (
         args.rpn_refine_passes == 1
         and args.rpn_refine_min_size_ratio == 0
@@ -223,6 +255,12 @@ def main() -> None:
     if cascade_enabled and args.verify_pass1_parity:
         raise ValueError(
             "Pass-1 helper parity is not defined for the learned RPN cascade")
+    if iou_prediction_enabled and not native_rpn:
+        raise ValueError(
+            "Repeat-delta audits bypass RPN IoU-quality proposal ranking")
+    if iou_prediction_enabled and args.verify_pass1_parity:
+        raise ValueError(
+            "Pass-1 helper parity is not defined for RPN IoU prediction")
 
     overall_hits = empty_counter(top_ns, thresholds)
     bin_hits = {
@@ -384,6 +422,18 @@ def main() -> None:
         "rpn_cascade": cascade_enabled,
         "rpn_cascade_stage1_weight": float(
             config.get("rpn_cascade_stage1_weight", 1.0)),
+        "rpn_iou_prediction": iou_prediction_enabled,
+        "rpn_iou_prediction_loss_weight": float(
+            config.get("rpn_iou_prediction_loss_weight", 0.5)),
+        "rpn_iou_prediction_fusion_weight": float(
+            getattr(
+                model.rpn,
+                "iou_prediction_fusion_weight",
+                1.0,
+            )
+        ),
+        "rpn_iou_prediction_detached_tower": bool(
+            config.get("rpn_iou_prediction_detached_tower", False)),
         "pass1_parity_verified": args.verify_pass1_parity,
         "pass1_parity_max_abs_diff": (
             parity_max_abs_diff if args.verify_pass1_parity else None),
