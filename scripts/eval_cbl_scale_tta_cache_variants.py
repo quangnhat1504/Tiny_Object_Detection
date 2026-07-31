@@ -110,6 +110,48 @@ def main() -> None:
             "scale_detections": scale_detections,
             "match_rate_vs_base": round(matched_pairs / base_detections, 6),
         }
+    unmatched_variants = [
+        (0.50, 0.25),
+        (0.50, 0.50),
+        (0.50, 0.75),
+        (0.50, 0.90),
+        (0.45, 0.50),
+        (0.55, 0.50),
+    ]
+    for threshold, weight in unmatched_variants:
+        pair_name = (
+            f"pair_with_unmatched_scale_iou{int(threshold * 100):02d}"
+            f"_w{int(weight * 100):02d}"
+        )
+        predictions[pair_name] = []
+        matched_pairs = 0
+        base_detections = 0
+        scale_detections = 0
+        for base, scale in zip(base_predictions, scale_predictions):
+            pairing = _greedy_cross_view_pairs(base, scale, threshold)
+            matched_pairs += len(pairing[0])
+            base_detections += len(base["boxes"])
+            scale_detections += len(scale["boxes"])
+            predictions[pair_name].append(
+                _pair_fuse(
+                    base,
+                    scale,
+                    pair_threshold=threshold,
+                    coordinate_mode="score_weighted",
+                    score_mode="mean",
+                    include_unmatched_flip=True,
+                    unmatched_flip_weight=weight,
+                    detections_per_image=args.detections_per_image,
+                    pairing=pairing,
+                )
+            )
+        pair_stats[pair_name] = {
+            "matched_pairs": matched_pairs,
+            "base_detections": base_detections,
+            "scale_detections": scale_detections,
+            "match_rate_vs_base": round(matched_pairs / base_detections, 6),
+            "unmatched_scale_score_weight": weight,
+        }
     for threshold in (0.50, 0.60):
         name = f"union_nms{int(threshold * 100):02d}"
         predictions[name] = [
