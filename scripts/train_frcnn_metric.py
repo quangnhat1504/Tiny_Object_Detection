@@ -92,6 +92,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  cbl_refine_last_size_blend: float | None = None,
                  cbl_refine_score_threshold: float = 0.0,
                  cbl_refine_extra_min_size_ratio: float = 0.0,
+                 rpn_refine_steps: int = 0,
+                 rpn_refine_min_size_ratio: float = 0.0,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
@@ -137,6 +139,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         )
         if cbl_refine_extra_min_size_ratio > 0:
             metric_name += f"m{cbl_refine_extra_min_size_ratio:g}"
+    if rpn_refine_steps > 0:
+        metric_name = f"{metric_name}__rpnr{rpn_refine_steps}"
+        if rpn_refine_min_size_ratio > 0:
+            metric_name += f"m{rpn_refine_min_size_ratio:g}"
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
         output_name = f"{output_name}__{tag}"
@@ -166,6 +172,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         f"last size blend={cbl_refine_last_size_blend}, "
         f"score threshold={cbl_refine_score_threshold:g}, "
         f"extra min size ratio={cbl_refine_extra_min_size_ratio:g}"
+    )
+    print(
+        f"  RPN inference refinement steps: {rpn_refine_steps}; "
+        f"min size ratio={rpn_refine_min_size_ratio:g}"
     )
     print(
         f"  Transform: train min={train_min_sizes}, "
@@ -239,6 +249,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         cbl_refine_last_size_blend=cbl_refine_last_size_blend,
         cbl_refine_score_threshold=cbl_refine_score_threshold,
         cbl_refine_extra_min_size_ratio=cbl_refine_extra_min_size_ratio,
+        rpn_refine_steps=rpn_refine_steps,
+        rpn_refine_min_size_ratio=rpn_refine_min_size_ratio,
         cbl_alpha=cbl_alpha,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
@@ -330,6 +342,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "cbl_refine_extra_min_size_ratio": (
             cbl_refine_extra_min_size_ratio
         ),
+        "rpn_refine_steps": rpn_refine_steps,
+        "rpn_refine_min_size_ratio": rpn_refine_min_size_ratio,
         "cbl_alpha": cbl_alpha,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
@@ -556,6 +570,21 @@ def main():
         ),
     )
     parser.add_argument(
+        "--rpn-refine-steps",
+        type=int,
+        default=0,
+        help="Extra inference-only applications of fixed RPN box deltas",
+    )
+    parser.add_argument(
+        "--rpn-refine-min-size-ratio",
+        type=float,
+        default=0.0,
+        help=(
+            "Repeat RPN deltas only above this normalized proposal "
+            "sqrt-area; zero disables the gate"
+        ),
+    )
+    parser.add_argument(
         "--train-max-size",
         type=int,
         default=None,
@@ -607,6 +636,9 @@ def main():
                      args.cbl_refine_score_threshold),
                  cbl_refine_extra_min_size_ratio=(
                      args.cbl_refine_extra_min_size_ratio),
+                 rpn_refine_steps=args.rpn_refine_steps,
+                 rpn_refine_min_size_ratio=(
+                     args.rpn_refine_min_size_ratio),
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,

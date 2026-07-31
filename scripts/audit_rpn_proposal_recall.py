@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 from common.config import SEED, seed_all
 from common.dataset import YOLOTinyDataset, collate_fn
 from common.metrics import get_metric_fn
-from common.model import build_model
+from common.model import build_model, iterative_rpn_proposals
 
 SIZE_BINS = (
     ("micro", 0.0, 8.0),
@@ -45,6 +45,21 @@ def parse_args() -> argparse.Namespace:
         "--top-n", type=int, nargs="+", default=(100, 300, 1000, 1500))
     parser.add_argument(
         "--iou-thresholds", type=float, nargs="+", default=(0.5, 0.75))
+    parser.add_argument(
+        "--rpn-refine-passes", type=int, default=1,
+        help="Repeated applications of the fixed RPN box deltas")
+    parser.add_argument(
+        "--rpn-refine-min-size-ratio",
+        type=float,
+        default=0.0,
+        help=(
+            "Repeat deltas only above this normalized proposal sqrt-area; "
+            "zero disables the gate"
+        ),
+    )
+    parser.add_argument(
+        "--verify-pass1-parity", action="store_true",
+        help="Require custom pass-1 proposals to match model.rpn exactly")
     parser.add_argument(
         "--max-tiles", type=int, default=None,
         help="Optional bounded smoke-test limit")
@@ -152,6 +167,12 @@ def main() -> None:
         raise ValueError("--iou-thresholds values must be in [0, 1]")
     if args.max_tiles is not None and args.max_tiles < 1:
         raise ValueError("--max-tiles must be positive")
+    if args.rpn_refine_passes < 1:
+        raise ValueError("--rpn-refine-passes must be positive")
+    if args.rpn_refine_min_size_ratio < 0:
+        raise ValueError("--rpn-refine-min-size-ratio must be non-negative")
+    if args.verify_pass1_parity and args.rpn_refine_passes != 1:
+        raise ValueError("--verify-pass1-parity requires exactly one pass")
 
     checkpoint_path = Path(args.ckpt)
     if not checkpoint_path.is_file():
@@ -189,6 +210,7 @@ def main() -> None:
     num_tiles = 0
     num_tiles_with_gt = 0
     proposal_total = 0
+    parity_max_abs_diff = 0.0
 
     with torch.inference_mode():
         for images, targets in loader:
@@ -219,7 +241,29 @@ def main() -> None:
             features = model.backbone(image_list.tensors)
             if isinstance(features, torch.Tensor):
                 features = OrderedDict([("0", features)])
-            proposals, _ = model.rpn(image_list, features)
+            proposals = iterative_rpn_proposals(
+                model.rpn,
+                image_list,
+                features,
+                total_passes=args.rpn_refine_passes,
+                min_refine_size_ratio=args.rpn_refine_min_size_ratio,
+            )
+            if args.verify_pass1_parity:
+                reference_proposals, _ = model.rpn(image_list, features)
+                for actual, reference in zip(
+                    proposals, reference_proposals
+                ):
+                    if actual.shape != reference.shape:
+                        raise AssertionError(
+                            "Pass-1 proposal shape differs from model.rpn")
+                    if actual.numel():
+                        parity_max_abs_diff = max(
+                            parity_max_abs_diff,
+                            float((actual - reference).abs().max().item()),
+                        )
+                    if not torch.equal(actual, reference):
+                        raise AssertionError(
+                            "Pass-1 proposals differ from model.rpn")
 
             for proposal, original, transformed in zip(
                 proposals, original_targets, transformed_targets
@@ -302,6 +346,12 @@ def main() -> None:
         "num_gt": counts["overall"],
         "mean_proposals_per_tile": (
             proposal_total / num_tiles if num_tiles else 0.0),
+        "rpn_refine_passes": args.rpn_refine_passes,
+        "rpn_refine_min_size_ratio": (
+            args.rpn_refine_min_size_ratio),
+        "pass1_parity_verified": args.verify_pass1_parity,
+        "pass1_parity_max_abs_diff": (
+            parity_max_abs_diff if args.verify_pass1_parity else None),
         "top_n": top_ns,
         "iou_thresholds": thresholds,
         "size_bins_sqrt_area_px": {

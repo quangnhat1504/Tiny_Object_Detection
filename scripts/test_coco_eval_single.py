@@ -36,6 +36,21 @@ def main():
                         help="Device (default: cuda)")
     parser.add_argument("--cbl-refine-steps", type=int, default=None,
                         help="Inference-only repeated CBL box-regression passes")
+    parser.add_argument(
+        "--rpn-refine-steps",
+        type=int,
+        default=None,
+        help="Extra inference-only applications of fixed RPN box deltas",
+    )
+    parser.add_argument(
+        "--rpn-refine-min-size-ratio",
+        type=float,
+        default=None,
+        help=(
+            "Repeat RPN deltas only above this normalized proposal "
+            "sqrt-area; zero disables the gate"
+        ),
+    )
     parser.add_argument("--cbl-refine-blend", type=float, default=None,
                         help="Fraction of each iterative CBL box update")
     parser.add_argument(
@@ -108,6 +123,15 @@ def main():
     refine_steps = (
         int(stored_config.get("cbl_refine_steps", 0))
         if args.cbl_refine_steps is None else args.cbl_refine_steps
+    )
+    rpn_refine_steps = (
+        int(stored_config.get("rpn_refine_steps", 0))
+        if args.rpn_refine_steps is None else args.rpn_refine_steps
+    )
+    rpn_refine_min_size_ratio = (
+        float(stored_config.get("rpn_refine_min_size_ratio", 0.0))
+        if args.rpn_refine_min_size_ratio is None
+        else args.rpn_refine_min_size_ratio
     )
     refine_blend = (
         float(stored_config.get("cbl_refine_blend", 1.0))
@@ -194,6 +218,8 @@ def main():
         cbl_refine_extra_min_size_ratio=refine_extra_min_size_ratio,
         cbl_refine_train_weight=float(
             stored_config.get("cbl_refine_train_weight", 0.0)),
+        rpn_refine_steps=rpn_refine_steps,
+        rpn_refine_min_size_ratio=rpn_refine_min_size_ratio,
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),
@@ -230,6 +256,8 @@ def main():
         "metric": effective_metric,
         "placement": effective_placement,
         "cbl_refine_steps": refine_steps,
+        "rpn_refine_steps": rpn_refine_steps,
+        "rpn_refine_min_size_ratio": rpn_refine_min_size_ratio,
         "cbl_refine_blend": refine_blend,
         "cbl_refine_last_step_blend": refine_last_step_blend,
         "cbl_refine_last_center_blend": refine_last_center_blend,

@@ -22,10 +22,12 @@ from torchvision.models.detection import (
 from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor, RoIHeads)
 from torchvision.models.detection.rpn import (
-    AnchorGenerator, RegionProposalNetwork, RPNHead)
+    AnchorGenerator, RegionProposalNetwork, RPNHead,
+    concat_box_prediction_layers)
 from torchvision.models.resnet import Bottleneck
 from torchvision.ops import (
     batched_nms, box_iou, boxes as box_ops,
+    clip_boxes_to_image,
     complete_box_iou_loss, distance_box_iou_loss,
 )
 
@@ -303,6 +305,104 @@ def _hierarchical_assignment(sim, xn, yn, wn, hn, xg, yg, wg, hg,
 # =============================================================================
 # Metric RPN — label assignment via metric similarity (hierarchical top-k)
 # =============================================================================
+def iterative_rpn_proposals(
+    rpn: RegionProposalNetwork,
+    images,
+    features: dict[str, torch.Tensor],
+    total_passes: int,
+    min_refine_size_ratio: float = 0.0,
+) -> list[torch.Tensor]:
+    """Generate RPN proposals by repeatedly applying fixed box deltas."""
+    if total_passes < 1:
+        raise ValueError("RPN proposal generation needs at least one pass")
+    if min_refine_size_ratio < 0:
+        raise ValueError("RPN refinement minimum size ratio must be non-negative")
+
+    feature_list = list(features.values())
+    objectness_list, bbox_delta_list = rpn.head(feature_list)
+    anchors = rpn.anchor_generator(images, feature_list)
+    num_images = len(anchors)
+    num_anchors_per_image = [len(image_anchors) for image_anchors in anchors]
+    num_anchors_per_level = [
+        score[0].shape[0] * score[0].shape[1] * score[0].shape[2]
+        for score in objectness_list
+    ]
+    objectness, bbox_deltas = concat_box_prediction_layers(
+        objectness_list, bbox_delta_list)
+
+    current_anchors = anchors
+    decoded = None
+    first_decoded = None
+    refine_mask = None
+    for pass_index in range(total_passes):
+        decoded = rpn.box_coder.decode(
+            bbox_deltas.detach(), current_anchors).squeeze(1)
+        if pass_index == 0:
+            first_decoded = decoded
+            if total_passes > 1 and min_refine_size_ratio > 0:
+                masks = []
+                for boxes, (height, width) in zip(
+                    decoded.split(num_anchors_per_image),
+                    images.image_sizes,
+                ):
+                    box_widths = (boxes[:, 2] - boxes[:, 0]).clamp(min=0)
+                    box_heights = (boxes[:, 3] - boxes[:, 1]).clamp(min=0)
+                    normalized_size = (
+                        (box_widths * box_heights).sqrt()
+                        / math.sqrt(float(height * width))
+                    )
+                    masks.append(
+                        normalized_size >= min_refine_size_ratio)
+                refine_mask = torch.cat(masks)
+        elif refine_mask is not None:
+            decoded = torch.where(
+                refine_mask[:, None], decoded, first_decoded)
+        if pass_index + 1 < total_passes:
+            split_decoded = decoded.split(num_anchors_per_image)
+            current_anchors = [
+                clip_boxes_to_image(boxes, image_size)
+                for boxes, image_size in zip(
+                    split_decoded, images.image_sizes)
+            ]
+
+    proposals = decoded.view(num_images, -1, 4)
+    boxes, _ = rpn.filter_proposals(
+        proposals,
+        objectness,
+        images.image_sizes,
+        num_anchors_per_level,
+    )
+    return boxes
+
+
+def _wrap_rpn_inference_refinement(
+    rpn: RegionProposalNetwork,
+    extra_steps: int,
+    min_refine_size_ratio: float,
+) -> None:
+    """Repeat fixed RPN deltas only for evaluation proposal generation."""
+    original_forward = type(rpn).forward
+    rpn._inference_refine_steps = extra_steps
+    rpn._inference_refine_min_size_ratio = min_refine_size_ratio
+
+    def patched_forward(self, images, features, targets=None):
+        steps = int(getattr(self, "_inference_refine_steps", 0))
+        if self.training or steps == 0:
+            return original_forward(self, images, features, targets)
+        min_size_ratio = float(
+            getattr(self, "_inference_refine_min_size_ratio", 0.0))
+        boxes = iterative_rpn_proposals(
+            self,
+            images,
+            features,
+            total_passes=steps + 1,
+            min_refine_size_ratio=min_size_ratio,
+        )
+        return boxes, {}
+
+    rpn.forward = patched_forward.__get__(rpn, type(rpn))
+
+
 class MetricRPN(RegionProposalNetwork):
     def __init__(
         self,
@@ -1678,6 +1778,8 @@ def build_model(
     cbl_refine_score_threshold: float = 0.0,
     cbl_refine_extra_min_size_ratio: float = 0.0,
     cbl_refine_train_weight: float = 0.0,
+    rpn_refine_steps: int = 0,
+    rpn_refine_min_size_ratio: float = 0.0,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -1727,6 +1829,10 @@ def build_model(
         cbl_refine_extra_min_size_ratio: after pass one, refine only boxes
             whose sqrt area divided by sqrt image area reaches this value
         cbl_refine_train_weight: auxiliary shared-head second-pass CBL weight
+        rpn_refine_steps: evaluation-only repeated applications of the fixed
+            RPN box deltas after the normal proposal decode
+        rpn_refine_min_size_ratio: only repeat deltas for proposals whose
+            sqrt area divided by sqrt image area reaches this value
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -1743,6 +1849,10 @@ def build_model(
     """
     if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
         raise ValueError(f"Unknown placement: {placement}")
+    if rpn_refine_steps < 0:
+        raise ValueError("RPN refinement steps must be non-negative")
+    if rpn_refine_min_size_ratio < 0:
+        raise ValueError("RPN refinement minimum size ratio must be non-negative")
 
     base = fasterrcnn_resnet50_fpn(
         weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
@@ -1865,6 +1975,17 @@ def build_model(
     base.roi_heads.bg_iou_thresh = ROI_BG_IOU_THRESH
     base.roi_heads.batch_size_per_image = 256
     base.roi_heads.positive_fraction = 0.5
+    if rpn_refine_steps > 0:
+        _wrap_rpn_inference_refinement(
+            base.rpn,
+            rpn_refine_steps,
+            rpn_refine_min_size_ratio,
+        )
+        print(
+            "  [RPN refine] inference extra_steps="
+            f"{rpn_refine_steps}, "
+            f"min_size_ratio={rpn_refine_min_size_ratio:g}"
+        )
     if snip_enabled:
         _wrap_transform_for_snip(
             base.transform,
