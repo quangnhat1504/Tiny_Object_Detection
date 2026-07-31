@@ -489,6 +489,56 @@ class CascadeRPNRegressionHead(nn.Module):
         return [self.bbox_pred(F.relu(self.conv(feature))) for feature in features]
 
 
+class PAAIoURPNHead(RPNHead):
+    """RPN head with PAA-style auxiliary localization-IoU prediction."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        num_anchors: int,
+        detached_quality_tower: bool = False,
+    ):
+        super().__init__(in_channels, num_anchors)
+        self.detached_quality_tower = detached_quality_tower
+        self.iou_conv = (
+            nn.Conv2d(
+                in_channels, in_channels, kernel_size=3, stride=1, padding=1)
+            if detached_quality_tower
+            else None
+        )
+        self.iou_pred = nn.Conv2d(
+            in_channels, num_anchors, kernel_size=3, stride=1, padding=1)
+        for layer in (self.iou_conv, self.iou_pred):
+            if layer is None:
+                continue
+            nn.init.normal_(layer.weight, std=0.01)
+            nn.init.zeros_(layer.bias)
+
+    def forward_with_iou(
+        self, features: list[torch.Tensor]
+    ) -> tuple[
+        list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]
+    ]:
+        objectness = []
+        bbox_deltas = []
+        iou_logits = []
+        for feature in features:
+            tower_feature = self.conv(feature)
+            objectness.append(self.cls_logits(tower_feature))
+            bbox_deltas.append(self.bbox_pred(tower_feature))
+            quality_feature = tower_feature
+            if self.iou_conv is not None:
+                quality_feature = F.relu(self.iou_conv(feature.detach()))
+            iou_logits.append(self.iou_pred(quality_feature))
+        return objectness, bbox_deltas, iou_logits
+
+    def forward(
+        self, features: list[torch.Tensor]
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        objectness, bbox_deltas, _ = self.forward_with_iou(features)
+        return objectness, bbox_deltas
+
+
 def _flatten_rpn_bbox_deltas(
     bbox_deltas: list[torch.Tensor],
 ) -> torch.Tensor:
@@ -505,6 +555,38 @@ def _flatten_rpn_bbox_deltas(
     return torch.cat(flattened, dim=1).reshape(-1, 4)
 
 
+def _flatten_rpn_scalar_logits(
+    logits: list[torch.Tensor],
+) -> torch.Tensor:
+    """Flatten one scalar per anchor in torchvision's anchor order."""
+    flattened = [
+        per_level.permute(0, 2, 3, 1).reshape(per_level.shape[0], -1)
+        for per_level in logits
+    ]
+    return torch.cat(flattened, dim=1).reshape(-1)
+
+
+def _fuse_rpn_presence_iou_logits(
+    objectness: torch.Tensor,
+    iou_logits: torch.Tensor,
+    fusion_weight: float = 1.0,
+) -> torch.Tensor:
+    """Geometrically blend presence with PAA localization-IoU ranking."""
+    if objectness.numel() != iou_logits.numel():
+        raise ValueError("RPN objectness and IoU logits must have equal size")
+    if not 0 <= fusion_weight <= 1:
+        raise ValueError("RPN IoU fusion weight must be in [0, 1]")
+    presence_probability = (
+        objectness.flatten().float().sigmoid().clamp(EPS, 1.0 - EPS))
+    iou_probability = (
+        iou_logits.flatten().float().sigmoid().clamp(EPS, 1.0 - EPS))
+    fused_probability = (
+        presence_probability.pow(1.0 - fusion_weight / 2.0)
+        * iou_probability.pow(fusion_weight / 2.0)
+    )
+    return torch.logit(fused_probability.clamp(EPS, 1.0 - EPS))
+
+
 class MetricRPN(RegionProposalNetwork):
     def __init__(
         self,
@@ -518,6 +600,9 @@ class MetricRPN(RegionProposalNetwork):
         quality_preserve_below_size_ratio: float = 0.0,
         cascade_refinement: bool = False,
         cascade_stage1_loss_weight: float = 1.0,
+        iou_prediction: bool = False,
+        iou_prediction_loss_weight: float = 0.5,
+        iou_prediction_fusion_weight: float = 1.0,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -531,6 +616,16 @@ class MetricRPN(RegionProposalNetwork):
         if cascade_refinement and quality_objectness:
             raise ValueError(
                 "RPN cascade is not compatible with quality objectness")
+        if iou_prediction_loss_weight <= 0:
+            raise ValueError("RPN IoU-prediction loss weight must be positive")
+        if not 0 <= iou_prediction_fusion_weight <= 1:
+            raise ValueError("RPN IoU fusion weight must be in [0, 1]")
+        if iou_prediction and quality_objectness:
+            raise ValueError(
+                "RPN IoU prediction is not compatible with quality objectness")
+        if iou_prediction and cascade_refinement:
+            raise ValueError(
+                "RPN IoU prediction is not compatible with RPN cascade")
         self.metric_fn = metric_fn
         self.reliability_thr = reliability_thr
         self.snip_ignore_iou_thresh = snip_ignore_iou_thresh
@@ -549,6 +644,12 @@ class MetricRPN(RegionProposalNetwork):
             num_anchors = self.head.bbox_pred.out_channels // 4
             self.cascade_stage1_head = CascadeRPNRegressionHead(
                 in_channels, num_anchors)
+        self.iou_prediction = iou_prediction
+        self.iou_prediction_loss_weight = iou_prediction_loss_weight
+        self.iou_prediction_fusion_weight = iou_prediction_fusion_weight
+        if iou_prediction and not hasattr(self.head, "forward_with_iou"):
+            raise TypeError("RPN IoU prediction requires PAAIoURPNHead")
+        self._rpn_iou_prediction_stats = {}
         self._snip_last_assignment_stats = []
         self._rpn_quality_stats = {}
         self._rpn_quality_image_sizes = ()
@@ -559,6 +660,8 @@ class MetricRPN(RegionProposalNetwork):
         try:
             if self.cascade_refinement:
                 return self._forward_cascade(images, features, targets)
+            if self.iou_prediction:
+                return self._forward_iou_prediction(images, features, targets)
             return super().forward(images, features, targets)
         finally:
             self._rpn_quality_image_sizes = ()
@@ -624,6 +727,94 @@ class MetricRPN(RegionProposalNetwork):
                 "loss_rpn_box_reg": stage2_box_loss,
             }
         return boxes, losses
+
+    def _forward_iou_prediction(self, images, features, targets=None):
+        feature_list = list(features.values())
+        objectness_list, bbox_delta_list, iou_logit_list = (
+            self.head.forward_with_iou(feature_list))
+        anchors = self.anchor_generator(images, feature_list)
+        num_images = len(anchors)
+        num_anchors_per_level = [
+            score[0].shape[0] * score[0].shape[1] * score[0].shape[2]
+            for score in objectness_list
+        ]
+        objectness, bbox_deltas = concat_box_prediction_layers(
+            objectness_list, bbox_delta_list)
+        iou_logits = _flatten_rpn_scalar_logits(iou_logit_list)
+        proposals = self.box_coder.decode(bbox_deltas.detach(), anchors)
+        proposals = proposals.view(num_images, -1, 4)
+        fused_logits = _fuse_rpn_presence_iou_logits(
+            objectness,
+            iou_logits,
+            fusion_weight=self.iou_prediction_fusion_weight,
+        )
+        boxes, _ = self.filter_proposals(
+            proposals,
+            fused_logits,
+            images.image_sizes,
+            num_anchors_per_level,
+        )
+
+        losses = {}
+        if self.training:
+            if targets is None:
+                raise ValueError("targets should not be None")
+            labels, matched_gt_boxes = self.assign_targets_to_anchors(
+                anchors, targets)
+            regression_targets = self.box_coder.encode(
+                matched_gt_boxes, anchors)
+            objectness_loss, box_loss = self.compute_loss(
+                objectness, bbox_deltas, labels, regression_targets)
+            iou_prediction_loss = self._iou_prediction_loss(
+                iou_logits, bbox_deltas, labels, regression_targets)
+            losses = {
+                "loss_objectness": objectness_loss,
+                "loss_rpn_box_reg": box_loss,
+                "loss_rpn_iou_pred": (
+                    iou_prediction_loss
+                    * self.iou_prediction_loss_weight),
+            }
+        return boxes, losses
+
+    def _iou_prediction_loss(
+        self,
+        iou_logits: torch.Tensor,
+        pred_bbox_deltas: torch.Tensor,
+        labels: list[torch.Tensor],
+        regression_targets: list[torch.Tensor],
+    ) -> torch.Tensor:
+        labels_tensor = torch.cat(labels, dim=0)
+        positive_indices = torch.where(labels_tensor == 1)[0]
+        if positive_indices.numel() == 0:
+            self._rpn_iou_prediction_stats = {
+                "positive": 0,
+                "target_mean": 0.0,
+                "prediction_mean": 0.0,
+                "mae": 0.0,
+            }
+            return iou_logits.sum() * 0
+
+        regression_targets_tensor = torch.cat(regression_targets, dim=0)
+        iou_targets = _aligned_delta_iou_quality(
+            self.box_coder,
+            pred_bbox_deltas[positive_indices],
+            regression_targets_tensor[positive_indices],
+        )
+        positive_logits = iou_logits[positive_indices].float()
+        loss = F.binary_cross_entropy_with_logits(
+            positive_logits,
+            iou_targets,
+            reduction="mean",
+        )
+        with torch.no_grad():
+            predictions = positive_logits.sigmoid()
+            self._rpn_iou_prediction_stats = {
+                "positive": int(positive_indices.numel()),
+                "target_mean": float(iou_targets.mean().item()),
+                "prediction_mean": float(predictions.mean().item()),
+                "mae": float((predictions - iou_targets).abs().mean().item()),
+            }
+        return loss
 
     def _cascade_stage1_box_loss(
         self,
@@ -2216,6 +2407,10 @@ def build_model(
     rpn_quality_preserve_below_size_ratio: float = 0.0,
     rpn_cascade: bool = False,
     rpn_cascade_stage1_weight: float = 1.0,
+    rpn_iou_prediction: bool = False,
+    rpn_iou_prediction_loss_weight: float = 0.5,
+    rpn_iou_prediction_fusion_weight: float = 1.0,
+    rpn_iou_prediction_detached_tower: bool = False,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -2277,6 +2472,13 @@ def build_model(
         rpn_cascade: train a regression-only first RPN stage, then rematch and
             train the standard RPN head on detached refined anchors
         rpn_cascade_stage1_weight: weight for first-stage RPN box regression
+        rpn_iou_prediction: add a separate PAA-style IoU prediction head and
+            rank proposals by the unified presence/localization score
+        rpn_iou_prediction_loss_weight: positive-only IoU BCE loss weight
+        rpn_iou_prediction_fusion_weight: geometric blend strength from plain
+            presence ranking at zero to PAA sqrt(presence * IoU) at one
+        rpn_iou_prediction_detached_tower: predict IoU from a separate conv
+            tower whose input is detached from the detector backbone
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -2304,6 +2506,13 @@ def build_model(
             "RPN quality-preserve size ratio must be non-negative")
     if rpn_cascade_stage1_weight <= 0:
         raise ValueError("RPN cascade stage-1 weight must be positive")
+    if rpn_iou_prediction_loss_weight <= 0:
+        raise ValueError("RPN IoU-prediction loss weight must be positive")
+    if not 0 <= rpn_iou_prediction_fusion_weight <= 1:
+        raise ValueError("RPN IoU fusion weight must be in [0, 1]")
+    if rpn_iou_prediction_detached_tower and not rpn_iou_prediction:
+        raise ValueError(
+            "Detached RPN IoU tower requires RPN IoU prediction")
 
     base = fasterrcnn_resnet50_fpn(
         weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
@@ -2354,6 +2563,18 @@ def build_model(
     if rpn_cascade and rpn_refine_steps > 0:
         raise ValueError(
             "RPN cascade cannot be combined with fixed-delta refinement")
+    if rpn_iou_prediction and not use_metric_rpn:
+        raise ValueError(
+            "RPN IoU prediction currently requires metric RPN placement")
+    if rpn_iou_prediction and rpn_quality_objectness:
+        raise ValueError(
+            "RPN IoU prediction cannot be combined with quality objectness")
+    if rpn_iou_prediction and rpn_cascade:
+        raise ValueError(
+            "RPN IoU prediction cannot be combined with RPN cascade")
+    if rpn_iou_prediction and rpn_refine_steps > 0:
+        raise ValueError(
+            "RPN IoU prediction cannot be combined with fixed-delta refinement")
     snip_enabled = snip_valid_ranges is not None
     effective_min_sizes = (
         (MIN_SIZE,)
@@ -2401,10 +2622,22 @@ def build_model(
             saalw_assigner=assigner,
         )
     elif use_metric_rpn:
+        rpn_head = (
+            PAAIoURPNHead(
+                base.backbone.out_channels,
+                anchor_gen.num_anchors_per_location()[0],
+                detached_quality_tower=(
+                    rpn_iou_prediction_detached_tower),
+            )
+            if rpn_iou_prediction
+            else RPNHead(
+                base.backbone.out_channels,
+                anchor_gen.num_anchors_per_location()[0],
+            )
+        )
         base.rpn = MetricRPN(
             anchor_generator=anchor_gen,
-            head=RPNHead(base.backbone.out_channels,
-                         anchor_gen.num_anchors_per_location()[0]),
+            head=rpn_head,
             fg_iou_thresh=RPN_FG_IOU, bg_iou_thresh=RPN_BG_IOU,
             batch_size_per_image=256, positive_fraction=0.5,
             pre_nms_top_n={"training": RPN_NUM_PROPOSALS_TRAIN,
@@ -2424,6 +2657,10 @@ def build_model(
                 rpn_quality_preserve_below_size_ratio),
             cascade_refinement=rpn_cascade,
             cascade_stage1_loss_weight=rpn_cascade_stage1_weight,
+            iou_prediction=rpn_iou_prediction,
+            iou_prediction_loss_weight=rpn_iou_prediction_loss_weight,
+            iou_prediction_fusion_weight=(
+                rpn_iou_prediction_fusion_weight),
         )
     else:
         base.rpn = RegionProposalNetwork(
@@ -2465,6 +2702,14 @@ def build_model(
         print(
             "  [RPN cascade] dilation-3 regression stage -> detached anchors "
             f"-> rematched RPN stage; stage1_weight={rpn_cascade_stage1_weight:g}"
+        )
+    if rpn_iou_prediction:
+        print(
+            "  [RPN IoU prediction] positive-only BCE, "
+            f"loss_weight={rpn_iou_prediction_loss_weight:g}; "
+            "proposal_score=geometric(presence, predicted_iou); "
+            f"fusion_weight={rpn_iou_prediction_fusion_weight:g}; "
+            f"detached_tower={rpn_iou_prediction_detached_tower}"
         )
     if snip_enabled:
         _wrap_transform_for_snip(

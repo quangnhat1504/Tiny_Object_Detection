@@ -51,6 +51,14 @@ def main():
             "sqrt-area; zero disables the gate"
         ),
     )
+    parser.add_argument(
+        "--rpn-iou-prediction-fusion-weight",
+        type=float,
+        default=None,
+        help=(
+            "Override the checkpoint's geometric presence-IoU fusion weight"
+        ),
+    )
     parser.add_argument("--cbl-refine-blend", type=float, default=None,
                         help="Fraction of each iterative CBL box update")
     parser.add_argument(
@@ -132,6 +140,12 @@ def main():
         float(stored_config.get("rpn_refine_min_size_ratio", 0.0))
         if args.rpn_refine_min_size_ratio is None
         else args.rpn_refine_min_size_ratio
+    )
+    rpn_iou_fusion_weight = (
+        float(stored_config.get(
+            "rpn_iou_prediction_fusion_weight", 1.0))
+        if args.rpn_iou_prediction_fusion_weight is None
+        else args.rpn_iou_prediction_fusion_weight
     )
     refine_blend = (
         float(stored_config.get("cbl_refine_blend", 1.0))
@@ -230,6 +244,14 @@ def main():
         rpn_cascade=bool(stored_config.get("rpn_cascade", False)),
         rpn_cascade_stage1_weight=float(
             stored_config.get("rpn_cascade_stage1_weight", 1.0)),
+        rpn_iou_prediction=bool(
+            stored_config.get("rpn_iou_prediction", False)),
+        rpn_iou_prediction_loss_weight=float(
+            stored_config.get("rpn_iou_prediction_loss_weight", 0.5)),
+        rpn_iou_prediction_fusion_weight=rpn_iou_fusion_weight,
+        rpn_iou_prediction_detached_tower=bool(
+            stored_config.get(
+                "rpn_iou_prediction_detached_tower", False)),
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),
@@ -278,6 +300,14 @@ def main():
         "rpn_cascade": bool(stored_config.get("rpn_cascade", False)),
         "rpn_cascade_stage1_weight": float(
             stored_config.get("rpn_cascade_stage1_weight", 1.0)),
+        "rpn_iou_prediction": bool(
+            stored_config.get("rpn_iou_prediction", False)),
+        "rpn_iou_prediction_loss_weight": float(
+            stored_config.get("rpn_iou_prediction_loss_weight", 0.5)),
+        "rpn_iou_prediction_fusion_weight": rpn_iou_fusion_weight,
+        "rpn_iou_prediction_detached_tower": bool(
+            stored_config.get(
+                "rpn_iou_prediction_detached_tower", False)),
         "cbl_refine_blend": refine_blend,
         "cbl_refine_last_step_blend": refine_last_step_blend,
         "cbl_refine_last_center_blend": refine_last_center_blend,
