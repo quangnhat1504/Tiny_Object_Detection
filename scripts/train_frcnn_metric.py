@@ -94,6 +94,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  cbl_refine_extra_min_size_ratio: float = 0.0,
                  rpn_refine_steps: int = 0,
                  rpn_refine_min_size_ratio: float = 0.0,
+                 rpn_quality_objectness: bool = False,
+                 rpn_quality_beta: float = 2.0,
+                 rpn_quality_preserve_below_size_ratio: float = 0.0,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
@@ -143,6 +146,11 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         metric_name = f"{metric_name}__rpnr{rpn_refine_steps}"
         if rpn_refine_min_size_ratio > 0:
             metric_name += f"m{rpn_refine_min_size_ratio:g}"
+    if rpn_quality_objectness:
+        metric_name = f"{metric_name}__rpnqflb{rpn_quality_beta:g}"
+        if rpn_quality_preserve_below_size_ratio > 0:
+            metric_name += (
+                f"m{rpn_quality_preserve_below_size_ratio:g}")
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
         output_name = f"{output_name}__{tag}"
@@ -176,6 +184,12 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     print(
         f"  RPN inference refinement steps: {rpn_refine_steps}; "
         f"min size ratio={rpn_refine_min_size_ratio:g}"
+    )
+    print(
+        f"  RPN quality objectness: {rpn_quality_objectness}; "
+        f"beta={rpn_quality_beta:g}; "
+        "preserve below size ratio="
+        f"{rpn_quality_preserve_below_size_ratio:g}"
     )
     print(
         f"  Transform: train min={train_min_sizes}, "
@@ -251,6 +265,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         cbl_refine_extra_min_size_ratio=cbl_refine_extra_min_size_ratio,
         rpn_refine_steps=rpn_refine_steps,
         rpn_refine_min_size_ratio=rpn_refine_min_size_ratio,
+        rpn_quality_objectness=rpn_quality_objectness,
+        rpn_quality_beta=rpn_quality_beta,
+        rpn_quality_preserve_below_size_ratio=(
+            rpn_quality_preserve_below_size_ratio),
         cbl_alpha=cbl_alpha,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
@@ -344,6 +362,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         ),
         "rpn_refine_steps": rpn_refine_steps,
         "rpn_refine_min_size_ratio": rpn_refine_min_size_ratio,
+        "rpn_quality_objectness": rpn_quality_objectness,
+        "rpn_quality_beta": rpn_quality_beta,
+        "rpn_quality_preserve_below_size_ratio": (
+            rpn_quality_preserve_below_size_ratio),
         "cbl_alpha": cbl_alpha,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
@@ -585,6 +607,29 @@ def main():
         ),
     )
     parser.add_argument(
+        "--rpn-quality-objectness",
+        action="store_true",
+        help=(
+            "Train RPN objectness with proposal-IoU targets and binary "
+            "Quality Focal Loss"
+        ),
+    )
+    parser.add_argument(
+        "--rpn-quality-beta",
+        type=float,
+        default=2.0,
+        help="Modulating exponent for RPN Quality Focal Loss",
+    )
+    parser.add_argument(
+        "--rpn-quality-preserve-below-size-ratio",
+        type=float,
+        default=0.0,
+        help=(
+            "Keep binary-positive RPN targets for matched GT below this "
+            "normalized sqrt-area; zero disables the scale guard"
+        ),
+    )
+    parser.add_argument(
         "--train-max-size",
         type=int,
         default=None,
@@ -639,6 +684,10 @@ def main():
                  rpn_refine_steps=args.rpn_refine_steps,
                  rpn_refine_min_size_ratio=(
                      args.rpn_refine_min_size_ratio),
+                 rpn_quality_objectness=args.rpn_quality_objectness,
+                 rpn_quality_beta=args.rpn_quality_beta,
+                 rpn_quality_preserve_below_size_ratio=(
+                     args.rpn_quality_preserve_below_size_ratio),
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,

@@ -72,6 +72,19 @@ def build_checkpoint_model(
     checkpoint: dict, device: torch.device
 ) -> torch.nn.Module:
     config = checkpoint.get("config", {})
+    refine_blend = float(config.get("cbl_refine_blend", 1.0))
+    refine_last_step_blend = config.get(
+        "cbl_refine_last_step_blend")
+    if refine_last_step_blend is None:
+        refine_last_step_blend = refine_blend
+    refine_last_center_blend = config.get(
+        "cbl_refine_last_center_blend")
+    if refine_last_center_blend is None:
+        refine_last_center_blend = refine_last_step_blend
+    refine_last_size_blend = config.get(
+        "cbl_refine_last_size_blend")
+    if refine_last_size_blend is None:
+        refine_last_size_blend = refine_last_step_blend
     metric_name = config.get("metric", "sa_alw_full")
     placement = config.get("placement", "la_loss")
     if metric_name == "iou":
@@ -99,29 +112,26 @@ def build_checkpoint_model(
             config.get("double_head_reg_roi_scale", 1.3)),
         double_head_num_convs=int(config.get("double_head_num_convs", 4)),
         cbl_refine_steps=int(config.get("cbl_refine_steps", 0)),
-        cbl_refine_blend=float(config.get("cbl_refine_blend", 1.0)),
+        cbl_refine_blend=refine_blend,
         cbl_refine_last_step_blend=float(
-            config.get(
-                "cbl_refine_last_step_blend",
-                config.get("cbl_refine_blend", 1.0))),
+            refine_last_step_blend),
         cbl_refine_last_center_blend=float(
-            config.get(
-                "cbl_refine_last_center_blend",
-                config.get(
-                    "cbl_refine_last_step_blend",
-                    config.get("cbl_refine_blend", 1.0)))),
+            refine_last_center_blend),
         cbl_refine_last_size_blend=float(
-            config.get(
-                "cbl_refine_last_size_blend",
-                config.get(
-                    "cbl_refine_last_step_blend",
-                    config.get("cbl_refine_blend", 1.0)))),
+            refine_last_size_blend),
         cbl_refine_score_threshold=float(
             config.get("cbl_refine_score_threshold", 0.0)),
         cbl_refine_extra_min_size_ratio=float(
             config.get("cbl_refine_extra_min_size_ratio", 0.0)),
         cbl_refine_train_weight=float(
             config.get("cbl_refine_train_weight", 0.0)),
+        rpn_quality_objectness=bool(
+            config.get("rpn_quality_objectness", False)),
+        rpn_quality_beta=float(
+            config.get("rpn_quality_beta", 2.0)),
+        rpn_quality_preserve_below_size_ratio=float(
+            config.get(
+                "rpn_quality_preserve_below_size_ratio", 0.0)),
         cbl_alpha=float(config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(config.get("cbl_grid_beta", 1.0)),
