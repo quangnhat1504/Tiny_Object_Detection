@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 from common.config import SEED, seed_all
 from common.dataset import YOLOTinyDataset, collate_fn
 from common.metrics import get_metric_fn
-from common.model import build_model
+from common.model import build_model, iterative_rpn_proposals
 
 SIZE_BINS = (
     ("micro", 0.0, 8.0),
@@ -46,6 +46,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--iou-thresholds", type=float, nargs="+", default=(0.5, 0.75))
     parser.add_argument(
+        "--rpn-refine-passes", type=int, default=1,
+        help="Repeated applications of the fixed RPN box deltas")
+    parser.add_argument(
+        "--rpn-refine-min-size-ratio",
+        type=float,
+        default=0.0,
+        help=(
+            "Repeat deltas only above this normalized proposal sqrt-area; "
+            "zero disables the gate"
+        ),
+    )
+    parser.add_argument(
+        "--verify-pass1-parity", action="store_true",
+        help="Require custom pass-1 proposals to match model.rpn exactly")
+    parser.add_argument(
         "--max-tiles", type=int, default=None,
         help="Optional bounded smoke-test limit")
     parser.add_argument(
@@ -57,6 +72,19 @@ def build_checkpoint_model(
     checkpoint: dict, device: torch.device
 ) -> torch.nn.Module:
     config = checkpoint.get("config", {})
+    refine_blend = float(config.get("cbl_refine_blend", 1.0))
+    refine_last_step_blend = config.get(
+        "cbl_refine_last_step_blend")
+    if refine_last_step_blend is None:
+        refine_last_step_blend = refine_blend
+    refine_last_center_blend = config.get(
+        "cbl_refine_last_center_blend")
+    if refine_last_center_blend is None:
+        refine_last_center_blend = refine_last_step_blend
+    refine_last_size_blend = config.get(
+        "cbl_refine_last_size_blend")
+    if refine_last_size_blend is None:
+        refine_last_size_blend = refine_last_step_blend
     metric_name = config.get("metric", "sa_alw_full")
     placement = config.get("placement", "la_loss")
     if metric_name == "iou":
@@ -84,29 +112,29 @@ def build_checkpoint_model(
             config.get("double_head_reg_roi_scale", 1.3)),
         double_head_num_convs=int(config.get("double_head_num_convs", 4)),
         cbl_refine_steps=int(config.get("cbl_refine_steps", 0)),
-        cbl_refine_blend=float(config.get("cbl_refine_blend", 1.0)),
+        cbl_refine_blend=refine_blend,
         cbl_refine_last_step_blend=float(
-            config.get(
-                "cbl_refine_last_step_blend",
-                config.get("cbl_refine_blend", 1.0))),
+            refine_last_step_blend),
         cbl_refine_last_center_blend=float(
-            config.get(
-                "cbl_refine_last_center_blend",
-                config.get(
-                    "cbl_refine_last_step_blend",
-                    config.get("cbl_refine_blend", 1.0)))),
+            refine_last_center_blend),
         cbl_refine_last_size_blend=float(
-            config.get(
-                "cbl_refine_last_size_blend",
-                config.get(
-                    "cbl_refine_last_step_blend",
-                    config.get("cbl_refine_blend", 1.0)))),
+            refine_last_size_blend),
         cbl_refine_score_threshold=float(
             config.get("cbl_refine_score_threshold", 0.0)),
         cbl_refine_extra_min_size_ratio=float(
             config.get("cbl_refine_extra_min_size_ratio", 0.0)),
         cbl_refine_train_weight=float(
             config.get("cbl_refine_train_weight", 0.0)),
+        rpn_quality_objectness=bool(
+            config.get("rpn_quality_objectness", False)),
+        rpn_quality_beta=float(
+            config.get("rpn_quality_beta", 2.0)),
+        rpn_quality_preserve_below_size_ratio=float(
+            config.get(
+                "rpn_quality_preserve_below_size_ratio", 0.0)),
+        rpn_cascade=bool(config.get("rpn_cascade", False)),
+        rpn_cascade_stage1_weight=float(
+            config.get("rpn_cascade_stage1_weight", 1.0)),
         cbl_alpha=float(config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(config.get("cbl_grid_beta", 1.0)),
@@ -152,6 +180,12 @@ def main() -> None:
         raise ValueError("--iou-thresholds values must be in [0, 1]")
     if args.max_tiles is not None and args.max_tiles < 1:
         raise ValueError("--max-tiles must be positive")
+    if args.rpn_refine_passes < 1:
+        raise ValueError("--rpn-refine-passes must be positive")
+    if args.rpn_refine_min_size_ratio < 0:
+        raise ValueError("--rpn-refine-min-size-ratio must be non-negative")
+    if args.verify_pass1_parity and args.rpn_refine_passes != 1:
+        raise ValueError("--verify-pass1-parity requires exactly one pass")
 
     checkpoint_path = Path(args.ckpt)
     if not checkpoint_path.is_file():
@@ -178,6 +212,17 @@ def main() -> None:
         checkpoint_path, map_location="cpu", weights_only=False)
     model = build_checkpoint_model(checkpoint, device)
     config = checkpoint.get("config", {})
+    cascade_enabled = bool(getattr(model.rpn, "cascade_refinement", False))
+    native_rpn = (
+        args.rpn_refine_passes == 1
+        and args.rpn_refine_min_size_ratio == 0
+    )
+    if cascade_enabled and not native_rpn:
+        raise ValueError(
+            "Repeat-delta proposal audits are incompatible with RPN cascade")
+    if cascade_enabled and args.verify_pass1_parity:
+        raise ValueError(
+            "Pass-1 helper parity is not defined for the learned RPN cascade")
 
     overall_hits = empty_counter(top_ns, thresholds)
     bin_hits = {
@@ -189,6 +234,7 @@ def main() -> None:
     num_tiles = 0
     num_tiles_with_gt = 0
     proposal_total = 0
+    parity_max_abs_diff = 0.0
 
     with torch.inference_mode():
         for images, targets in loader:
@@ -219,7 +265,37 @@ def main() -> None:
             features = model.backbone(image_list.tensors)
             if isinstance(features, torch.Tensor):
                 features = OrderedDict([("0", features)])
-            proposals, _ = model.rpn(image_list, features)
+            if native_rpn:
+                proposals, _ = model.rpn(image_list, features)
+            else:
+                proposals = iterative_rpn_proposals(
+                    model.rpn,
+                    image_list,
+                    features,
+                    total_passes=args.rpn_refine_passes,
+                    min_refine_size_ratio=args.rpn_refine_min_size_ratio,
+                )
+            if args.verify_pass1_parity:
+                helper_proposals = iterative_rpn_proposals(
+                    model.rpn,
+                    image_list,
+                    features,
+                    total_passes=1,
+                )
+                for actual, reference in zip(
+                    helper_proposals, proposals
+                ):
+                    if actual.shape != reference.shape:
+                        raise AssertionError(
+                            "Pass-1 proposal shape differs from model.rpn")
+                    if actual.numel():
+                        parity_max_abs_diff = max(
+                            parity_max_abs_diff,
+                            float((actual - reference).abs().max().item()),
+                        )
+                    if not torch.equal(actual, reference):
+                        raise AssertionError(
+                            "Pass-1 proposals differ from model.rpn")
 
             for proposal, original, transformed in zip(
                 proposals, original_targets, transformed_targets
@@ -302,6 +378,15 @@ def main() -> None:
         "num_gt": counts["overall"],
         "mean_proposals_per_tile": (
             proposal_total / num_tiles if num_tiles else 0.0),
+        "rpn_refine_passes": args.rpn_refine_passes,
+        "rpn_refine_min_size_ratio": (
+            args.rpn_refine_min_size_ratio),
+        "rpn_cascade": cascade_enabled,
+        "rpn_cascade_stage1_weight": float(
+            config.get("rpn_cascade_stage1_weight", 1.0)),
+        "pass1_parity_verified": args.verify_pass1_parity,
+        "pass1_parity_max_abs_diff": (
+            parity_max_abs_diff if args.verify_pass1_parity else None),
         "top_n": top_ns,
         "iou_thresholds": thresholds,
         "size_bins_sqrt_area_px": {

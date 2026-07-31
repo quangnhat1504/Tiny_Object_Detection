@@ -22,10 +22,12 @@ from torchvision.models.detection import (
 from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor, RoIHeads)
 from torchvision.models.detection.rpn import (
-    AnchorGenerator, RegionProposalNetwork, RPNHead)
+    AnchorGenerator, RegionProposalNetwork, RPNHead,
+    concat_box_prediction_layers)
 from torchvision.models.resnet import Bottleneck
 from torchvision.ops import (
     batched_nms, box_iou, boxes as box_ops,
+    clip_boxes_to_image,
     complete_box_iou_loss, distance_box_iou_loss,
 )
 
@@ -303,6 +305,206 @@ def _hierarchical_assignment(sim, xn, yn, wn, hn, xg, yg, wg, hg,
 # =============================================================================
 # Metric RPN — label assignment via metric similarity (hierarchical top-k)
 # =============================================================================
+def iterative_rpn_proposals(
+    rpn: RegionProposalNetwork,
+    images,
+    features: dict[str, torch.Tensor],
+    total_passes: int,
+    min_refine_size_ratio: float = 0.0,
+) -> list[torch.Tensor]:
+    """Generate RPN proposals by repeatedly applying fixed box deltas."""
+    if total_passes < 1:
+        raise ValueError("RPN proposal generation needs at least one pass")
+    if min_refine_size_ratio < 0:
+        raise ValueError("RPN refinement minimum size ratio must be non-negative")
+
+    feature_list = list(features.values())
+    objectness_list, bbox_delta_list = rpn.head(feature_list)
+    anchors = rpn.anchor_generator(images, feature_list)
+    num_images = len(anchors)
+    num_anchors_per_image = [len(image_anchors) for image_anchors in anchors]
+    num_anchors_per_level = [
+        score[0].shape[0] * score[0].shape[1] * score[0].shape[2]
+        for score in objectness_list
+    ]
+    objectness, bbox_deltas = concat_box_prediction_layers(
+        objectness_list, bbox_delta_list)
+
+    current_anchors = anchors
+    decoded = None
+    first_decoded = None
+    refine_mask = None
+    for pass_index in range(total_passes):
+        decoded = rpn.box_coder.decode(
+            bbox_deltas.detach(), current_anchors).squeeze(1)
+        if pass_index == 0:
+            first_decoded = decoded
+            if total_passes > 1 and min_refine_size_ratio > 0:
+                masks = []
+                for boxes, (height, width) in zip(
+                    decoded.split(num_anchors_per_image),
+                    images.image_sizes,
+                ):
+                    box_widths = (boxes[:, 2] - boxes[:, 0]).clamp(min=0)
+                    box_heights = (boxes[:, 3] - boxes[:, 1]).clamp(min=0)
+                    normalized_size = (
+                        (box_widths * box_heights).sqrt()
+                        / math.sqrt(float(height * width))
+                    )
+                    masks.append(
+                        normalized_size >= min_refine_size_ratio)
+                refine_mask = torch.cat(masks)
+        elif refine_mask is not None:
+            decoded = torch.where(
+                refine_mask[:, None], decoded, first_decoded)
+        if pass_index + 1 < total_passes:
+            split_decoded = decoded.split(num_anchors_per_image)
+            current_anchors = [
+                clip_boxes_to_image(boxes, image_size)
+                for boxes, image_size in zip(
+                    split_decoded, images.image_sizes)
+            ]
+
+    proposals = decoded.view(num_images, -1, 4)
+    boxes, _ = rpn.filter_proposals(
+        proposals,
+        objectness,
+        images.image_sizes,
+        num_anchors_per_level,
+    )
+    return boxes
+
+
+def _wrap_rpn_inference_refinement(
+    rpn: RegionProposalNetwork,
+    extra_steps: int,
+    min_refine_size_ratio: float,
+) -> None:
+    """Repeat fixed RPN deltas only for evaluation proposal generation."""
+    original_forward = type(rpn).forward
+    rpn._inference_refine_steps = extra_steps
+    rpn._inference_refine_min_size_ratio = min_refine_size_ratio
+
+    def patched_forward(self, images, features, targets=None):
+        steps = int(getattr(self, "_inference_refine_steps", 0))
+        if self.training or steps == 0:
+            return original_forward(self, images, features, targets)
+        min_size_ratio = float(
+            getattr(self, "_inference_refine_min_size_ratio", 0.0))
+        boxes = iterative_rpn_proposals(
+            self,
+            images,
+            features,
+            total_passes=steps + 1,
+            min_refine_size_ratio=min_size_ratio,
+        )
+        return boxes, {}
+
+    rpn.forward = patched_forward.__get__(rpn, type(rpn))
+
+
+def _binary_quality_focal_loss(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    beta: float,
+) -> torch.Tensor:
+    """Binary Quality Focal Loss with continuous localization targets."""
+    if beta < 0:
+        raise ValueError("RPN Quality Focal Loss beta must be non-negative")
+    if logits.shape != targets.shape:
+        raise ValueError("RPN quality logits and targets must have equal shape")
+    logits = logits.float()
+    targets = targets.float().clamp(0.0, 1.0)
+    probabilities = logits.sigmoid()
+    modulation = (targets - probabilities).abs().pow(beta)
+    return (
+        F.binary_cross_entropy_with_logits(
+            logits, targets, reduction="none")
+        * modulation
+    ).mean()
+
+
+def _aligned_delta_iou_quality(
+    box_coder,
+    predicted_deltas: torch.Tensor,
+    target_deltas: torch.Tensor,
+) -> torch.Tensor:
+    """Recover aligned proposal/GT IoU from deltas sharing each anchor."""
+    if predicted_deltas.shape != target_deltas.shape:
+        raise ValueError("Predicted and target RPN deltas must have equal shape")
+    if predicted_deltas.ndim != 2 or predicted_deltas.shape[1] != 4:
+        raise ValueError("RPN deltas must have shape [N, 4]")
+    if predicted_deltas.numel() == 0:
+        return predicted_deltas.new_empty((0,), dtype=torch.float32)
+
+    with torch.no_grad():
+        predicted_deltas = predicted_deltas.detach().float()
+        target_deltas = target_deltas.detach().float()
+        unit_anchors = predicted_deltas.new_tensor(
+            [0.0, 0.0, 1.0, 1.0]
+        ).expand(len(predicted_deltas), 4)
+        predicted_boxes = box_coder.decode_single(
+            predicted_deltas, unit_anchors)
+        target_boxes = box_coder.decode_single(
+            target_deltas, unit_anchors)
+
+        intersection_min = torch.maximum(
+            predicted_boxes[:, :2], target_boxes[:, :2])
+        intersection_max = torch.minimum(
+            predicted_boxes[:, 2:], target_boxes[:, 2:])
+        intersection_wh = (
+            intersection_max - intersection_min).clamp(min=0)
+        intersection = intersection_wh.prod(dim=1)
+        predicted_area = (
+            predicted_boxes[:, 2:] - predicted_boxes[:, :2]
+        ).clamp(min=0).prod(dim=1)
+        target_area = (
+            target_boxes[:, 2:] - target_boxes[:, :2]
+        ).clamp(min=0).prod(dim=1)
+        union = predicted_area + target_area - intersection
+        return (intersection / union.clamp(min=EPS)).clamp(0.0, 1.0)
+
+
+class CascadeRPNRegressionHead(nn.Module):
+    """Regression-only first stage for the bounded RPN cascade ablation."""
+
+    def __init__(self, in_channels: int, num_anchors: int):
+        super().__init__()
+        self.conv = nn.Conv2d(
+            in_channels,
+            in_channels,
+            kernel_size=3,
+            stride=1,
+            padding=3,
+            dilation=3,
+        )
+        self.bbox_pred = nn.Conv2d(
+            in_channels, num_anchors * 4, kernel_size=1, stride=1)
+        for layer in (self.conv, self.bbox_pred):
+            nn.init.normal_(layer.weight, std=0.01)
+            if layer.bias is not None:
+                nn.init.zeros_(layer.bias)
+
+    def forward(self, features: list[torch.Tensor]) -> list[torch.Tensor]:
+        return [self.bbox_pred(F.relu(self.conv(feature))) for feature in features]
+
+
+def _flatten_rpn_bbox_deltas(
+    bbox_deltas: list[torch.Tensor],
+) -> torch.Tensor:
+    """Flatten RPN deltas in torchvision's level/image/anchor order."""
+    flattened = []
+    for deltas_per_level in bbox_deltas:
+        num_images, channels, height, width = deltas_per_level.shape
+        num_anchors = channels // 4
+        flattened.append(
+            deltas_per_level.view(
+                num_images, num_anchors, 4, height, width
+            ).permute(0, 3, 4, 1, 2).reshape(num_images, -1, 4)
+        )
+    return torch.cat(flattened, dim=1).reshape(-1, 4)
+
+
 class MetricRPN(RegionProposalNetwork):
     def __init__(
         self,
@@ -311,19 +513,240 @@ class MetricRPN(RegionProposalNetwork):
         reliability_thr=16.0,
         snip_ignore_iou_thresh: Optional[float] = None,
         snip_collect_stats: bool = False,
+        quality_objectness: bool = False,
+        quality_beta: float = 2.0,
+        quality_preserve_below_size_ratio: float = 0.0,
+        cascade_refinement: bool = False,
+        cascade_stage1_loss_weight: float = 1.0,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        if quality_beta < 0:
+            raise ValueError("RPN Quality Focal Loss beta must be non-negative")
+        if quality_preserve_below_size_ratio < 0:
+            raise ValueError(
+                "RPN quality-preserve size ratio must be non-negative")
+        if cascade_stage1_loss_weight <= 0:
+            raise ValueError("RPN cascade stage-1 loss weight must be positive")
+        if cascade_refinement and quality_objectness:
+            raise ValueError(
+                "RPN cascade is not compatible with quality objectness")
         self.metric_fn = metric_fn
         self.reliability_thr = reliability_thr
         self.snip_ignore_iou_thresh = snip_ignore_iou_thresh
         self.snip_collect_stats = snip_collect_stats
+        self.quality_objectness = quality_objectness
+        self.quality_beta = quality_beta
+        self.quality_preserve_below_size_ratio = (
+            quality_preserve_below_size_ratio)
+        self.cascade_refinement = cascade_refinement
+        self.cascade_stage1_loss_weight = cascade_stage1_loss_weight
+        self.cascade_stage1_head = None
+        if cascade_refinement:
+            if not hasattr(self.head, "bbox_pred"):
+                raise TypeError("RPN cascade requires a torchvision-style RPN head")
+            in_channels = self.head.bbox_pred.in_channels
+            num_anchors = self.head.bbox_pred.out_channels // 4
+            self.cascade_stage1_head = CascadeRPNRegressionHead(
+                in_channels, num_anchors)
         self._snip_last_assignment_stats = []
+        self._rpn_quality_stats = {}
+        self._rpn_quality_image_sizes = ()
+        self._rpn_quality_gt_size_ratios = []
+
+    def forward(self, images, features, targets=None):
+        self._rpn_quality_image_sizes = tuple(images.image_sizes)
+        try:
+            if self.cascade_refinement:
+                return self._forward_cascade(images, features, targets)
+            return super().forward(images, features, targets)
+        finally:
+            self._rpn_quality_image_sizes = ()
+
+    def _forward_cascade(self, images, features, targets=None):
+        feature_list = list(features.values())
+        stage1_bbox_list = self.cascade_stage1_head(feature_list)
+        anchors = self.anchor_generator(images, feature_list)
+        num_images = len(anchors)
+        num_anchors_per_image = [len(image_anchors) for image_anchors in anchors]
+
+        stage1_bbox_deltas = _flatten_rpn_bbox_deltas(stage1_bbox_list)
+        decoded_stage1 = self.box_coder.decode(
+            stage1_bbox_deltas.detach(), anchors).squeeze(1)
+        refined_anchors = [
+            clip_boxes_to_image(boxes, image_size)
+            for boxes, image_size in zip(
+                decoded_stage1.split(num_anchors_per_image), images.image_sizes)
+        ]
+
+        objectness_list, stage2_bbox_list = self.head(feature_list)
+        num_anchors_per_level = [
+            score[0].shape[0] * score[0].shape[1] * score[0].shape[2]
+            for score in objectness_list
+        ]
+        objectness, stage2_bbox_deltas = concat_box_prediction_layers(
+            objectness_list, stage2_bbox_list)
+        proposals = self.box_coder.decode(
+            stage2_bbox_deltas.detach(), refined_anchors)
+        proposals = proposals.view(num_images, -1, 4)
+        boxes, _ = self.filter_proposals(
+            proposals,
+            objectness,
+            images.image_sizes,
+            num_anchors_per_level,
+        )
+
+        losses = {}
+        if self.training:
+            if targets is None:
+                raise ValueError("targets should not be None")
+            stage1_labels, stage1_matched_boxes = (
+                self.assign_targets_to_anchors(anchors, targets))
+            stage1_targets = self.box_coder.encode(
+                stage1_matched_boxes, anchors)
+            stage1_box_loss = self._cascade_stage1_box_loss(
+                stage1_bbox_deltas, stage1_labels, stage1_targets)
+
+            stage2_labels, stage2_matched_boxes = (
+                self.assign_targets_to_anchors(refined_anchors, targets))
+            stage2_targets = self.box_coder.encode(
+                stage2_matched_boxes, refined_anchors)
+            objectness_loss, stage2_box_loss = self.compute_loss(
+                objectness,
+                stage2_bbox_deltas,
+                stage2_labels,
+                stage2_targets,
+            )
+            losses = {
+                "loss_rpn_stage1_box_reg": (
+                    stage1_box_loss * self.cascade_stage1_loss_weight),
+                "loss_objectness": objectness_loss,
+                "loss_rpn_box_reg": stage2_box_loss,
+            }
+        return boxes, losses
+
+    def _cascade_stage1_box_loss(
+        self,
+        pred_bbox_deltas: torch.Tensor,
+        labels: list[torch.Tensor],
+        regression_targets: list[torch.Tensor],
+    ) -> torch.Tensor:
+        sampled_pos_masks, sampled_neg_masks = self.fg_bg_sampler(labels)
+        sampled_pos_inds = torch.where(
+            torch.cat(sampled_pos_masks, dim=0))[0]
+        sampled_neg_inds = torch.where(
+            torch.cat(sampled_neg_masks, dim=0))[0]
+        sampled_count = sampled_pos_inds.numel() + sampled_neg_inds.numel()
+        regression_targets_tensor = torch.cat(regression_targets, dim=0)
+        return F.smooth_l1_loss(
+            pred_bbox_deltas[sampled_pos_inds],
+            regression_targets_tensor[sampled_pos_inds],
+            beta=1 / 9,
+            reduction="sum",
+        ) / max(sampled_count, 1)
+
+    def compute_loss(
+        self,
+        objectness: torch.Tensor,
+        pred_bbox_deltas: torch.Tensor,
+        labels: list[torch.Tensor],
+        regression_targets: list[torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if not self.quality_objectness:
+            return super().compute_loss(
+                objectness, pred_bbox_deltas, labels, regression_targets)
+
+        sampled_pos_masks, sampled_neg_masks = self.fg_bg_sampler(labels)
+        sampled_pos_inds = torch.where(
+            torch.cat(sampled_pos_masks, dim=0))[0]
+        sampled_neg_inds = torch.where(
+            torch.cat(sampled_neg_masks, dim=0))[0]
+        sampled_inds = torch.cat(
+            [sampled_pos_inds, sampled_neg_inds], dim=0)
+
+        objectness = objectness.flatten()
+        labels_tensor = torch.cat(labels, dim=0)
+        regression_targets_tensor = torch.cat(
+            regression_targets, dim=0)
+
+        box_loss = F.smooth_l1_loss(
+            pred_bbox_deltas[sampled_pos_inds],
+            regression_targets_tensor[sampled_pos_inds],
+            beta=1 / 9,
+            reduction="sum",
+        ) / sampled_inds.numel()
+
+        quality_targets = labels_tensor[sampled_inds].float().clone()
+        positive_quality = _aligned_delta_iou_quality(
+            self.box_coder,
+            pred_bbox_deltas[sampled_pos_inds],
+            regression_targets_tensor[sampled_pos_inds],
+        )
+        preserve_mask = torch.zeros(
+            len(positive_quality),
+            dtype=torch.bool,
+            device=positive_quality.device,
+        )
+        positive_size_ratios = torch.zeros_like(positive_quality)
+        if self.quality_preserve_below_size_ratio > 0:
+            if not self._rpn_quality_gt_size_ratios:
+                raise RuntimeError(
+                    "RPN quality GT-size targets were not populated")
+            size_ratios = torch.cat(
+                self._rpn_quality_gt_size_ratios, dim=0)
+            positive_size_ratios = size_ratios[sampled_pos_inds]
+            preserve_mask = (
+                positive_size_ratios
+                < self.quality_preserve_below_size_ratio
+            )
+            positive_quality = torch.where(
+                preserve_mask,
+                torch.ones_like(positive_quality),
+                positive_quality,
+            )
+        quality_targets[:len(sampled_pos_inds)] = positive_quality
+        objectness_loss = _binary_quality_focal_loss(
+            objectness[sampled_inds],
+            quality_targets,
+            beta=self.quality_beta,
+        )
+
+        self._rpn_quality_stats = {
+            "sampled_positive": int(sampled_pos_inds.numel()),
+            "sampled_negative": int(sampled_neg_inds.numel()),
+            "positive_quality_mean": (
+                float(positive_quality.mean().item())
+                if positive_quality.numel() else 0.0
+            ),
+            "positive_quality_min": (
+                float(positive_quality.min().item())
+                if positive_quality.numel() else 0.0
+            ),
+            "positive_quality_max": (
+                float(positive_quality.max().item())
+                if positive_quality.numel() else 0.0
+            ),
+            "preserved_positive": int(preserve_mask.sum().item()),
+            "positive_size_ratio_mean": (
+                float(positive_size_ratios.mean().item())
+                if positive_size_ratios.numel() else 0.0
+            ),
+        }
+        return objectness_loss, box_loss
 
     def assign_targets_to_anchors(self, anchors, targets):
         labels_list, matched_boxes_list = [], []
         self._snip_last_assignment_stats = []
-        for anchors_img, targets_img in zip(anchors, targets):
+        self._rpn_quality_gt_size_ratios = []
+        if (
+            self.quality_objectness
+            and len(self._rpn_quality_image_sizes) != len(anchors)
+        ):
+            raise RuntimeError(
+                "RPN quality objectness requires transformed image sizes")
+        for image_index, (anchors_img, targets_img) in enumerate(
+            zip(anchors, targets)
+        ):
             gt_boxes = targets_img["boxes"]
             dev = anchors_img.device
             snip_valid = targets_img.get("_snip_valid")
@@ -341,6 +764,8 @@ class MetricRPN(RegionProposalNetwork):
 
             lbl = torch.zeros(len(anchors_img), dtype=torch.float32, device=dev)
             matched_boxes = torch.zeros_like(anchors_img)
+            positive = torch.zeros(
+                len(anchors_img), dtype=torch.bool, device=dev)
             if valid_gt_boxes.numel() > 0:
                 xn = (anchors_img[:, 0] + anchors_img[:, 2]) / 2.0
                 yn = (anchors_img[:, 1] + anchors_img[:, 3]) / 2.0
@@ -391,6 +816,22 @@ class MetricRPN(RegionProposalNetwork):
 
             labels_list.append(lbl)
             matched_boxes_list.append(matched_boxes)
+            if self.quality_objectness:
+                image_height, image_width = (
+                    self._rpn_quality_image_sizes[image_index])
+                matched_widths = (
+                    matched_boxes[:, 2] - matched_boxes[:, 0]
+                ).clamp(min=0)
+                matched_heights = (
+                    matched_boxes[:, 3] - matched_boxes[:, 1]
+                ).clamp(min=0)
+                size_ratios = torch.zeros_like(lbl)
+                size_ratios[positive] = (
+                    (matched_widths[positive] * matched_heights[positive])
+                    .sqrt()
+                    / math.sqrt(float(image_height * image_width))
+                )
+                self._rpn_quality_gt_size_ratios.append(size_ratios)
             if self.snip_collect_stats:
                 self._snip_last_assignment_stats.append({
                     "valid_gt": int(snip_valid.sum().item()),
@@ -1768,7 +2209,13 @@ def build_model(
     cbl_refine_score_threshold: float = 0.0,
     cbl_refine_extra_min_size_ratio: float = 0.0,
     cbl_refine_train_weight: float = 0.0,
-    cbl_refine_train_steps: int = 1,
+    rpn_refine_steps: int = 0,
+    rpn_refine_min_size_ratio: float = 0.0,
+    rpn_quality_objectness: bool = False,
+    rpn_quality_beta: float = 2.0,
+    rpn_quality_preserve_below_size_ratio: float = 0.0,
+    rpn_cascade: bool = False,
+    rpn_cascade_stage1_weight: float = 1.0,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -1818,7 +2265,18 @@ def build_model(
         cbl_refine_extra_min_size_ratio: after pass one, refine only boxes
             whose sqrt area divided by sqrt image area reaches this value
         cbl_refine_train_weight: auxiliary shared-head second-pass CBL weight
-        cbl_refine_train_steps: detached refined-proposal supervision passes
+        rpn_refine_steps: evaluation-only repeated applications of the fixed
+            RPN box deltas after the normal proposal decode
+        rpn_refine_min_size_ratio: only repeat deltas for proposals whose
+            sqrt area divided by sqrt image area reaches this value
+        rpn_quality_objectness: train RPN objectness with decoded proposal-IoU
+            targets and binary Quality Focal Loss
+        rpn_quality_beta: modulating exponent for RPN Quality Focal Loss
+        rpn_quality_preserve_below_size_ratio: preserve binary-positive
+            objectness targets for matched GT below this normalized sqrt-area
+        rpn_cascade: train a regression-only first RPN stage, then rematch and
+            train the standard RPN head on detached refined anchors
+        rpn_cascade_stage1_weight: weight for first-stage RPN box regression
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -1835,6 +2293,17 @@ def build_model(
     """
     if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
         raise ValueError(f"Unknown placement: {placement}")
+    if rpn_refine_steps < 0:
+        raise ValueError("RPN refinement steps must be non-negative")
+    if rpn_refine_min_size_ratio < 0:
+        raise ValueError("RPN refinement minimum size ratio must be non-negative")
+    if rpn_quality_beta < 0:
+        raise ValueError("RPN Quality Focal Loss beta must be non-negative")
+    if rpn_quality_preserve_below_size_ratio < 0:
+        raise ValueError(
+            "RPN quality-preserve size ratio must be non-negative")
+    if rpn_cascade_stage1_weight <= 0:
+        raise ValueError("RPN cascade stage-1 weight must be positive")
 
     base = fasterrcnn_resnet50_fpn(
         weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
@@ -1874,6 +2343,17 @@ def build_model(
     use_metric_nms  = placement in ("la_loss_nms",) and metric_fn is not None
     use_soft_nms    = placement in ("la_loss_soft_nms",) and metric_fn is not None
     use_saalw_rpn   = placement == "saalw_assigner"
+    if rpn_quality_objectness and not use_metric_rpn:
+        raise ValueError(
+            "RPN quality objectness requires metric RPN placement")
+    if rpn_cascade and not use_metric_rpn:
+        raise ValueError("RPN cascade currently requires metric RPN placement")
+    if rpn_cascade and rpn_quality_objectness:
+        raise ValueError(
+            "RPN cascade cannot be combined with RPN quality objectness")
+    if rpn_cascade and rpn_refine_steps > 0:
+        raise ValueError(
+            "RPN cascade cannot be combined with fixed-delta refinement")
     snip_enabled = snip_valid_ranges is not None
     effective_min_sizes = (
         (MIN_SIZE,)
@@ -1938,6 +2418,12 @@ def build_model(
                 snip_rpn_ignore_iou_thresh if snip_enabled else None
             ),
             snip_collect_stats=snip_collect_stats,
+            quality_objectness=rpn_quality_objectness,
+            quality_beta=rpn_quality_beta,
+            quality_preserve_below_size_ratio=(
+                rpn_quality_preserve_below_size_ratio),
+            cascade_refinement=rpn_cascade,
+            cascade_stage1_loss_weight=rpn_cascade_stage1_weight,
         )
     else:
         base.rpn = RegionProposalNetwork(
@@ -1957,6 +2443,29 @@ def build_model(
     base.roi_heads.bg_iou_thresh = ROI_BG_IOU_THRESH
     base.roi_heads.batch_size_per_image = 256
     base.roi_heads.positive_fraction = 0.5
+    if rpn_refine_steps > 0:
+        _wrap_rpn_inference_refinement(
+            base.rpn,
+            rpn_refine_steps,
+            rpn_refine_min_size_ratio,
+        )
+        print(
+            "  [RPN refine] inference extra_steps="
+            f"{rpn_refine_steps}, "
+            f"min_size_ratio={rpn_refine_min_size_ratio:g}"
+        )
+    if rpn_quality_objectness:
+        print(
+            "  [RPN QFL] proposal-IoU objectness targets, "
+            f"beta={rpn_quality_beta:g}, "
+            "preserve_below_size_ratio="
+            f"{rpn_quality_preserve_below_size_ratio:g}"
+        )
+    if rpn_cascade:
+        print(
+            "  [RPN cascade] dilation-3 regression stage -> detached anchors "
+            f"-> rematched RPN stage; stage1_weight={rpn_cascade_stage1_weight:g}"
+        )
     if snip_enabled:
         _wrap_transform_for_snip(
             base.transform,
