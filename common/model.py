@@ -11,6 +11,7 @@ Metric loss implementation: we override torchvision's RoIHeads.compute_loss
 to replace Smooth-L1 with metric-distance loss.
 """
 from __future__ import annotations
+import math
 from typing import Callable, Optional
 
 import torch
@@ -952,10 +953,11 @@ def _iteratively_refine_cbl_detections(
     steps,
     blend,
     score_threshold,
+    extra_min_size_ratio,
 ):
     """Reapply the trained CBL regressor while preserving labels and scores."""
     current_boxes = boxes
-    for _ in range(steps):
+    for step_index in range(steps):
         if not any(boxes_per_image.numel() for boxes_per_image in current_boxes):
             break
         pooled = roi_heads.box_roi_pool(
@@ -989,9 +991,24 @@ def _iteratively_refine_cbl_detections(
             selected = (
                 boxes_per_image + blend * (selected - boxes_per_image)
             )
+            update_mask = torch.ones(
+                len(selected), dtype=torch.bool, device=selected.device
+            )
             if score_threshold > 0:
+                update_mask &= scores_per_image >= score_threshold
+            if step_index > 0 and extra_min_size_ratio > 0:
+                widths_heights = (
+                    boxes_per_image[:, 2:] - boxes_per_image[:, :2]
+                ).clamp(min=0)
+                normalized_size = widths_heights.prod(dim=1).sqrt() / math.sqrt(
+                    image_shape[0] * image_shape[1]
+                )
+                update_mask &= normalized_size >= extra_min_size_ratio
+            if score_threshold > 0 or (
+                step_index > 0 and extra_min_size_ratio > 0
+            ):
                 selected = torch.where(
-                    (scores_per_image >= score_threshold).unsqueeze(1),
+                    update_mask.unsqueeze(1),
                     selected,
                     boxes_per_image,
                 )
@@ -1132,6 +1149,7 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        cbl_refine_steps=0,
                                        cbl_refine_blend=1.0,
                                        cbl_refine_score_threshold=0.0,
+                                       cbl_refine_extra_min_size_ratio=0.0,
                                        cbl_refine_train_weight=0.0,
                                        cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
@@ -1149,6 +1167,9 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
     roi_heads._cbl_refine_steps = cbl_refine_steps
     roi_heads._cbl_refine_blend = cbl_refine_blend
     roi_heads._cbl_refine_score_threshold = cbl_refine_score_threshold
+    roi_heads._cbl_refine_extra_min_size_ratio = (
+        cbl_refine_extra_min_size_ratio
+    )
     roi_heads._cbl_refine_train_weight = cbl_refine_train_weight
     roi_heads._cbl_um_weight = cbl_um_weight
 
@@ -1256,6 +1277,11 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                     refine_steps,
                     getattr(self, "_cbl_refine_blend", 1.0),
                     getattr(self, "_cbl_refine_score_threshold", 0.0),
+                    getattr(
+                        self,
+                        "_cbl_refine_extra_min_size_ratio",
+                        0.0,
+                    ),
                 )
             for i in range(len(boxes)):
                 result.append({"boxes": boxes[i], "labels": labels_out[i], "scores": scores[i]})
@@ -1410,6 +1436,7 @@ def build_model(
     cbl_refine_steps: int = 0,
     cbl_refine_blend: float = 1.0,
     cbl_refine_score_threshold: float = 0.0,
+    cbl_refine_extra_min_size_ratio: float = 0.0,
     cbl_refine_train_weight: float = 0.0,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
@@ -1444,6 +1471,8 @@ def build_model(
         cbl_refine_steps: inference-only repeated CBL box-regression passes
         cbl_refine_blend: fraction of each predicted refinement update
         cbl_refine_score_threshold: preserve boxes below this class score
+        cbl_refine_extra_min_size_ratio: after pass one, refine only boxes
+            whose sqrt area divided by sqrt image area reaches this value
         cbl_refine_train_weight: auxiliary shared-head second-pass CBL weight
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
@@ -1560,6 +1589,10 @@ def build_model(
         raise ValueError("CBL refine blend must be positive")
     if not 0 <= cbl_refine_score_threshold <= 1:
         raise ValueError("CBL refine score threshold must be in [0, 1]")
+    if not 0 <= cbl_refine_extra_min_size_ratio <= 1:
+        raise ValueError(
+            "CBL refine extra-pass minimum size ratio must be in [0, 1]"
+        )
     if cbl_refine_train_weight < 0:
         raise ValueError("CBL refine training weight cannot be negative")
     if cbl_refine_steps > 0 and box_loss_type != "cbl":
@@ -1627,6 +1660,9 @@ def build_model(
             cbl_refine_steps=cbl_refine_steps,
             cbl_refine_blend=cbl_refine_blend,
             cbl_refine_score_threshold=cbl_refine_score_threshold,
+            cbl_refine_extra_min_size_ratio=(
+                cbl_refine_extra_min_size_ratio
+            ),
             cbl_refine_train_weight=cbl_refine_train_weight,
             cbl_um_weight=cbl_um_weight)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
@@ -1650,7 +1686,8 @@ def build_model(
             print(
                 f"  [CBL refine] inference passes={cbl_refine_steps}, "
                 f"blend={cbl_refine_blend:g}, "
-                f"score_threshold={cbl_refine_score_threshold:g}"
+                f"score_threshold={cbl_refine_score_threshold:g}, "
+                f"extra_min_size_ratio={cbl_refine_extra_min_size_ratio:g}"
             )
         if cbl_refine_train_weight > 0:
             print(

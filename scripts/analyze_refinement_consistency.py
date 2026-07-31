@@ -211,6 +211,9 @@ def _build_model_from_checkpoint(
         cbl_refine_score_threshold=float(
             config.get("cbl_refine_score_threshold", 0.0)
         ),
+        cbl_refine_extra_min_size_ratio=float(
+            config.get("cbl_refine_extra_min_size_ratio", 0.0)
+        ),
         cbl_refine_train_weight=float(
             config.get("cbl_refine_train_weight", 0.0)
         ),
@@ -357,6 +360,7 @@ def main() -> None:
         steps,
         blend,
         score_threshold,
+        extra_min_size_ratio,
     ):
         result = original_refine(
             roi_heads,
@@ -368,6 +372,7 @@ def main() -> None:
             steps,
             blend,
             score_threshold,
+            extra_min_size_ratio,
         )
         captures.append(
             {

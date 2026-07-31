@@ -40,6 +40,15 @@ def main():
                         help="Fraction of each iterative CBL box update")
     parser.add_argument("--cbl-refine-score-threshold", type=float, default=None,
                         help="Preserve detections below this score")
+    parser.add_argument(
+        "--cbl-refine-extra-min-size-ratio",
+        type=float,
+        default=None,
+        help=(
+            "After pass one, refine only boxes at or above this normalized "
+            "sqrt-area size; zero disables the gate"
+        ),
+    )
     parser.add_argument("--out", type=str, default=None,
                         help="Output JSON path (default: runs/test_coco_<metric>.json)")
     args = parser.parse_args()
@@ -91,6 +100,11 @@ def main():
         if args.cbl_refine_score_threshold is None
         else args.cbl_refine_score_threshold
     )
+    refine_extra_min_size_ratio = (
+        float(stored_config.get("cbl_refine_extra_min_size_ratio", 0.0))
+        if args.cbl_refine_extra_min_size_ratio is None
+        else args.cbl_refine_extra_min_size_ratio
+    )
 
     print(f"Stored config: metric={effective_metric}, placement={effective_placement}")
     print(f"Checkpoint epoch: {ck.get('epoch', 'unknown')}")
@@ -132,6 +146,7 @@ def main():
         cbl_refine_steps=refine_steps,
         cbl_refine_blend=refine_blend,
         cbl_refine_score_threshold=refine_score_threshold,
+        cbl_refine_extra_min_size_ratio=refine_extra_min_size_ratio,
         cbl_refine_train_weight=float(
             stored_config.get("cbl_refine_train_weight", 0.0)),
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
@@ -172,6 +187,7 @@ def main():
         "cbl_refine_steps": refine_steps,
         "cbl_refine_blend": refine_blend,
         "cbl_refine_score_threshold": refine_score_threshold,
+        "cbl_refine_extra_min_size_ratio": refine_extra_min_size_ratio,
         "ckpt_epoch": ck.get("epoch", "unknown"),
         "checkpoint_model_source": checkpoint_model_source,
         "stored_metrics_source": stored_metrics_source,

@@ -50,6 +50,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cbl-refine-steps", type=int, default=None)
     parser.add_argument("--cbl-refine-blend", type=float, default=None)
     parser.add_argument("--cbl-refine-score-threshold", type=float, default=None)
+    parser.add_argument(
+        "--cbl-refine-extra-min-size-ratio", type=float, default=None
+    )
     parser.add_argument("--edge-margin", type=float, default=4.0,
                         help="Pixels from tile boundary counted as edge-touching")
     parser.add_argument("--out-dir", type=Path, default=None)
@@ -388,6 +391,11 @@ def main() -> None:
         if args.cbl_refine_score_threshold is None
         else args.cbl_refine_score_threshold
     )
+    refine_extra_min_size_ratio = (
+        float(config.get("cbl_refine_extra_min_size_ratio", 0.0))
+        if args.cbl_refine_extra_min_size_ratio is None
+        else args.cbl_refine_extra_min_size_ratio
+    )
 
     metric_fn = None if metric_name == "iou" else get_metric_fn(metric_name)
     if metric_fn is None:
@@ -416,6 +424,8 @@ def main() -> None:
                         cbl_refine_blend=refine_blend,
                         cbl_refine_score_threshold=(
                             refine_score_threshold),
+                        cbl_refine_extra_min_size_ratio=(
+                            refine_extra_min_size_ratio),
                         cbl_refine_train_weight=float(
                             config.get("cbl_refine_train_weight", 0.0))).to(device)
     model.load_state_dict(ckpt["model"])
@@ -438,6 +448,7 @@ def main() -> None:
         "cbl_refine_steps": refine_steps,
         "cbl_refine_blend": refine_blend,
         "cbl_refine_score_threshold": refine_score_threshold,
+        "cbl_refine_extra_min_size_ratio": refine_extra_min_size_ratio,
         "coco": coco,
         "coco_class_agnostic": coco_class_agnostic,
         "dataset": dataset_summary,

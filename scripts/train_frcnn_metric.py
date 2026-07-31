@@ -63,6 +63,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  cbl_refine_steps: int = 0,
                  cbl_refine_blend: float = 1.0,
                  cbl_refine_score_threshold: float = 0.0,
+                 cbl_refine_extra_min_size_ratio: float = 0.0,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
@@ -84,6 +85,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
             f"{metric_name}__irtw{cbl_refine_train_weight:g}"
             f"ir{cbl_refine_steps}s{cbl_refine_score_threshold:g}"
         )
+        if cbl_refine_extra_min_size_ratio > 0:
+            metric_name += f"m{cbl_refine_extra_min_size_ratio:g}"
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
         output_name = f"{output_name}__{tag}"
@@ -108,7 +111,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         f"  CBL iterative train: weight={cbl_refine_train_weight:g}; "
         f"inference steps={cbl_refine_steps}, "
         f"blend={cbl_refine_blend:g}, "
-        f"score threshold={cbl_refine_score_threshold:g}"
+        f"score threshold={cbl_refine_score_threshold:g}, "
+        f"extra min size ratio={cbl_refine_extra_min_size_ratio:g}"
     )
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
@@ -164,6 +168,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         cbl_refine_steps=cbl_refine_steps,
         cbl_refine_blend=cbl_refine_blend,
         cbl_refine_score_threshold=cbl_refine_score_threshold,
+        cbl_refine_extra_min_size_ratio=cbl_refine_extra_min_size_ratio,
         cbl_alpha=cbl_alpha,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
@@ -245,6 +250,9 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "cbl_refine_steps": cbl_refine_steps,
         "cbl_refine_blend": cbl_refine_blend,
         "cbl_refine_score_threshold": cbl_refine_score_threshold,
+        "cbl_refine_extra_min_size_ratio": (
+            cbl_refine_extra_min_size_ratio
+        ),
         "cbl_alpha": cbl_alpha,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
@@ -413,6 +421,15 @@ def main():
                         help="Fraction of each inference refinement update")
     parser.add_argument("--cbl-refine-score-threshold", type=float, default=0.0,
                         help="Preserve detections below this score")
+    parser.add_argument(
+        "--cbl-refine-extra-min-size-ratio",
+        type=float,
+        default=0.0,
+        help=(
+            "After pass one, refine only boxes at or above this normalized "
+            "sqrt-area size; zero disables the gate"
+        ),
+    )
     parser.add_argument("--cbl-alpha", type=float, default=CBL_ALPHA,
                         help="CBL normalized delta range")
     parser.add_argument("--cbl-num-bins", type=int, default=CBL_NUM_BINS,
@@ -440,6 +457,8 @@ def main():
                  cbl_refine_blend=args.cbl_refine_blend,
                  cbl_refine_score_threshold=(
                      args.cbl_refine_score_threshold),
+                 cbl_refine_extra_min_size_ratio=(
+                     args.cbl_refine_extra_min_size_ratio),
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,
