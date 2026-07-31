@@ -52,7 +52,7 @@ CLASS_DISPLAY = {0: "dry-person", 1: "wet-swimmer"}
 # =============================================================================
 # TRAINING SCHEDULE  (giống nhau cho mọi metric)
 # =============================================================================
-EPOCHS              = 20
+EPOCHS              = int(os.environ.get("TOD_EPOCHS", "20"))
 LR                  = 0.005
 MOMENTUM            = 0.9
 WEIGHT_DECAY        = 1e-4
@@ -69,8 +69,8 @@ MIN_DELTA           = 1e-4
 # =============================================================================
 # DATA / TILING
 # =============================================================================
-BATCH_SIZE       = 4
-NUM_WORKERS      = 2   # giảm từ 4 xuống 2 để tránh MemoryError trên Windows
+BATCH_SIZE       = int(os.environ.get("TOD_BATCH_SIZE", "4"))
+NUM_WORKERS      = int(os.environ.get("TOD_NUM_WORKERS", "2"))   # Windows can set 0 after eval slowdowns
 TILE_SIZE        = 512
 TILE_OVERLAP     = 64
 MIN_SIZE         = 640
@@ -129,9 +129,14 @@ SA_ALW_LOG_CLAMP      = 3.0   # clamp cho log-ratio, cần ablation H2.4
 # "smooth_l1" — standard Smooth-L1 on delta space (mirrors vanilla RFLA AP75=18.8)
 # "ciou"     — CompleteIoU on decoded boxes (overlap+center+aspect)
 # "diou"     — DistanceIoU on decoded boxes (overlap+center, no aspect)
+# "cbl"      — confidence-driven distributional localization for tiny boxes
 BOX_LOSS_TYPE = "metric"
 BOX_LOSS_METRIC_WEIGHT = 0.25   # auxiliary weight for (1-sim) when using ciou/diou/smooth_l1
 BOX_LOSS_WARMUP_EPOCHS = 3      # pure metric loss for first N epochs, then ramp new loss
+CBL_ALPHA = 5.0                  # normalized RoI delta range [-alpha, alpha]
+CBL_NUM_BINS = 6                # paper R-CNN setting: grid number n=5 -> n+1 logits
+CBL_GRID_BETA = 1.0             # interval-nonuniform density around zero
+CBL_UM_WEIGHT = 1.0             # entropy-matching uncertainty loss weight
 
 # =============================================================================
 # RPN / RoI
@@ -153,11 +158,11 @@ NMS_METRIC_THRESH  = 0.5  # ngưỡng metric cho NMS (lower = stricter)
 # =============================================================================
 # EMA / CHECKPOINT
 # =============================================================================
-USE_EMA   = True
+USE_EMA   = os.environ.get("TOD_USE_EMA", "1").lower() not in ("0", "false", "no")
 EMA_DECAY = 0.9998
 
 EVAL_EVERY        = 1
-EMPTY_CACHE_EVERY = 50
+EMPTY_CACHE_EVERY = int(os.environ.get("TOD_EMPTY_CACHE_EVERY", "0"))
 
 # =============================================================================
 # SPEED OPTIMIZATIONS (opt-in; default off for reproducibility)

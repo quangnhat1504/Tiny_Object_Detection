@@ -47,6 +47,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--score-thr", type=float, default=0.05)
     parser.add_argument("--topk", type=int, default=100)
+    parser.add_argument("--cbl-refine-steps", type=int, default=None)
+    parser.add_argument("--cbl-refine-blend", type=float, default=None)
+    parser.add_argument("--cbl-refine-last-step-blend", type=float, default=None)
+    parser.add_argument("--cbl-refine-score-threshold", type=float, default=None)
+    parser.add_argument(
+        "--cbl-refine-extra-min-size-ratio", type=float, default=None
+    )
     parser.add_argument("--edge-margin", type=float, default=4.0,
                         help="Pixels from tile boundary counted as edge-touching")
     parser.add_argument("--out-dir", type=Path, default=None)
@@ -372,6 +379,32 @@ def main() -> None:
     placement = args.placement or config.get("placement", "everywhere")
     box_loss = config.get("box_loss", "metric")
     reliability_thr = config.get("reliability_thr", 16.0)
+    refine_steps = (
+        int(config.get("cbl_refine_steps", 0))
+        if args.cbl_refine_steps is None else args.cbl_refine_steps
+    )
+    refine_blend = (
+        float(config.get("cbl_refine_blend", 1.0))
+        if args.cbl_refine_blend is None else args.cbl_refine_blend
+    )
+    refine_last_step_blend = (
+        config.get("cbl_refine_last_step_blend")
+        if args.cbl_refine_last_step_blend is None
+        else args.cbl_refine_last_step_blend
+    )
+    if refine_last_step_blend is None:
+        refine_last_step_blend = refine_blend
+    refine_last_step_blend = float(refine_last_step_blend)
+    refine_score_threshold = (
+        float(config.get("cbl_refine_score_threshold", 0.0))
+        if args.cbl_refine_score_threshold is None
+        else args.cbl_refine_score_threshold
+    )
+    refine_extra_min_size_ratio = (
+        float(config.get("cbl_refine_extra_min_size_ratio", 0.0))
+        if args.cbl_refine_extra_min_size_ratio is None
+        else args.cbl_refine_extra_min_size_ratio
+    )
 
     metric_fn = None if metric_name == "iou" else get_metric_fn(metric_name)
     if metric_fn is None:
@@ -384,7 +417,27 @@ def main() -> None:
 
     model = build_model(metric_fn=metric_fn, placement=placement,
                         reliability_thr=reliability_thr,
-                        box_loss_type=box_loss).to(device)
+                        box_loss_type=box_loss,
+                        use_quality_score=bool(config.get("quality_score", False)),
+                        quality_loss_weight=float(config.get("quality_loss_weight", 0.0) or 0.0),
+                        use_quality_focal=bool(config.get("quality_focal", False)),
+                        quality_focal_beta=float(config.get("quality_focal_beta", 2.0)),
+                        use_rank_sort=bool(config.get("rank_sort", False)),
+                        rank_sort_delta=float(config.get("rank_sort_delta", 0.5)),
+                        use_double_head=bool(config.get("double_head", False)),
+                        double_head_reg_roi_scale=float(
+                            config.get("double_head_reg_roi_scale", 1.3)),
+                        double_head_num_convs=int(
+                            config.get("double_head_num_convs", 4)),
+                        cbl_refine_steps=refine_steps,
+                        cbl_refine_blend=refine_blend,
+                        cbl_refine_last_step_blend=refine_last_step_blend,
+                        cbl_refine_score_threshold=(
+                            refine_score_threshold),
+                        cbl_refine_extra_min_size_ratio=(
+                            refine_extra_min_size_ratio),
+                        cbl_refine_train_weight=float(
+                            config.get("cbl_refine_train_weight", 0.0))).to(device)
     model.load_state_dict(ckpt["model"])
 
     preds, gts = collect_predictions(model, loader, device, args.score_thr, args.topk)
@@ -402,6 +455,11 @@ def main() -> None:
         "box_loss": box_loss,
         "score_thr": args.score_thr,
         "topk": args.topk,
+        "cbl_refine_steps": refine_steps,
+        "cbl_refine_blend": refine_blend,
+        "cbl_refine_last_step_blend": refine_last_step_blend,
+        "cbl_refine_score_threshold": refine_score_threshold,
+        "cbl_refine_extra_min_size_ratio": refine_extra_min_size_ratio,
         "coco": coco,
         "coco_class_agnostic": coco_class_agnostic,
         "dataset": dataset_summary,

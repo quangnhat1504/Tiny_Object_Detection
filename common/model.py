@@ -11,6 +11,7 @@ Metric loss implementation: we override torchvision's RoIHeads.compute_loss
 to replace Smooth-L1 with metric-distance loss.
 """
 from __future__ import annotations
+import math
 from typing import Callable, Optional
 
 import torch
@@ -22,7 +23,11 @@ from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor, RoIHeads)
 from torchvision.models.detection.rpn import (
     AnchorGenerator, RegionProposalNetwork, RPNHead)
-from torchvision.ops import batched_nms, complete_box_iou_loss, distance_box_iou_loss
+from torchvision.models.resnet import Bottleneck
+from torchvision.ops import (
+    batched_nms, box_iou, boxes as box_ops,
+    complete_box_iou_loss, distance_box_iou_loss,
+)
 
 from .config import (
     NUM_CLASSES, MIN_SIZE, MAX_SIZE, BOX_DETECTIONS_PER_IMG,
@@ -36,9 +41,190 @@ from .config import (
     RFLA_QUALITY_RATIO, RFLA_MIN_SIM,
     NMS_METRIC_THRESH,
     BOX_LOSS_TYPE, BOX_LOSS_METRIC_WEIGHT, BOX_LOSS_WARMUP_EPOCHS,
+    CBL_ALPHA, CBL_NUM_BINS, CBL_GRID_BETA, CBL_UM_WEIGHT,
 )
 
 EPS = 1e-6
+
+
+class QualityFastRCNNPredictor(nn.Module):
+    """Fast R-CNN predictor with an auxiliary localization-quality logit."""
+
+    def __init__(self, in_channels: int, num_classes: int):
+        super().__init__()
+        self.cls_score = nn.Linear(in_channels, num_classes)
+        self.bbox_pred = nn.Linear(in_channels, num_classes * 4)
+        self.quality_score = nn.Linear(in_channels, num_classes)
+
+    def forward(self, x):
+        if x.dim() == 4:
+            torch._assert(
+                list(x.shape[2:]) == [1, 1],
+                f"x has the wrong shape, expecting the last two dimensions to be [1,1] instead of {list(x.shape[2:])}",
+            )
+        x = x.flatten(start_dim=1)
+        return self.cls_score(x), self.bbox_pred(x), self.quality_score(x)
+
+
+def _make_cbl_grid(alpha: float, num_bins: int, beta: float) -> torch.Tensor:
+    """Build the symmetric interval-nonuniform grid used by C-BBL."""
+    if alpha <= 0:
+        raise ValueError("CBL alpha must be positive")
+    if num_bins < 3:
+        raise ValueError("CBL num_bins must be at least 3")
+    uniform = torch.linspace(-alpha, alpha, num_bins, dtype=torch.float32)
+    if beta <= 0:
+        return uniform
+    denom = torch.expm1(torch.tensor(alpha * beta, dtype=torch.float32))
+    magnitude = alpha * torch.expm1(beta * uniform.abs()) / denom
+    return uniform.sign() * magnitude
+
+
+class CBLFastRCNNPredictor(nn.Module):
+    """Fast R-CNN predictor with distributional RoI box localization."""
+
+    is_distributional = True
+
+    def __init__(self, in_channels: int, num_classes: int, *,
+                 alpha: float, num_bins: int, grid_beta: float):
+        super().__init__()
+        self.num_classes = num_classes
+        self.num_bins = num_bins
+        self.cls_score = nn.Linear(in_channels, num_classes)
+        self.bbox_dist = nn.Linear(
+            in_channels, num_classes * 4 * num_bins)
+        self.register_buffer(
+            "cbl_grid",
+            _make_cbl_grid(alpha, num_bins, grid_beta),
+        )
+
+    def forward(self, x):
+        if x.dim() == 4:
+            torch._assert(
+                list(x.shape[2:]) == [1, 1],
+                "CBL predictor expects pooled spatial dimensions [1, 1]",
+            )
+        x = x.flatten(start_dim=1)
+        class_logits = self.cls_score(x)
+        dist_logits = self.bbox_dist(x).reshape(
+            x.shape[0], self.num_classes, 4, self.num_bins)
+        probabilities = F.softmax(dist_logits.float(), dim=-1)
+        box_deltas = (
+            probabilities * self.cbl_grid.float().view(1, 1, 1, -1)
+        ).sum(dim=-1).to(dtype=dist_logits.dtype)
+        return class_logits, box_deltas.flatten(start_dim=1), dist_logits
+
+
+class _DoubleHeadResidualBlock(nn.Module):
+    """Project pooled RoI features to the Double-Head regression width."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.conv1 = nn.Conv2d(
+            in_channels, in_channels, kernel_size=3, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv2 = nn.Conv2d(
+            in_channels, out_channels, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.identity = nn.Conv2d(
+            in_channels, out_channels, kernel_size=1, bias=False)
+        self.identity_bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        identity = self.identity_bn(self.identity(x))
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.bn2(self.conv2(x))
+        return self.relu(x + identity)
+
+
+class DoubleHeadCBLPredictor(nn.Module):
+    """FC classification plus a convolutional distributional box head."""
+
+    is_distributional = True
+    is_double_head = True
+
+    def __init__(self, cls_in_channels: int, reg_in_channels: int,
+                 num_classes: int, *, alpha: float, num_bins: int,
+                 grid_beta: float, num_convs: int = 4,
+                 reg_out_channels: int = 1024):
+        super().__init__()
+        if num_convs < 1:
+            raise ValueError("Double-Head num_convs must be positive")
+        if reg_out_channels % 4 != 0:
+            raise ValueError("Double-Head reg_out_channels must be divisible by 4")
+
+        self.num_classes = num_classes
+        self.num_bins = num_bins
+        self.cls_score = nn.Linear(cls_in_channels, num_classes)
+        self.reg_projection = _DoubleHeadResidualBlock(
+            reg_in_channels, reg_out_channels)
+        self.reg_convs = nn.ModuleList([
+            Bottleneck(
+                inplanes=reg_out_channels,
+                planes=reg_out_channels // 4,
+                norm_layer=nn.BatchNorm2d,
+            )
+            for _ in range(num_convs)
+        ])
+        self.reg_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.bbox_dist = nn.Linear(
+            reg_out_channels, num_classes * 4 * num_bins)
+        self.register_buffer(
+            "cbl_grid",
+            _make_cbl_grid(alpha, num_bins, grid_beta),
+        )
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(
+                    module.weight, mode="fan_out", nonlinearity="relu")
+            elif isinstance(module, nn.BatchNorm2d):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
+        nn.init.normal_(self.cls_score.weight, std=0.01)
+        nn.init.zeros_(self.cls_score.bias)
+        nn.init.normal_(self.bbox_dist.weight, std=0.001)
+        nn.init.zeros_(self.bbox_dist.bias)
+
+    def forward(self, cls_features, reg_features):
+        cls_features = cls_features.flatten(start_dim=1)
+        class_logits = self.cls_score(cls_features)
+
+        reg_features = self.reg_projection(reg_features)
+        for block in self.reg_convs:
+            reg_features = block(reg_features)
+        reg_features = self.reg_pool(reg_features).flatten(start_dim=1)
+        dist_logits = self.bbox_dist(reg_features).reshape(
+            reg_features.shape[0], self.num_classes, 4, self.num_bins)
+        probabilities = F.softmax(dist_logits.float(), dim=-1)
+        box_deltas = (
+            probabilities * self.cbl_grid.float().view(1, 1, 1, -1)
+        ).sum(dim=-1).to(dtype=dist_logits.dtype)
+        return class_logits, box_deltas.flatten(start_dim=1), dist_logits
+
+
+def _scale_roi_boxes(proposals, image_shapes, scale_factor: float):
+    """Scale proposal boxes around their centers and clip to each image."""
+    if scale_factor <= 0:
+        raise ValueError("RoI scale factor must be positive")
+    if scale_factor == 1.0:
+        return proposals
+
+    scaled = []
+    for boxes, (height, width) in zip(proposals, image_shapes):
+        if boxes.numel() == 0:
+            scaled.append(boxes)
+            continue
+        centers = (boxes[:, :2] + boxes[:, 2:]) * 0.5
+        half_sizes = (boxes[:, 2:] - boxes[:, :2]) * (0.5 * scale_factor)
+        enlarged = torch.cat((centers - half_sizes, centers + half_sizes), dim=1)
+        enlarged[:, 0::2].clamp_(min=0, max=width)
+        enlarged[:, 1::2].clamp_(min=0, max=height)
+        scaled.append(enlarged)
+    return scaled
 
 
 # =============================================================================
@@ -194,24 +380,311 @@ class SAALWRPN(RegionProposalNetwork):
 # =============================================================================
 # Metric-based box regression loss (with multi-type dispatch)
 # =============================================================================
+def _paired_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
+    """Pairwise IoU for aligned box tensors [N,4] and [N,4]."""
+    lt = torch.maximum(boxes1[:, :2], boxes2[:, :2])
+    rb = torch.minimum(boxes1[:, 2:], boxes2[:, 2:])
+    wh = (rb - lt).clamp(min=0)
+    inter = wh[:, 0] * wh[:, 1]
+    area1 = ((boxes1[:, 2] - boxes1[:, 0]).clamp(min=0) *
+             (boxes1[:, 3] - boxes1[:, 1]).clamp(min=0))
+    area2 = ((boxes2[:, 2] - boxes2[:, 0]).clamp(min=0) *
+             (boxes2[:, 3] - boxes2[:, 1]).clamp(min=0))
+    return inter / (area1 + area2 - inter).clamp(min=EPS)
+
+
+def _box_geometry_terms(pred_boxes: torch.Tensor, gt_boxes: torch.Tensor):
+    pred_w = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
+    pred_h = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
+    gt_w = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
+    gt_h = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+    xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
+    yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
+    xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
+    yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
+    return xn, yn, pred_w, pred_h, xg, yg, gt_w, gt_h
+
+
+def _metric_aux_loss(pred_boxes: torch.Tensor, gt_boxes: torch.Tensor,
+                     metric_fn, reliability_thr: float) -> torch.Tensor:
+    if metric_fn is None:
+        return torch.zeros(1, device=pred_boxes.device).sum()
+    xn, yn, wn, hn, xg, yg, wg, hg = _box_geometry_terms(pred_boxes, gt_boxes)
+    sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
+                    reliability_thr=reliability_thr)
+    return (1.0 - sim).mean()
+
+
+def _side_aware_smooth_l1_loss(box_delta: torch.Tensor,
+                               target_delta: torch.Tensor,
+                               gt_boxes: torch.Tensor) -> torch.Tensor:
+    """SABL-inspired delta loss with extra weight on tiny-object sides."""
+    gt_w = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=2.0)
+    gt_h = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=2.0)
+    gt_size = (gt_w * gt_h).sqrt()
+    tiny_weight = (16.0 / gt_size).clamp(min=1.0, max=4.0)
+    raw = F.smooth_l1_loss(
+        box_delta, target_delta, beta=1.0, reduction="none")
+    return (raw * tiny_weight[:, None]).mean()
+
+
+def _cbl_localization_loss(
+    distribution_logits: torch.Tensor,
+    target_deltas: torch.Tensor,
+    grid: torch.Tensor,
+    uncertainty_weight: float,
+) -> torch.Tensor:
+    """Two-hot confidence loss plus entropy-matching uncertainty loss."""
+    if distribution_logits.ndim != 3:
+        raise ValueError("CBL logits must have shape [positive_rois, 4, bins]")
+    if distribution_logits.shape[-1] != grid.numel():
+        raise ValueError("CBL logits and grid have incompatible bin counts")
+
+    logits = distribution_logits.float()
+    grid = grid.to(device=logits.device, dtype=logits.dtype)
+    targets = target_deltas.float().clamp(
+        min=float(grid[0]), max=float(grid[-1]))
+
+    right_idx = torch.searchsorted(
+        grid, targets.contiguous(), right=True).clamp(1, grid.numel() - 1)
+    left_idx = right_idx - 1
+    left_grid = grid[left_idx]
+    right_grid = grid[right_idx]
+    right_weight = (
+        (targets - left_grid) / (right_grid - left_grid).clamp(min=EPS)
+    ).clamp(0.0, 1.0)
+    left_weight = 1.0 - right_weight
+
+    log_probs = F.log_softmax(logits, dim=-1)
+    left_log_prob = log_probs.gather(-1, left_idx.unsqueeze(-1)).squeeze(-1)
+    right_log_prob = log_probs.gather(-1, right_idx.unsqueeze(-1)).squeeze(-1)
+    confidence_loss = -(
+        left_weight * left_log_prob + right_weight * right_log_prob
+    ).mean()
+
+    if uncertainty_weight <= 0:
+        return confidence_loss
+
+    probs = log_probs.exp()
+    prediction_entropy = -(probs * log_probs).sum(dim=-1)
+    target_entropy = -(
+        left_weight * left_weight.clamp(min=EPS).log()
+        + right_weight * right_weight.clamp(min=EPS).log()
+    )
+    uncertainty_loss = (
+        prediction_entropy - target_entropy
+    ).abs().mean()
+    return confidence_loss + uncertainty_weight * uncertainty_loss
+
+
+def _quality_focal_loss(
+    class_logits: torch.Tensor,
+    labels: torch.Tensor,
+    quality_targets: torch.Tensor,
+    beta: float = 2.0,
+) -> torch.Tensor:
+    """Quality Focal Loss over foreground classes with IoU soft targets."""
+    if beta < 0:
+        raise ValueError("Quality Focal Loss beta must be non-negative")
+    if class_logits.ndim != 2 or class_logits.shape[1] < 2:
+        raise ValueError("QFL expects logits for background plus foreground classes")
+    if labels.shape != quality_targets.shape:
+        raise ValueError("QFL labels and quality targets must have the same shape")
+    if labels.numel() != class_logits.shape[0]:
+        raise ValueError("QFL targets and logits have incompatible batch sizes")
+
+    foreground_logits = class_logits[:, 1:].float()
+    probabilities = foreground_logits.sigmoid()
+    zero_targets = torch.zeros_like(foreground_logits)
+    loss = F.binary_cross_entropy_with_logits(
+        foreground_logits, zero_targets, reduction="none"
+    ) * probabilities.pow(beta)
+
+    positive = torch.where(labels > 0)[0]
+    if positive.numel() > 0:
+        foreground_labels = labels[positive] - 1
+        if foreground_labels.max() >= foreground_logits.shape[1]:
+            raise ValueError("QFL foreground label exceeds classifier dimensions")
+        targets = quality_targets[positive].float().clamp(0.0, 1.0)
+        positive_logits = foreground_logits[positive, foreground_labels]
+        positive_probabilities = probabilities[positive, foreground_labels]
+        loss[positive, foreground_labels] = F.binary_cross_entropy_with_logits(
+            positive_logits, targets, reduction="none"
+        ) * (targets - positive_probabilities).abs().pow(beta)
+
+    return loss.sum(dim=1).mean()
+
+
+class _RankSortFunction(torch.autograd.Function):
+    """Device-agnostic Rank & Sort identity-update autograd function."""
+
+    @staticmethod
+    def forward(ctx, logits, targets, delta=0.5, eps=1e-10):
+        logits = logits.reshape(-1)
+        targets = targets.reshape(-1)
+        classification_grads = torch.zeros_like(logits)
+
+        foreground_mask = targets > 0
+        foreground_logits = logits[foreground_mask]
+        foreground_targets = targets[foreground_mask]
+        foreground_count = foreground_logits.numel()
+        if foreground_count == 0:
+            ctx.save_for_backward(classification_grads)
+            zero = logits.new_zeros(())
+            return zero, zero
+
+        threshold = foreground_logits.min() - delta
+        relevant_background_mask = (targets == 0) & (logits >= threshold)
+        relevant_background_logits = logits[relevant_background_mask]
+        relevant_background_grad = torch.zeros_like(relevant_background_logits)
+        ranking_error = torch.zeros_like(foreground_logits)
+        sorting_error = torch.zeros_like(foreground_logits)
+        foreground_grad = torch.zeros_like(foreground_logits)
+
+        order = torch.argsort(foreground_logits)
+        for index in order:
+            foreground_relations = foreground_logits - foreground_logits[index]
+            background_relations = (
+                relevant_background_logits - foreground_logits[index]
+            )
+            if delta > 0:
+                foreground_relations = torch.clamp(
+                    foreground_relations / (2 * delta) + 0.5, min=0, max=1
+                )
+                background_relations = torch.clamp(
+                    background_relations / (2 * delta) + 0.5, min=0, max=1
+                )
+            else:
+                foreground_relations = (foreground_relations >= 0).to(logits.dtype)
+                background_relations = (background_relations >= 0).to(logits.dtype)
+
+            positive_rank = foreground_relations.sum()
+            false_positive_count = background_relations.sum()
+            rank = positive_rank + false_positive_count
+            ranking_error[index] = false_positive_count / rank.clamp(min=eps)
+
+            current_sorting_error = (
+                foreground_relations * (1 - foreground_targets)
+            ).sum() / positive_rank.clamp(min=eps)
+            iou_relations = foreground_targets >= foreground_targets[index]
+            target_sorted_order = iou_relations.to(logits.dtype) * foreground_relations
+            target_positive_rank = target_sorted_order.sum()
+            target_sorting_error = (
+                target_sorted_order * (1 - foreground_targets)
+            ).sum() / target_positive_rank.clamp(min=eps)
+            sorting_error[index] = current_sorting_error - target_sorting_error
+
+            if false_positive_count > eps:
+                foreground_grad[index] -= ranking_error[index]
+                relevant_background_grad += (
+                    background_relations
+                    * (ranking_error[index] / false_positive_count)
+                )
+
+            missorted = (~iou_relations).to(logits.dtype) * foreground_relations
+            sorting_denom = missorted.sum()
+            if sorting_denom > eps:
+                foreground_grad[index] -= sorting_error[index]
+                foreground_grad += missorted * (
+                    sorting_error[index] / sorting_denom
+                )
+
+        classification_grads[foreground_mask] = (
+            foreground_grad / foreground_count
+        )
+        classification_grads[relevant_background_mask] = (
+            relevant_background_grad / foreground_count
+        )
+        ctx.save_for_backward(classification_grads)
+        return ranking_error.mean(), sorting_error.mean()
+
+    @staticmethod
+    def backward(ctx, ranking_grad, sorting_grad):
+        del sorting_grad
+        (classification_grads,) = ctx.saved_tensors
+        # The saved identity update already contains ranking and sorting terms.
+        return classification_grads * ranking_grad, None, None, None
+
+
+def _rank_sort_loss(
+    class_logits: torch.Tensor,
+    labels: torch.Tensor,
+    quality_targets: torch.Tensor,
+    delta: float = 0.5,
+) -> torch.Tensor:
+    """Rank foreground classes and sort positives by paired localization IoU."""
+    if delta < 0:
+        raise ValueError("Rank & Sort delta must be non-negative")
+    if class_logits.ndim != 2 or class_logits.shape[1] < 2:
+        raise ValueError(
+            "Rank & Sort expects logits for background plus foreground classes"
+        )
+    if labels.shape != quality_targets.shape:
+        raise ValueError(
+            "Rank & Sort labels and quality targets must have the same shape"
+        )
+    if labels.numel() != class_logits.shape[0]:
+        raise ValueError(
+            "Rank & Sort targets and logits have incompatible batch sizes"
+        )
+
+    foreground_logits = class_logits[:, 1:].float()
+    targets = torch.zeros_like(foreground_logits)
+    positive = torch.where(labels > 0)[0]
+    if positive.numel() > 0:
+        foreground_labels = labels[positive] - 1
+        if foreground_labels.max() >= foreground_logits.shape[1]:
+            raise ValueError(
+                "Rank & Sort foreground label exceeds classifier dimensions"
+            )
+        targets[positive, foreground_labels] = quality_targets[positive].float().clamp(
+            0.0, 1.0
+        )
+
+    ranking_loss, sorting_loss = _RankSortFunction.apply(
+        foreground_logits.reshape(-1), targets.reshape(-1), delta
+    )
+    return ranking_loss + sorting_loss
+
+
 def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
                      box_coder, metric_fn, reliability_thr, metric_loss_weight,
-                     proposals, current_epoch=1, box_loss_type=None):
+                     proposals, current_epoch=1, box_loss_type=None,
+                     box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
+                     quality_logits=None, quality_loss_weight=0.0,
+                     use_quality_focal=False, quality_focal_beta=2.0,
+                     use_rank_sort=False, rank_sort_delta=0.5,
+                     distribution_logits=None, cbl_grid=None,
+                     cbl_um_weight=CBL_UM_WEIGHT):
     """Replacement for torchvision's fastrcnn_loss with multi-loss dispatch.
 
     Args:
         current_epoch: used for warmup (pure metric loss first N epochs, then ramp)
-        box_loss_type: "metric", "smooth_l1", "ciou", or "diou" (defaults to config)
+        box_loss_type: "metric", "smooth_l1", "side_smooth_l1", "ciou",
+            "diou", or "cbl"
     """
     if box_loss_type is None:
         box_loss_type = BOX_LOSS_TYPE
     labels = torch.cat(labels, dim=0)
     regression_targets = torch.cat(regression_targets, dim=0)
-    classification_loss = F.cross_entropy(class_logits, labels)
+    classification_loss = (
+        class_logits.sum() * 0.0
+        if use_quality_focal or use_rank_sort
+        else F.cross_entropy(class_logits, labels)
+    )
 
     sampled_pos_inds = torch.where(labels > 0)[0]
     if sampled_pos_inds.numel() == 0:
-        return classification_loss, torch.zeros(1, device=class_logits.device).sum()
+        if use_quality_focal:
+            quality_targets = class_logits.new_zeros(labels.shape)
+            classification_loss = _quality_focal_loss(
+                class_logits, labels, quality_targets, quality_focal_beta)
+        elif use_rank_sort:
+            quality_targets = class_logits.new_zeros(labels.shape)
+            classification_loss = _rank_sort_loss(
+                class_logits, labels, quality_targets, rank_sort_delta)
+        zero = torch.zeros(1, device=class_logits.device).sum()
+        return classification_loss, zero, zero
 
     N, num_classes = class_logits.shape
     box_regression = box_regression.reshape(N, num_classes, 4)
@@ -222,12 +695,16 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
 
     proposals_flat = torch.cat(proposals, dim=0)
     proposals_pos = proposals_flat[sampled_pos_inds]
+    decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])
+    gt_boxes_for_quality = decoded_gt[:, 0, :]
+    pred_boxes_for_quality = None
 
     # ── Determine loss type ──
     loss_type = box_loss_type
 
     # ── Warmup: pure metric loss for first warmup_epochs ──
-    if loss_type != "metric" and current_epoch <= BOX_LOSS_WARMUP_EPOCHS:
+    if (loss_type != "metric" and box_loss_warmup_epochs > 0 and
+            current_epoch <= box_loss_warmup_epochs):
         loss_type = "metric"
 
     # ── Compute primary box loss ──
@@ -236,47 +713,45 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
         box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
         decoded = box_coder.decode(box_reg_flat, [proposals_pos])
         pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
-        decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])
-        gt_boxes = decoded_gt[:, 0, :]
+        gt_boxes = gt_boxes_for_quality
+        pred_boxes_for_quality = pred_boxes
 
-        xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
-        yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
-        wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
-        hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
-        xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
-        yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
-        wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
-        hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+        box_loss = _metric_aux_loss(
+            pred_boxes, gt_boxes, metric_fn, reliability_thr) * metric_loss_weight
 
-        sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
-                         reliability_thr=reliability_thr)
-        box_loss = (1.0 - sim).mean() * metric_loss_weight
-
-    elif loss_type == "smooth_l1":
+    elif loss_type in ("smooth_l1", "side_smooth_l1"):
         # Standard Smooth-L1 on delta space (mirrors RFLA's AP75=18.8)
         # Select the regression output for the positive class
         box_reg_pos_per_class = box_regression_pos[
             torch.arange(K, device=box_regression_pos.device), labels_pos]  # (K, 4)
-        box_loss = F.smooth_l1_loss(
+        delta_loss = F.smooth_l1_loss(
             box_reg_pos_per_class, targets_deltas, beta=1.0)
-        # Add auxiliary metric loss (small weight) to preserve micro stability
         box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
         decoded = box_coder.decode(box_reg_flat, [proposals_pos])
         pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
-        decoded_gt = box_coder.decode(targets_deltas, [proposals_pos])
-        gt_boxes = decoded_gt[:, 0, :]
-        xn = (pred_boxes[:, 0] + pred_boxes[:, 2]) / 2.0
-        yn = (pred_boxes[:, 1] + pred_boxes[:, 3]) / 2.0
-        wn = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=1.0)
-        hn = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=1.0)
-        xg = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2.0
-        yg = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2.0
-        wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
-        hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
-        sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
-                         reliability_thr=reliability_thr)
-        metric_aux = (1.0 - sim).mean()
-        box_loss = box_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+        gt_boxes = gt_boxes_for_quality
+        pred_boxes_for_quality = pred_boxes
+        metric_aux = _metric_aux_loss(
+            pred_boxes, gt_boxes, metric_fn, reliability_thr)
+        if loss_type == "side_smooth_l1":
+            side_loss = _side_aware_smooth_l1_loss(
+                box_reg_pos_per_class, targets_deltas, gt_boxes)
+            box_loss = side_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+        else:
+            # Add auxiliary metric loss (small weight) to preserve micro stability
+            box_loss = delta_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+
+    elif loss_type == "cbl":
+        if distribution_logits is None or cbl_grid is None:
+            raise ValueError("CBL loss requires distribution logits and a grid")
+        dist_pos = distribution_logits[
+            sampled_pos_inds, labels_pos]  # [K, 4, bins]
+        box_loss = _cbl_localization_loss(
+            dist_pos, targets_deltas, cbl_grid, cbl_um_weight)
+        box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
+        decoded = box_coder.decode(box_reg_flat, [proposals_pos])
+        pred_boxes_for_quality = decoded[
+            torch.arange(K, device=decoded.device), labels_pos]
 
     elif loss_type in ("ciou", "diou"):
         # Entire CIoU/DIoU block must run in float32 outside autocast.
@@ -289,6 +764,8 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
             pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
             decoded_gt = box_coder.decode(targets_deltas.float(), [proposals_pos.float()])
             gt_boxes = decoded_gt[:, 0, :]
+            pred_boxes_for_quality = pred_boxes.to(dtype=box_regression.dtype)
+            gt_boxes_for_quality = gt_boxes.to(dtype=box_regression.dtype)
 
             # Clamp degenerate boxes
             pred_w = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=2.0)
@@ -347,16 +824,364 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
     else:
         raise ValueError(f"Unknown BOX_LOSS_TYPE: {loss_type}")
 
-    return classification_loss, box_loss
+    quality_loss = torch.zeros(1, device=class_logits.device).sum()
+    paired_quality_targets = None
+    if use_quality_focal or use_rank_sort or (
+            quality_logits is not None and quality_loss_weight > 0):
+        if pred_boxes_for_quality is None:
+            box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
+            decoded = box_coder.decode(box_reg_flat, [proposals_pos])
+            pred_boxes_for_quality = decoded[
+                torch.arange(K, device=decoded.device), labels_pos]
+        paired_quality_targets = _paired_iou(
+            pred_boxes_for_quality.detach().float(),
+            gt_boxes_for_quality.detach().float(),
+        ).clamp(0, 1)
+
+    if use_quality_focal:
+        quality_targets = class_logits.new_zeros(labels.shape)
+        quality_targets[sampled_pos_inds] = paired_quality_targets.to(
+            dtype=class_logits.dtype)
+        classification_loss = _quality_focal_loss(
+            class_logits, labels, quality_targets, quality_focal_beta)
+
+    if use_rank_sort:
+        quality_targets = class_logits.new_zeros(labels.shape)
+        quality_targets[sampled_pos_inds] = paired_quality_targets.to(
+            dtype=class_logits.dtype)
+        classification_loss = _rank_sort_loss(
+            class_logits, labels, quality_targets, rank_sort_delta)
+
+    if quality_logits is not None and quality_loss_weight > 0:
+        q_targets = paired_quality_targets.to(dtype=quality_logits.dtype)
+        q_pred = quality_logits[sampled_pos_inds, labels_pos]
+        quality_loss = F.binary_cross_entropy_with_logits(q_pred, q_targets)
+        quality_loss = quality_loss * quality_loss_weight
+
+    return classification_loss, box_loss, quality_loss
+
+
+def _postprocess_detections_with_quality(
+    roi_heads, class_logits, box_regression, quality_logits, proposals, image_shapes
+):
+    """Postprocess detections with score = class_prob * predicted localization quality."""
+    device = class_logits.device
+    num_classes = class_logits.shape[-1]
+
+    boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
+    pred_boxes = roi_heads.box_coder.decode(box_regression, proposals)
+    pred_scores = F.softmax(class_logits, -1) * torch.sigmoid(quality_logits)
+
+    pred_boxes_list = pred_boxes.split(boxes_per_image, 0)
+    pred_scores_list = pred_scores.split(boxes_per_image, 0)
+
+    all_boxes, all_scores, all_labels = [], [], []
+    for boxes, scores, image_shape in zip(pred_boxes_list, pred_scores_list, image_shapes):
+        boxes = box_ops.clip_boxes_to_image(boxes, image_shape)
+        labels = torch.arange(num_classes, device=device)
+        labels = labels.view(1, -1).expand_as(scores)
+
+        boxes = boxes[:, 1:]
+        scores = scores[:, 1:]
+        labels = labels[:, 1:]
+
+        boxes = boxes.reshape(-1, 4)
+        scores = scores.reshape(-1)
+        labels = labels.reshape(-1)
+
+        inds = torch.where(scores > roi_heads.score_thresh)[0]
+        boxes, scores, labels = boxes[inds], scores[inds], labels[inds]
+
+        keep = box_ops.remove_small_boxes(boxes, min_size=1e-2)
+        boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+
+        keep = box_ops.batched_nms(boxes, scores, labels, roi_heads.nms_thresh)
+        keep = keep[: roi_heads.detections_per_img]
+        all_boxes.append(boxes[keep])
+        all_scores.append(scores[keep])
+        all_labels.append(labels[keep])
+
+    return all_boxes, all_scores, all_labels
+
+
+def _postprocess_detections_with_joint_scores(
+    roi_heads, class_logits, box_regression, proposals, image_shapes
+):
+    """Postprocess detections using QFL's joint class-localization score."""
+    device = class_logits.device
+    num_classes = class_logits.shape[-1]
+
+    boxes_per_image = [boxes_in_image.shape[0] for boxes_in_image in proposals]
+    pred_boxes = roi_heads.box_coder.decode(box_regression, proposals)
+    pred_scores = torch.sigmoid(class_logits)
+
+    pred_boxes_list = pred_boxes.split(boxes_per_image, 0)
+    pred_scores_list = pred_scores.split(boxes_per_image, 0)
+
+    all_boxes, all_scores, all_labels = [], [], []
+    for boxes, scores, image_shape in zip(
+            pred_boxes_list, pred_scores_list, image_shapes):
+        boxes = box_ops.clip_boxes_to_image(boxes, image_shape)
+        labels = torch.arange(num_classes, device=device)
+        labels = labels.view(1, -1).expand_as(scores)
+
+        boxes = boxes[:, 1:].reshape(-1, 4)
+        scores = scores[:, 1:].reshape(-1)
+        labels = labels[:, 1:].reshape(-1)
+
+        keep = torch.where(scores > roi_heads.score_thresh)[0]
+        boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+        keep = box_ops.remove_small_boxes(boxes, min_size=1e-2)
+        boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
+        keep = box_ops.batched_nms(
+            boxes, scores, labels, roi_heads.nms_thresh)
+        keep = keep[:roi_heads.detections_per_img]
+        all_boxes.append(boxes[keep])
+        all_scores.append(scores[keep])
+        all_labels.append(labels[keep])
+
+    return all_boxes, all_scores, all_labels
+
+
+def _iteratively_refine_cbl_detections(
+    roi_heads,
+    features,
+    boxes,
+    scores,
+    labels,
+    image_shapes,
+    steps,
+    blend,
+    last_step_blend,
+    score_threshold,
+    extra_min_size_ratio,
+):
+    """Reapply the trained CBL regressor while preserving labels and scores."""
+    current_boxes = boxes
+    for step_index in range(steps):
+        if not any(boxes_per_image.numel() for boxes_per_image in current_boxes):
+            break
+        pooled = roi_heads.box_roi_pool(
+            features, current_boxes, image_shapes)
+        box_features = roi_heads.box_head(pooled)
+        predictor_out = roi_heads.box_predictor(box_features)
+        if (not getattr(roi_heads.box_predictor, "is_distributional", False)
+                or len(predictor_out) != 3):
+            raise RuntimeError(
+                "Iterative CBL refinement requires a distributional predictor")
+
+        _, box_regression, _ = predictor_out
+        decoded = roi_heads.box_coder.decode(box_regression, current_boxes)
+        decoded_per_image = decoded.split(
+            [len(boxes_per_image) for boxes_per_image in current_boxes], 0)
+
+        refined_boxes = []
+        for (
+            decoded_boxes,
+            boxes_per_image,
+            scores_per_image,
+            labels_per_image,
+            image_shape,
+        ) in zip(decoded_per_image, current_boxes, scores, labels, image_shapes):
+            if decoded_boxes.numel() == 0:
+                refined_boxes.append(decoded_boxes.reshape(0, 4))
+                continue
+            row_ids = torch.arange(
+                len(labels_per_image), device=decoded_boxes.device)
+            selected = decoded_boxes[row_ids, labels_per_image]
+            step_blend = (
+                last_step_blend if step_index == steps - 1 else blend
+            )
+            selected = boxes_per_image + step_blend * (
+                selected - boxes_per_image
+            )
+            update_mask = torch.ones(
+                len(selected), dtype=torch.bool, device=selected.device
+            )
+            if score_threshold > 0:
+                update_mask &= scores_per_image >= score_threshold
+            if step_index > 0 and extra_min_size_ratio > 0:
+                widths_heights = (
+                    boxes_per_image[:, 2:] - boxes_per_image[:, :2]
+                ).clamp(min=0)
+                normalized_size = widths_heights.prod(dim=1).sqrt() / math.sqrt(
+                    image_shape[0] * image_shape[1]
+                )
+                update_mask &= normalized_size >= extra_min_size_ratio
+            if score_threshold > 0 or (
+                step_index > 0 and extra_min_size_ratio > 0
+            ):
+                selected = torch.where(
+                    update_mask.unsqueeze(1),
+                    selected,
+                    boxes_per_image,
+                )
+            refined_boxes.append(
+                box_ops.clip_boxes_to_image(selected, image_shape))
+        current_boxes = refined_boxes
+
+    final_boxes, final_scores, final_labels = [], [], []
+    for boxes_per_image, scores_per_image, labels_per_image in zip(
+            current_boxes, scores, labels):
+        finite = torch.isfinite(boxes_per_image).all(dim=1)
+        boxes_per_image = boxes_per_image[finite]
+        scores_per_image = scores_per_image[finite]
+        labels_per_image = labels_per_image[finite]
+        keep = box_ops.remove_small_boxes(boxes_per_image, min_size=1e-2)
+        boxes_per_image = boxes_per_image[keep]
+        scores_per_image = scores_per_image[keep]
+        labels_per_image = labels_per_image[keep]
+        keep = box_ops.batched_nms(
+            boxes_per_image,
+            scores_per_image,
+            labels_per_image,
+            roi_heads.nms_thresh,
+        )
+        keep = keep[:roi_heads.detections_per_img]
+        final_boxes.append(boxes_per_image[keep])
+        final_scores.append(scores_per_image[keep])
+        final_labels.append(labels_per_image[keep])
+    return final_boxes, final_scores, final_labels
+
+
+def _iterative_cbl_training_loss(
+    roi_heads,
+    features,
+    proposals,
+    labels,
+    regression_targets,
+    box_regression,
+    image_shapes,
+    uncertainty_weight,
+    loss_weight,
+):
+    """Train the shared CBL head on its detached first-pass box proposals."""
+    if loss_weight <= 0:
+        return box_regression.sum() * 0.0
+
+    counts = [len(proposals_per_image) for proposals_per_image in proposals]
+    num_classes = box_regression.shape[1] // 4
+    box_regression_per_image = box_regression.reshape(
+        -1, num_classes, 4).split(counts, 0)
+
+    refined_proposals = []
+    refined_gt_boxes = []
+    refined_labels = []
+    for (
+        proposals_per_image,
+        labels_per_image,
+        targets_per_image,
+        regression_per_image,
+        image_shape,
+    ) in zip(
+        proposals,
+        labels,
+        regression_targets,
+        box_regression_per_image,
+        image_shapes,
+    ):
+        positive = torch.where(labels_per_image > 0)[0]
+        if positive.numel() == 0:
+            refined_proposals.append(proposals_per_image.new_zeros((0, 4)))
+            refined_gt_boxes.append(proposals_per_image.new_zeros((0, 4)))
+            refined_labels.append(labels_per_image.new_zeros((0,)))
+            continue
+
+        positive_proposals = proposals_per_image[positive]
+        positive_labels = labels_per_image[positive]
+        first_pass_deltas = regression_per_image[
+            positive, positive_labels]
+        first_pass_boxes = roi_heads.box_coder.decode(
+            first_pass_deltas, [positive_proposals])[:, 0]
+        gt_boxes = roi_heads.box_coder.decode(
+            targets_per_image[positive], [positive_proposals])[:, 0]
+
+        first_pass_boxes = box_ops.clip_boxes_to_image(
+            first_pass_boxes.detach(), image_shape)
+        gt_boxes = box_ops.clip_boxes_to_image(
+            gt_boxes.detach(), image_shape)
+        valid = (
+            torch.isfinite(first_pass_boxes).all(dim=1)
+            & torch.isfinite(gt_boxes).all(dim=1)
+            & ((first_pass_boxes[:, 2:] - first_pass_boxes[:, :2]).min(dim=1).values
+               > 1e-2)
+        )
+        refined_proposals.append(first_pass_boxes[valid])
+        refined_gt_boxes.append(gt_boxes[valid])
+        refined_labels.append(positive_labels[valid])
+
+    if not any(len(boxes) for boxes in refined_proposals):
+        return box_regression.sum() * 0.0
+
+    refined_features = roi_heads.box_roi_pool(
+        features, refined_proposals, image_shapes)
+    refined_features = roi_heads.box_head(refined_features)
+    predictor_out = roi_heads.box_predictor(refined_features)
+    if (not getattr(roi_heads.box_predictor, "is_distributional", False)
+            or len(predictor_out) != 3):
+        raise RuntimeError(
+            "Iterative CBL training requires a distributional predictor")
+
+    _, _, refined_distribution_logits = predictor_out
+    labels_flat = torch.cat(refined_labels, dim=0)
+    rows = torch.arange(
+        len(labels_flat), device=refined_distribution_logits.device)
+    selected_logits = refined_distribution_logits[rows, labels_flat]
+    refined_targets = torch.cat(
+        roi_heads.box_coder.encode(refined_gt_boxes, refined_proposals),
+        dim=0,
+    )
+    return loss_weight * _cbl_localization_loss(
+        selected_logits,
+        refined_targets,
+        roi_heads.box_predictor.cbl_grid,
+        uncertainty_weight,
+    )
 
 
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        metric_loss_weight=1.0,
-                                       box_loss_type="metric"):
+                                       box_loss_type="metric",
+                                       box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
+                                       quality_loss_weight=0.0,
+                                       use_quality_focal=False,
+                                       quality_focal_beta=2.0,
+                                       use_rank_sort=False,
+                                       rank_sort_delta=0.5,
+                                       use_double_head=False,
+                                       double_head_reg_roi_scale=1.3,
+                                       cbl_refine_steps=0,
+                                       cbl_refine_blend=1.0,
+                                       cbl_refine_last_step_blend=None,
+                                       cbl_refine_score_threshold=0.0,
+                                       cbl_refine_extra_min_size_ratio=0.0,
+                                       cbl_refine_train_weight=0.0,
+                                       cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
     # Store on roi_heads for access during training
     roi_heads._box_loss_type = box_loss_type
+    roi_heads._box_loss_warmup_epochs = box_loss_warmup_epochs
+    roi_heads._quality_loss_weight = quality_loss_weight
+    roi_heads._use_quality_focal = use_quality_focal
+    roi_heads._quality_focal_beta = quality_focal_beta
+    roi_heads._use_rank_sort = use_rank_sort
+    roi_heads._rank_sort_delta = rank_sort_delta
+    roi_heads._use_double_head = use_double_head
+    roi_heads._double_head_reg_roi_scale = double_head_reg_roi_scale
+    roi_heads._cbl_refine_steps = cbl_refine_steps
+    roi_heads._cbl_refine_blend = cbl_refine_blend
+    roi_heads._cbl_refine_last_step_blend = (
+        cbl_refine_blend
+        if cbl_refine_last_step_blend is None
+        else cbl_refine_last_step_blend
+    )
+    roi_heads._cbl_refine_score_threshold = cbl_refine_score_threshold
+    roi_heads._cbl_refine_extra_min_size_ratio = (
+        cbl_refine_extra_min_size_ratio
+    )
+    roi_heads._cbl_refine_train_weight = cbl_refine_train_weight
+    roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
         if targets is not None and self.training:
@@ -366,24 +1191,109 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             labels = None; regression_targets = None; matched_idxs = None
             proposals_sampled = proposals
 
-        box_features = self.box_roi_pool(features, proposals_sampled, image_shapes)
-        box_features = self.box_head(box_features)
-        class_logits, box_regression = self.box_predictor(box_features)
+        box_features = self.box_roi_pool(
+            features, proposals_sampled, image_shapes)
+        cls_features = self.box_head(box_features)
+        if getattr(self, "_use_double_head", False):
+            regression_proposals = _scale_roi_boxes(
+                proposals_sampled,
+                image_shapes,
+                getattr(self, "_double_head_reg_roi_scale", 1.3),
+            )
+            reg_features = self.box_roi_pool(
+                features, regression_proposals, image_shapes)
+            predictor_out = self.box_predictor(cls_features, reg_features)
+        else:
+            predictor_out = self.box_predictor(cls_features)
+        distribution_logits = None
+        if getattr(self.box_predictor, "is_distributional", False):
+            class_logits, box_regression, distribution_logits = predictor_out
+            quality_logits = None
+        elif len(predictor_out) == 3:
+            class_logits, box_regression, quality_logits = predictor_out
+        else:
+            class_logits, box_regression = predictor_out
+            quality_logits = None
 
         result = []
         losses = {}
         if self.training:
             current_epoch = getattr(self, '_current_epoch', 1)
             box_loss_type = getattr(self, '_box_loss_type', BOX_LOSS_TYPE)
-            loss_classifier, loss_box_reg = _metric_box_loss(
+            box_loss_warmup_epochs = getattr(
+                self, '_box_loss_warmup_epochs', BOX_LOSS_WARMUP_EPOCHS)
+            quality_loss_weight = getattr(self, '_quality_loss_weight', 0.0)
+            use_quality_focal = getattr(self, '_use_quality_focal', False)
+            quality_focal_beta = getattr(
+                self, '_quality_focal_beta', 2.0)
+            use_rank_sort = getattr(self, '_use_rank_sort', False)
+            rank_sort_delta = getattr(self, '_rank_sort_delta', 0.5)
+            cbl_um_weight = getattr(self, '_cbl_um_weight', CBL_UM_WEIGHT)
+            loss_classifier, loss_box_reg, loss_quality = _metric_box_loss(
                 class_logits, box_regression, labels, regression_targets,
                 self.box_coder, metric_fn, reliability_thr, metric_loss_weight,
                 proposals_sampled, current_epoch=current_epoch,
-                box_loss_type=box_loss_type)
+                box_loss_type=box_loss_type,
+                box_loss_warmup_epochs=box_loss_warmup_epochs,
+                quality_logits=quality_logits,
+                quality_loss_weight=quality_loss_weight,
+                use_quality_focal=use_quality_focal,
+                quality_focal_beta=quality_focal_beta,
+                use_rank_sort=use_rank_sort,
+                rank_sort_delta=rank_sort_delta,
+                distribution_logits=distribution_logits,
+                cbl_grid=getattr(self.box_predictor, "cbl_grid", None),
+                cbl_um_weight=cbl_um_weight)
             losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
+            refine_train_weight = getattr(
+                self, "_cbl_refine_train_weight", 0.0)
+            if refine_train_weight > 0:
+                losses["loss_box_refine"] = _iterative_cbl_training_loss(
+                    self,
+                    features,
+                    proposals_sampled,
+                    labels,
+                    regression_targets,
+                    box_regression,
+                    image_shapes,
+                    cbl_um_weight,
+                    refine_train_weight,
+                )
+            if quality_logits is not None and quality_loss_weight > 0:
+                losses["loss_quality"] = loss_quality
         else:
-            boxes, scores, labels_out = self.postprocess_detections(
-                class_logits, box_regression, proposals, image_shapes)
+            if (getattr(self, '_use_quality_focal', False) or
+                    getattr(self, '_use_rank_sort', False)):
+                boxes, scores, labels_out = \
+                    _postprocess_detections_with_joint_scores(
+                        self, class_logits, box_regression,
+                        proposals, image_shapes)
+            elif quality_logits is not None:
+                boxes, scores, labels_out = _postprocess_detections_with_quality(
+                    self, class_logits, box_regression, quality_logits,
+                    proposals, image_shapes)
+            else:
+                boxes, scores, labels_out = self.postprocess_detections(
+                    class_logits, box_regression, proposals, image_shapes)
+            refine_steps = getattr(self, "_cbl_refine_steps", 0)
+            if refine_steps > 0:
+                boxes, scores, labels_out = _iteratively_refine_cbl_detections(
+                    self,
+                    features,
+                    boxes,
+                    scores,
+                    labels_out,
+                    image_shapes,
+                    refine_steps,
+                    getattr(self, "_cbl_refine_blend", 1.0),
+                    getattr(self, "_cbl_refine_last_step_blend", 1.0),
+                    getattr(self, "_cbl_refine_score_threshold", 0.0),
+                    getattr(
+                        self,
+                        "_cbl_refine_extra_min_size_ratio",
+                        0.0,
+                    ),
+                )
             for i in range(len(boxes)):
                 result.append({"boxes": boxes[i], "labels": labels_out[i], "scores": scores[i]})
 
@@ -525,6 +1435,25 @@ def build_model(
     saalw_rpn_cfg: Optional[dict] = None,
     box_loss_type: str = "metric",
     box_loss_warmup_epochs: int = BOX_LOSS_WARMUP_EPOCHS,
+    use_quality_score: bool = False,
+    quality_loss_weight: float = 0.0,
+    use_quality_focal: bool = False,
+    quality_focal_beta: float = 2.0,
+    use_rank_sort: bool = False,
+    rank_sort_delta: float = 0.5,
+    use_double_head: bool = False,
+    double_head_reg_roi_scale: float = 1.3,
+    double_head_num_convs: int = 4,
+    cbl_refine_steps: int = 0,
+    cbl_refine_blend: float = 1.0,
+    cbl_refine_last_step_blend: Optional[float] = None,
+    cbl_refine_score_threshold: float = 0.0,
+    cbl_refine_extra_min_size_ratio: float = 0.0,
+    cbl_refine_train_weight: float = 0.0,
+    cbl_alpha: float = CBL_ALPHA,
+    cbl_num_bins: int = CBL_NUM_BINS,
+    cbl_grid_beta: float = CBL_GRID_BETA,
+    cbl_um_weight: float = CBL_UM_WEIGHT,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
@@ -539,8 +1468,30 @@ def build_model(
             - "saalw_assigner":   SAALWAssigner (threshold-based) + box loss
         reliability_thr: passed to metric
         saalw_rpn_cfg: dict of SAALWAssigner params
-        box_loss_type: "metric", "smooth_l1", "ciou", or "diou"
+        box_loss_type: "metric", "smooth_l1", "side_smooth_l1", "ciou",
+            "diou", or "cbl"
         box_loss_warmup_epochs: number of warmup epochs with pure metric loss
+        use_quality_score: add an auxiliary RoI localization-quality head
+        quality_loss_weight: BCE weight for IoU quality target on positive RoIs
+        use_quality_focal: replace RoI softmax CE with joint class-IoU QFL
+        quality_focal_beta: QFL modulating exponent
+        use_rank_sort: replace RoI softmax CE with sampled Rank & Sort loss
+        rank_sort_delta: smoothing width for Rank & Sort score comparisons
+        use_double_head: use FC classification and convolutional CBL regression
+        double_head_reg_roi_scale: proposal enlargement for regression features
+        double_head_num_convs: residual bottlenecks in the regression branch
+        cbl_refine_steps: inference-only repeated CBL box-regression passes
+        cbl_refine_blend: fraction of each predicted refinement update
+        cbl_refine_last_step_blend: fraction of the final predicted update;
+            None inherits cbl_refine_blend
+        cbl_refine_score_threshold: preserve boxes below this class score
+        cbl_refine_extra_min_size_ratio: after pass one, refine only boxes
+            whose sqrt area divided by sqrt image area reaches this value
+        cbl_refine_train_weight: auxiliary shared-head second-pass CBL weight
+        cbl_alpha: normalized delta range for confidence-driven localization
+        cbl_num_bins: number of distribution logits per box coordinate
+        cbl_grid_beta: interval-nonuniform grid density around zero
+        cbl_um_weight: entropy-matching uncertainty loss weight
         channels_last: if True, convert backbone to channels_last memory format
     """
     if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
@@ -640,15 +1591,135 @@ def build_model(
     base.roi_heads.batch_size_per_image = 256
     base.roi_heads.positive_fraction = 0.5
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
-    base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
+    if use_quality_focal and box_loss_type != "cbl":
+        raise ValueError("The bounded QFL experiment requires CBL localization")
+    if use_rank_sort and box_loss_type != "cbl":
+        raise ValueError("The bounded Rank & Sort experiment requires CBL localization")
+    if use_double_head and box_loss_type != "cbl":
+        raise ValueError("The Double-Head experiment requires CBL localization")
+    if cbl_refine_steps < 0:
+        raise ValueError("CBL refine steps cannot be negative")
+    if cbl_refine_blend <= 0:
+        raise ValueError("CBL refine blend must be positive")
+    if (
+        cbl_refine_last_step_blend is not None
+        and cbl_refine_last_step_blend <= 0
+    ):
+        raise ValueError("CBL final refine blend must be positive")
+    if not 0 <= cbl_refine_score_threshold <= 1:
+        raise ValueError("CBL refine score threshold must be in [0, 1]")
+    if not 0 <= cbl_refine_extra_min_size_ratio <= 1:
+        raise ValueError(
+            "CBL refine extra-pass minimum size ratio must be in [0, 1]"
+        )
+    if cbl_refine_train_weight < 0:
+        raise ValueError("CBL refine training weight cannot be negative")
+    if cbl_refine_steps > 0 and box_loss_type != "cbl":
+        raise ValueError("Iterative CBL refinement requires CBL localization")
+    if use_quality_focal and use_rank_sort:
+        raise ValueError("QFL and Rank & Sort are mutually exclusive")
+    if use_double_head and (use_quality_focal or use_rank_sort):
+        raise ValueError(
+            "Double-Head must be evaluated without QFL or Rank & Sort")
+    if cbl_refine_steps > 0 and (
+            use_double_head or use_quality_focal or use_rank_sort):
+        raise ValueError(
+            "Iterative CBL refinement requires the standard softmax CBL head")
+    if cbl_refine_train_weight > 0 and (
+            box_loss_type != "cbl" or use_double_head
+            or use_quality_focal or use_rank_sort):
+        raise ValueError(
+            "Iterative CBL training requires the standard softmax CBL head")
+    if use_quality_focal and use_quality_score:
+        raise ValueError("QFL cannot be combined with the standalone quality head")
+    if use_rank_sort and use_quality_score:
+        raise ValueError(
+            "Rank & Sort cannot be combined with the standalone quality head"
+        )
+    if box_loss_type == "cbl" and use_quality_score:
+        raise ValueError("CBL and the standalone quality head cannot be combined")
+    if box_loss_type == "cbl":
+        if use_double_head:
+            base.roi_heads.box_predictor = DoubleHeadCBLPredictor(
+                in_feat,
+                base.backbone.out_channels,
+                num_classes + 1,
+                alpha=cbl_alpha,
+                num_bins=cbl_num_bins,
+                grid_beta=cbl_grid_beta,
+                num_convs=double_head_num_convs,
+            )
+        else:
+            base.roi_heads.box_predictor = CBLFastRCNNPredictor(
+                in_feat, num_classes + 1,
+                alpha=cbl_alpha,
+                num_bins=cbl_num_bins,
+                grid_beta=cbl_grid_beta,
+            )
+    elif use_quality_score:
+        base.roi_heads.box_predictor = QualityFastRCNNPredictor(in_feat, num_classes + 1)
+    else:
+        base.roi_heads.box_predictor = FastRCNNPredictor(in_feat, num_classes + 1)
 
     # ── Replace box regression loss with metric distance ──────────────
-    if use_metric_loss:
+    if (use_metric_loss or use_quality_focal or use_rank_sort or use_double_head or
+            (use_quality_score and quality_loss_weight > 0)):
         _wrap_roi_forward_for_metric_loss(
             base.roi_heads, metric_fn, reliability_thr,
             metric_loss_weight=1.0,
-            box_loss_type=box_loss_type)
-        print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}")
+            box_loss_type=box_loss_type,
+            box_loss_warmup_epochs=box_loss_warmup_epochs,
+            quality_loss_weight=quality_loss_weight if use_quality_score else 0.0,
+            use_quality_focal=use_quality_focal,
+            quality_focal_beta=quality_focal_beta,
+            use_rank_sort=use_rank_sort,
+            rank_sort_delta=rank_sort_delta,
+            use_double_head=use_double_head,
+            double_head_reg_roi_scale=double_head_reg_roi_scale,
+            cbl_refine_steps=cbl_refine_steps,
+            cbl_refine_blend=cbl_refine_blend,
+            cbl_refine_last_step_blend=cbl_refine_last_step_blend,
+            cbl_refine_score_threshold=cbl_refine_score_threshold,
+            cbl_refine_extra_min_size_ratio=(
+                cbl_refine_extra_min_size_ratio
+            ),
+            cbl_refine_train_weight=cbl_refine_train_weight,
+            cbl_um_weight=cbl_um_weight)
+        print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
+              f"warmup_epochs={box_loss_warmup_epochs}")
+        if box_loss_type == "cbl":
+            print(f"  [CBL] alpha={cbl_alpha:g}, bins={cbl_num_bins}, "
+                  f"grid_beta={cbl_grid_beta:g}, um_weight={cbl_um_weight:g}")
+        if use_quality_score:
+            print(f"  [quality] score=head enabled, loss_weight={quality_loss_weight}")
+        if use_quality_focal:
+            print(f"  [QFL] joint class-IoU score enabled, beta={quality_focal_beta:g}")
+        if use_rank_sort:
+            print(f"  [RankSort] sampled RoI ranking enabled, delta={rank_sort_delta:g}")
+        if use_double_head:
+            print(
+                "  [DoubleHead] FC classification + convolutional CBL "
+                f"regression, roi_scale={double_head_reg_roi_scale:g}, "
+                f"bottlenecks={double_head_num_convs}"
+            )
+        if cbl_refine_steps > 0:
+            effective_last_step_blend = (
+                cbl_refine_blend
+                if cbl_refine_last_step_blend is None
+                else cbl_refine_last_step_blend
+            )
+            print(
+                f"  [CBL refine] inference passes={cbl_refine_steps}, "
+                f"blend={cbl_refine_blend:g}, "
+                f"last_step_blend={effective_last_step_blend:g}, "
+                f"score_threshold={cbl_refine_score_threshold:g}, "
+                f"extra_min_size_ratio={cbl_refine_extra_min_size_ratio:g}"
+            )
+        if cbl_refine_train_weight > 0:
+            print(
+                "  [CBL refine train] shared-head second pass, "
+                f"loss_weight={cbl_refine_train_weight:g}"
+            )
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────
     if use_metric_nms:
