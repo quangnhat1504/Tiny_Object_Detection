@@ -459,7 +459,9 @@ def main() -> None:
                         cbl_refine_extra_min_size_ratio=(
                             refine_extra_min_size_ratio),
                         cbl_refine_train_weight=float(
-                            config.get("cbl_refine_train_weight", 0.0))).to(device)
+                            config.get("cbl_refine_train_weight", 0.0)),
+                        cbl_refine_train_steps=int(
+                            config.get("cbl_refine_train_steps", 1))).to(device)
     model.load_state_dict(ckpt["model"])
 
     preds, gts = collect_predictions(model, loader, device, args.score_thr, args.topk)

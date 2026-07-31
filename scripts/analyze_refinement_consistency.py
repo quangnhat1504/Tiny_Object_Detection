@@ -226,6 +226,9 @@ def _build_model_from_checkpoint(
         cbl_refine_train_weight=float(
             config.get("cbl_refine_train_weight", 0.0)
         ),
+        cbl_refine_train_steps=int(
+            config.get("cbl_refine_train_steps", 1)
+        ),
         cbl_alpha=float(config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(config.get("cbl_grid_beta", 1.0)),

@@ -85,6 +85,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  double_head_reg_roi_scale: float = 1.3,
                  double_head_num_convs: int = 4,
                  cbl_refine_train_weight: float = 0.0,
+                 cbl_refine_train_steps: int = 1,
                  cbl_refine_steps: int = 0,
                  cbl_refine_blend: float = 1.0,
                  cbl_refine_last_step_blend: float | None = None,
@@ -138,8 +139,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
             f"s{double_head_reg_roi_scale:g}"
         )
     if cbl_refine_train_weight > 0:
-        metric_name = (
-            f"{metric_name}__irtw{cbl_refine_train_weight:g}"
+        metric_name = f"{metric_name}__irtw{cbl_refine_train_weight:g}"
+        if cbl_refine_train_steps > 1:
+            metric_name += f"it{cbl_refine_train_steps}"
+        metric_name += (
             f"ir{cbl_refine_steps}s{cbl_refine_score_threshold:g}"
         )
         if cbl_refine_extra_min_size_ratio > 0:
@@ -178,6 +181,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     )
     print(
         f"  CBL iterative train: weight={cbl_refine_train_weight:g}; "
+        f"train steps={cbl_refine_train_steps}, "
         f"inference steps={cbl_refine_steps}, "
         f"blend={cbl_refine_blend:g}, "
         f"last step blend={cbl_refine_last_step_blend}, "
@@ -265,6 +269,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         double_head_reg_roi_scale=double_head_reg_roi_scale,
         double_head_num_convs=double_head_num_convs,
         cbl_refine_train_weight=cbl_refine_train_weight,
+        cbl_refine_train_steps=cbl_refine_train_steps,
         cbl_refine_steps=cbl_refine_steps,
         cbl_refine_blend=cbl_refine_blend,
         cbl_refine_last_step_blend=cbl_refine_last_step_blend,
@@ -362,6 +367,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "double_head_reg_roi_scale": double_head_reg_roi_scale,
         "double_head_num_convs": double_head_num_convs,
         "cbl_refine_train_weight": cbl_refine_train_weight,
+        "cbl_refine_train_steps": cbl_refine_train_steps,
         "cbl_refine_steps": cbl_refine_steps,
         "cbl_refine_blend": cbl_refine_blend,
         "cbl_refine_last_step_blend": cbl_refine_last_step_blend,
@@ -553,6 +559,12 @@ def main():
                         help="Residual bottlenecks in Double-Head regression")
     parser.add_argument("--cbl-refine-train-weight", type=float, default=0.0,
                         help="Auxiliary shared-head second-pass CBL loss weight")
+    parser.add_argument(
+        "--cbl-refine-train-steps",
+        type=int,
+        default=1,
+        help="Detached shared-head refined-proposal supervision passes",
+    )
     parser.add_argument("--cbl-refine-steps", type=int, default=0,
                         help="Inference-time repeated CBL regression passes")
     parser.add_argument("--cbl-refine-blend", type=float, default=1.0,
@@ -696,6 +708,7 @@ def main():
                  double_head_reg_roi_scale=args.double_head_reg_roi_scale,
                  double_head_num_convs=args.double_head_num_convs,
                  cbl_refine_train_weight=args.cbl_refine_train_weight,
+                 cbl_refine_train_steps=args.cbl_refine_train_steps,
                  cbl_refine_steps=args.cbl_refine_steps,
                  cbl_refine_blend=args.cbl_refine_blend,
                  cbl_refine_last_step_blend=(
