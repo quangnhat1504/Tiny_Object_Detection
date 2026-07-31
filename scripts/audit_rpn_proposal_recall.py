@@ -132,6 +132,9 @@ def build_checkpoint_model(
         rpn_quality_preserve_below_size_ratio=float(
             config.get(
                 "rpn_quality_preserve_below_size_ratio", 0.0)),
+        rpn_cascade=bool(config.get("rpn_cascade", False)),
+        rpn_cascade_stage1_weight=float(
+            config.get("rpn_cascade_stage1_weight", 1.0)),
         cbl_alpha=float(config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(config.get("cbl_grid_beta", 1.0)),
@@ -209,6 +212,17 @@ def main() -> None:
         checkpoint_path, map_location="cpu", weights_only=False)
     model = build_checkpoint_model(checkpoint, device)
     config = checkpoint.get("config", {})
+    cascade_enabled = bool(getattr(model.rpn, "cascade_refinement", False))
+    native_rpn = (
+        args.rpn_refine_passes == 1
+        and args.rpn_refine_min_size_ratio == 0
+    )
+    if cascade_enabled and not native_rpn:
+        raise ValueError(
+            "Repeat-delta proposal audits are incompatible with RPN cascade")
+    if cascade_enabled and args.verify_pass1_parity:
+        raise ValueError(
+            "Pass-1 helper parity is not defined for the learned RPN cascade")
 
     overall_hits = empty_counter(top_ns, thresholds)
     bin_hits = {
@@ -251,17 +265,25 @@ def main() -> None:
             features = model.backbone(image_list.tensors)
             if isinstance(features, torch.Tensor):
                 features = OrderedDict([("0", features)])
-            proposals = iterative_rpn_proposals(
-                model.rpn,
-                image_list,
-                features,
-                total_passes=args.rpn_refine_passes,
-                min_refine_size_ratio=args.rpn_refine_min_size_ratio,
-            )
+            if native_rpn:
+                proposals, _ = model.rpn(image_list, features)
+            else:
+                proposals = iterative_rpn_proposals(
+                    model.rpn,
+                    image_list,
+                    features,
+                    total_passes=args.rpn_refine_passes,
+                    min_refine_size_ratio=args.rpn_refine_min_size_ratio,
+                )
             if args.verify_pass1_parity:
-                reference_proposals, _ = model.rpn(image_list, features)
+                helper_proposals = iterative_rpn_proposals(
+                    model.rpn,
+                    image_list,
+                    features,
+                    total_passes=1,
+                )
                 for actual, reference in zip(
-                    proposals, reference_proposals
+                    helper_proposals, proposals
                 ):
                     if actual.shape != reference.shape:
                         raise AssertionError(
@@ -359,6 +381,9 @@ def main() -> None:
         "rpn_refine_passes": args.rpn_refine_passes,
         "rpn_refine_min_size_ratio": (
             args.rpn_refine_min_size_ratio),
+        "rpn_cascade": cascade_enabled,
+        "rpn_cascade_stage1_weight": float(
+            config.get("rpn_cascade_stage1_weight", 1.0)),
         "pass1_parity_verified": args.verify_pass1_parity,
         "pass1_parity_max_abs_diff": (
             parity_max_abs_diff if args.verify_pass1_parity else None),

@@ -227,6 +227,9 @@ def main():
         rpn_quality_preserve_below_size_ratio=float(
             stored_config.get(
                 "rpn_quality_preserve_below_size_ratio", 0.0)),
+        rpn_cascade=bool(stored_config.get("rpn_cascade", False)),
+        rpn_cascade_stage1_weight=float(
+            stored_config.get("rpn_cascade_stage1_weight", 1.0)),
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),
@@ -272,6 +275,9 @@ def main():
         "rpn_quality_preserve_below_size_ratio": float(
             stored_config.get(
                 "rpn_quality_preserve_below_size_ratio", 0.0)),
+        "rpn_cascade": bool(stored_config.get("rpn_cascade", False)),
+        "rpn_cascade_stage1_weight": float(
+            stored_config.get("rpn_cascade_stage1_weight", 1.0)),
         "cbl_refine_blend": refine_blend,
         "cbl_refine_last_step_blend": refine_last_step_blend,
         "cbl_refine_last_center_blend": refine_last_center_blend,

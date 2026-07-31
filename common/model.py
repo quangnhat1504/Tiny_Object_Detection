@@ -465,6 +465,46 @@ def _aligned_delta_iou_quality(
         return (intersection / union.clamp(min=EPS)).clamp(0.0, 1.0)
 
 
+class CascadeRPNRegressionHead(nn.Module):
+    """Regression-only first stage for the bounded RPN cascade ablation."""
+
+    def __init__(self, in_channels: int, num_anchors: int):
+        super().__init__()
+        self.conv = nn.Conv2d(
+            in_channels,
+            in_channels,
+            kernel_size=3,
+            stride=1,
+            padding=3,
+            dilation=3,
+        )
+        self.bbox_pred = nn.Conv2d(
+            in_channels, num_anchors * 4, kernel_size=1, stride=1)
+        for layer in (self.conv, self.bbox_pred):
+            nn.init.normal_(layer.weight, std=0.01)
+            if layer.bias is not None:
+                nn.init.zeros_(layer.bias)
+
+    def forward(self, features: list[torch.Tensor]) -> list[torch.Tensor]:
+        return [self.bbox_pred(F.relu(self.conv(feature))) for feature in features]
+
+
+def _flatten_rpn_bbox_deltas(
+    bbox_deltas: list[torch.Tensor],
+) -> torch.Tensor:
+    """Flatten RPN deltas in torchvision's level/image/anchor order."""
+    flattened = []
+    for deltas_per_level in bbox_deltas:
+        num_images, channels, height, width = deltas_per_level.shape
+        num_anchors = channels // 4
+        flattened.append(
+            deltas_per_level.view(
+                num_images, num_anchors, 4, height, width
+            ).permute(0, 3, 4, 1, 2).reshape(num_images, -1, 4)
+        )
+    return torch.cat(flattened, dim=1).reshape(-1, 4)
+
+
 class MetricRPN(RegionProposalNetwork):
     def __init__(
         self,
@@ -476,6 +516,8 @@ class MetricRPN(RegionProposalNetwork):
         quality_objectness: bool = False,
         quality_beta: float = 2.0,
         quality_preserve_below_size_ratio: float = 0.0,
+        cascade_refinement: bool = False,
+        cascade_stage1_loss_weight: float = 1.0,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -484,6 +526,11 @@ class MetricRPN(RegionProposalNetwork):
         if quality_preserve_below_size_ratio < 0:
             raise ValueError(
                 "RPN quality-preserve size ratio must be non-negative")
+        if cascade_stage1_loss_weight <= 0:
+            raise ValueError("RPN cascade stage-1 loss weight must be positive")
+        if cascade_refinement and quality_objectness:
+            raise ValueError(
+                "RPN cascade is not compatible with quality objectness")
         self.metric_fn = metric_fn
         self.reliability_thr = reliability_thr
         self.snip_ignore_iou_thresh = snip_ignore_iou_thresh
@@ -492,6 +539,16 @@ class MetricRPN(RegionProposalNetwork):
         self.quality_beta = quality_beta
         self.quality_preserve_below_size_ratio = (
             quality_preserve_below_size_ratio)
+        self.cascade_refinement = cascade_refinement
+        self.cascade_stage1_loss_weight = cascade_stage1_loss_weight
+        self.cascade_stage1_head = None
+        if cascade_refinement:
+            if not hasattr(self.head, "bbox_pred"):
+                raise TypeError("RPN cascade requires a torchvision-style RPN head")
+            in_channels = self.head.bbox_pred.in_channels
+            num_anchors = self.head.bbox_pred.out_channels // 4
+            self.cascade_stage1_head = CascadeRPNRegressionHead(
+                in_channels, num_anchors)
         self._snip_last_assignment_stats = []
         self._rpn_quality_stats = {}
         self._rpn_quality_image_sizes = ()
@@ -500,9 +557,93 @@ class MetricRPN(RegionProposalNetwork):
     def forward(self, images, features, targets=None):
         self._rpn_quality_image_sizes = tuple(images.image_sizes)
         try:
+            if self.cascade_refinement:
+                return self._forward_cascade(images, features, targets)
             return super().forward(images, features, targets)
         finally:
             self._rpn_quality_image_sizes = ()
+
+    def _forward_cascade(self, images, features, targets=None):
+        feature_list = list(features.values())
+        stage1_bbox_list = self.cascade_stage1_head(feature_list)
+        anchors = self.anchor_generator(images, feature_list)
+        num_images = len(anchors)
+        num_anchors_per_image = [len(image_anchors) for image_anchors in anchors]
+
+        stage1_bbox_deltas = _flatten_rpn_bbox_deltas(stage1_bbox_list)
+        decoded_stage1 = self.box_coder.decode(
+            stage1_bbox_deltas.detach(), anchors).squeeze(1)
+        refined_anchors = [
+            clip_boxes_to_image(boxes, image_size)
+            for boxes, image_size in zip(
+                decoded_stage1.split(num_anchors_per_image), images.image_sizes)
+        ]
+
+        objectness_list, stage2_bbox_list = self.head(feature_list)
+        num_anchors_per_level = [
+            score[0].shape[0] * score[0].shape[1] * score[0].shape[2]
+            for score in objectness_list
+        ]
+        objectness, stage2_bbox_deltas = concat_box_prediction_layers(
+            objectness_list, stage2_bbox_list)
+        proposals = self.box_coder.decode(
+            stage2_bbox_deltas.detach(), refined_anchors)
+        proposals = proposals.view(num_images, -1, 4)
+        boxes, _ = self.filter_proposals(
+            proposals,
+            objectness,
+            images.image_sizes,
+            num_anchors_per_level,
+        )
+
+        losses = {}
+        if self.training:
+            if targets is None:
+                raise ValueError("targets should not be None")
+            stage1_labels, stage1_matched_boxes = (
+                self.assign_targets_to_anchors(anchors, targets))
+            stage1_targets = self.box_coder.encode(
+                stage1_matched_boxes, anchors)
+            stage1_box_loss = self._cascade_stage1_box_loss(
+                stage1_bbox_deltas, stage1_labels, stage1_targets)
+
+            stage2_labels, stage2_matched_boxes = (
+                self.assign_targets_to_anchors(refined_anchors, targets))
+            stage2_targets = self.box_coder.encode(
+                stage2_matched_boxes, refined_anchors)
+            objectness_loss, stage2_box_loss = self.compute_loss(
+                objectness,
+                stage2_bbox_deltas,
+                stage2_labels,
+                stage2_targets,
+            )
+            losses = {
+                "loss_rpn_stage1_box_reg": (
+                    stage1_box_loss * self.cascade_stage1_loss_weight),
+                "loss_objectness": objectness_loss,
+                "loss_rpn_box_reg": stage2_box_loss,
+            }
+        return boxes, losses
+
+    def _cascade_stage1_box_loss(
+        self,
+        pred_bbox_deltas: torch.Tensor,
+        labels: list[torch.Tensor],
+        regression_targets: list[torch.Tensor],
+    ) -> torch.Tensor:
+        sampled_pos_masks, sampled_neg_masks = self.fg_bg_sampler(labels)
+        sampled_pos_inds = torch.where(
+            torch.cat(sampled_pos_masks, dim=0))[0]
+        sampled_neg_inds = torch.where(
+            torch.cat(sampled_neg_masks, dim=0))[0]
+        sampled_count = sampled_pos_inds.numel() + sampled_neg_inds.numel()
+        regression_targets_tensor = torch.cat(regression_targets, dim=0)
+        return F.smooth_l1_loss(
+            pred_bbox_deltas[sampled_pos_inds],
+            regression_targets_tensor[sampled_pos_inds],
+            beta=1 / 9,
+            reduction="sum",
+        ) / max(sampled_count, 1)
 
     def compute_loss(
         self,
@@ -1983,6 +2124,8 @@ def build_model(
     rpn_quality_objectness: bool = False,
     rpn_quality_beta: float = 2.0,
     rpn_quality_preserve_below_size_ratio: float = 0.0,
+    rpn_cascade: bool = False,
+    rpn_cascade_stage1_weight: float = 1.0,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -2041,6 +2184,9 @@ def build_model(
         rpn_quality_beta: modulating exponent for RPN Quality Focal Loss
         rpn_quality_preserve_below_size_ratio: preserve binary-positive
             objectness targets for matched GT below this normalized sqrt-area
+        rpn_cascade: train a regression-only first RPN stage, then rematch and
+            train the standard RPN head on detached refined anchors
+        rpn_cascade_stage1_weight: weight for first-stage RPN box regression
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -2066,6 +2212,8 @@ def build_model(
     if rpn_quality_preserve_below_size_ratio < 0:
         raise ValueError(
             "RPN quality-preserve size ratio must be non-negative")
+    if rpn_cascade_stage1_weight <= 0:
+        raise ValueError("RPN cascade stage-1 weight must be positive")
 
     base = fasterrcnn_resnet50_fpn(
         weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
@@ -2108,6 +2256,14 @@ def build_model(
     if rpn_quality_objectness and not use_metric_rpn:
         raise ValueError(
             "RPN quality objectness requires metric RPN placement")
+    if rpn_cascade and not use_metric_rpn:
+        raise ValueError("RPN cascade currently requires metric RPN placement")
+    if rpn_cascade and rpn_quality_objectness:
+        raise ValueError(
+            "RPN cascade cannot be combined with RPN quality objectness")
+    if rpn_cascade and rpn_refine_steps > 0:
+        raise ValueError(
+            "RPN cascade cannot be combined with fixed-delta refinement")
     snip_enabled = snip_valid_ranges is not None
     effective_min_sizes = (
         (MIN_SIZE,)
@@ -2176,6 +2332,8 @@ def build_model(
             quality_beta=rpn_quality_beta,
             quality_preserve_below_size_ratio=(
                 rpn_quality_preserve_below_size_ratio),
+            cascade_refinement=rpn_cascade,
+            cascade_stage1_loss_weight=rpn_cascade_stage1_weight,
         )
     else:
         base.rpn = RegionProposalNetwork(
@@ -2212,6 +2370,11 @@ def build_model(
             f"beta={rpn_quality_beta:g}, "
             "preserve_below_size_ratio="
             f"{rpn_quality_preserve_below_size_ratio:g}"
+        )
+    if rpn_cascade:
+        print(
+            "  [RPN cascade] dilation-3 regression stage -> detached anchors "
+            f"-> rematched RPN stage; stage1_weight={rpn_cascade_stage1_weight:g}"
         )
     if snip_enabled:
         _wrap_transform_for_snip(
