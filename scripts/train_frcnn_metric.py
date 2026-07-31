@@ -28,6 +28,7 @@ from common.config import (
     BATCH_SIZE, NUM_WORKERS, DEVICE,
     USE_EMA, BOX_LOSS_WARMUP_EPOCHS,
     CBL_ALPHA, CBL_NUM_BINS, CBL_GRID_BETA, CBL_UM_WEIGHT,
+    MIN_SIZE, MAX_SIZE,
     seed_all, make_output_dir,
 )
 from common.dataset import (
@@ -45,6 +46,11 @@ def _select_evaluation_model(model, ema):
     if ema is None:
         return model, "raw"
     return ema.get_model(), "ema"
+
+
+def _set_transform_sizes(model, min_sizes, max_size):
+    model.transform.min_size = tuple(int(size) for size in min_sizes)
+    model.transform.max_size = int(max_size)
 
 
 def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
@@ -70,7 +76,19 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
-                 cbl_um_weight: float = CBL_UM_WEIGHT):
+                 cbl_um_weight: float = CBL_UM_WEIGHT,
+                 train_min_sizes: tuple[int, ...] | None = None,
+                 train_max_size: int | None = None):
+    train_min_sizes = tuple(train_min_sizes or (MIN_SIZE,))
+    if any(size <= 0 for size in train_min_sizes):
+        raise ValueError("Training minimum sizes must be positive")
+    if train_max_size is None:
+        scale_ratio = max(train_min_sizes) / MIN_SIZE
+        train_max_size = max(MAX_SIZE, round(MAX_SIZE * scale_ratio))
+    if train_max_size < max(train_min_sizes):
+        raise ValueError(
+            "Training max size must be at least the largest minimum size")
+
     metric_name = metric if box_loss == "metric" else f"{metric}__{box_loss}"
     if quality_score:
         metric_name = f"{metric_name}__q{quality_loss_weight:g}"
@@ -119,6 +137,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         f"last size blend={cbl_refine_last_size_blend}, "
         f"score threshold={cbl_refine_score_threshold:g}, "
         f"extra min size ratio={cbl_refine_extra_min_size_ratio:g}"
+    )
+    print(
+        f"  Transform: train min={train_min_sizes}, "
+        f"train max={train_max_size}; eval={MIN_SIZE}/{MAX_SIZE}"
     )
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
@@ -182,6 +204,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
         cbl_um_weight=cbl_um_weight,
+        transform_min_sizes=train_min_sizes,
+        transform_max_size=train_max_size,
     ).to(DEVICE)
 
     # ── Optimizer ──
@@ -269,10 +293,15 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
         "cbl_um_weight": cbl_um_weight,
+        "train_min_sizes": list(train_min_sizes),
+        "train_max_size": train_max_size,
+        "eval_min_size": MIN_SIZE,
+        "eval_max_size": MAX_SIZE,
         "use_ema": USE_EMA,
     }
 
     for epoch in range(start_epoch, EPOCHS + 1):
+        _set_transform_sizes(model, train_min_sizes, train_max_size)
         # Set current epoch on model for box loss warmup
         if hasattr(model, 'roi_heads'):
             model.roi_heads._current_epoch = epoch
@@ -283,6 +312,7 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         cur_lr = opt.param_groups[0]["lr"]
 
         eval_model, eval_model_source = _select_evaluation_model(model, ema)
+        _set_transform_sizes(eval_model, (MIN_SIZE,), MAX_SIZE)
         met = evaluate(eval_model, val_loader, DEVICE, measure_fps_flag=(epoch == EPOCHS))
         elapsed = time.time() - t0
 
@@ -468,6 +498,25 @@ def main():
                         help="CBL interval-nonuniform grid density")
     parser.add_argument("--cbl-um-weight", type=float, default=CBL_UM_WEIGHT,
                         help="CBL uncertainty matching loss weight")
+    parser.add_argument(
+        "--train-min-sizes",
+        type=int,
+        nargs="+",
+        default=None,
+        help=(
+            "Stochastic shorter-side resize choices during training; "
+            "validation remains fixed at the project default"
+        ),
+    )
+    parser.add_argument(
+        "--train-max-size",
+        type=int,
+        default=None,
+        help=(
+            "Training maximum image side; defaults to the project aspect "
+            "ratio scaled to the largest training minimum size"
+        ),
+    )
     args = parser.parse_args()
 
     train_metric(args.metric, args.placement, args.seed, args.resume,
@@ -498,7 +547,13 @@ def main():
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,
-                 cbl_um_weight=args.cbl_um_weight)
+                 cbl_um_weight=args.cbl_um_weight,
+                 train_min_sizes=(
+                     tuple(args.train_min_sizes)
+                     if args.train_min_sizes is not None
+                     else None
+                 ),
+                 train_max_size=args.train_max_size)
 
 
 if __name__ == "__main__":
