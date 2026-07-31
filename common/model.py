@@ -953,6 +953,8 @@ def _iteratively_refine_cbl_detections(
     steps,
     blend,
     last_step_blend,
+    last_center_blend,
+    last_size_blend,
     score_threshold,
     extra_min_size_ratio,
 ):
@@ -992,9 +994,42 @@ def _iteratively_refine_cbl_detections(
             step_blend = (
                 last_step_blend if step_index == steps - 1 else blend
             )
-            selected = boxes_per_image + step_blend * (
-                selected - boxes_per_image
-            )
+            if (
+                step_index == steps - 1
+                and (
+                    last_center_blend != step_blend
+                    or last_size_blend != step_blend
+                )
+            ):
+                base_size = (
+                    boxes_per_image[:, 2:] - boxes_per_image[:, :2]
+                ).clamp(min=1e-6)
+                selected_size = (
+                    selected[:, 2:] - selected[:, :2]
+                ).clamp(min=1e-6)
+                base_center = (
+                    boxes_per_image[:, :2] + boxes_per_image[:, 2:]
+                ) / 2
+                selected_center = (
+                    selected[:, :2] + selected[:, 2:]
+                ) / 2
+                refined_center = base_center + last_center_blend * (
+                    selected_center - base_center
+                )
+                refined_size = base_size + last_size_blend * (
+                    selected_size - base_size
+                )
+                selected = torch.cat(
+                    (
+                        refined_center - refined_size / 2,
+                        refined_center + refined_size / 2,
+                    ),
+                    dim=1,
+                )
+            else:
+                selected = boxes_per_image + step_blend * (
+                    selected - boxes_per_image
+                )
             update_mask = torch.ones(
                 len(selected), dtype=torch.bool, device=selected.device
             )
@@ -1235,6 +1270,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        cbl_refine_steps=0,
                                        cbl_refine_blend=1.0,
                                        cbl_refine_last_step_blend=None,
+                                       cbl_refine_last_center_blend=None,
+                                       cbl_refine_last_size_blend=None,
                                        cbl_refine_score_threshold=0.0,
                                        cbl_refine_extra_min_size_ratio=0.0,
                                        cbl_refine_train_weight=0.0,
@@ -1258,6 +1295,16 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
         cbl_refine_blend
         if cbl_refine_last_step_blend is None
         else cbl_refine_last_step_blend
+    )
+    roi_heads._cbl_refine_last_center_blend = (
+        roi_heads._cbl_refine_last_step_blend
+        if cbl_refine_last_center_blend is None
+        else cbl_refine_last_center_blend
+    )
+    roi_heads._cbl_refine_last_size_blend = (
+        roi_heads._cbl_refine_last_step_blend
+        if cbl_refine_last_size_blend is None
+        else cbl_refine_last_size_blend
     )
     roi_heads._cbl_refine_score_threshold = cbl_refine_score_threshold
     roi_heads._cbl_refine_extra_min_size_ratio = (
@@ -1377,6 +1424,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                     refine_steps,
                     getattr(self, "_cbl_refine_blend", 1.0),
                     getattr(self, "_cbl_refine_last_step_blend", 1.0),
+                    getattr(self, "_cbl_refine_last_center_blend", 1.0),
+                    getattr(self, "_cbl_refine_last_size_blend", 1.0),
                     getattr(self, "_cbl_refine_score_threshold", 0.0),
                     getattr(
                         self,
@@ -1537,6 +1586,8 @@ def build_model(
     cbl_refine_steps: int = 0,
     cbl_refine_blend: float = 1.0,
     cbl_refine_last_step_blend: Optional[float] = None,
+    cbl_refine_last_center_blend: Optional[float] = None,
+    cbl_refine_last_size_blend: Optional[float] = None,
     cbl_refine_score_threshold: float = 0.0,
     cbl_refine_extra_min_size_ratio: float = 0.0,
     cbl_refine_train_weight: float = 0.0,
@@ -1575,6 +1626,10 @@ def build_model(
         cbl_refine_blend: fraction of each predicted refinement update
         cbl_refine_last_step_blend: fraction of the final predicted update;
             None inherits cbl_refine_blend
+        cbl_refine_last_center_blend: final center-update fraction; None
+            inherits cbl_refine_last_step_blend
+        cbl_refine_last_size_blend: final width/height-update fraction; None
+            inherits cbl_refine_last_step_blend
         cbl_refine_score_threshold: preserve boxes below this class score
         cbl_refine_extra_min_size_ratio: after pass one, refine only boxes
             whose sqrt area divided by sqrt image area reaches this value
@@ -1698,6 +1753,16 @@ def build_model(
         and cbl_refine_last_step_blend <= 0
     ):
         raise ValueError("CBL final refine blend must be positive")
+    if (
+        cbl_refine_last_center_blend is not None
+        and cbl_refine_last_center_blend <= 0
+    ):
+        raise ValueError("CBL final center blend must be positive")
+    if (
+        cbl_refine_last_size_blend is not None
+        and cbl_refine_last_size_blend <= 0
+    ):
+        raise ValueError("CBL final size blend must be positive")
     if not 0 <= cbl_refine_score_threshold <= 1:
         raise ValueError("CBL refine score threshold must be in [0, 1]")
     if not 0 <= cbl_refine_extra_min_size_ratio <= 1:
@@ -1773,6 +1838,8 @@ def build_model(
             cbl_refine_steps=cbl_refine_steps,
             cbl_refine_blend=cbl_refine_blend,
             cbl_refine_last_step_blend=cbl_refine_last_step_blend,
+            cbl_refine_last_center_blend=cbl_refine_last_center_blend,
+            cbl_refine_last_size_blend=cbl_refine_last_size_blend,
             cbl_refine_score_threshold=cbl_refine_score_threshold,
             cbl_refine_extra_min_size_ratio=(
                 cbl_refine_extra_min_size_ratio
@@ -1803,10 +1870,22 @@ def build_model(
                 if cbl_refine_last_step_blend is None
                 else cbl_refine_last_step_blend
             )
+            effective_last_center_blend = (
+                effective_last_step_blend
+                if cbl_refine_last_center_blend is None
+                else cbl_refine_last_center_blend
+            )
+            effective_last_size_blend = (
+                effective_last_step_blend
+                if cbl_refine_last_size_blend is None
+                else cbl_refine_last_size_blend
+            )
             print(
                 f"  [CBL refine] inference passes={cbl_refine_steps}, "
                 f"blend={cbl_refine_blend:g}, "
                 f"last_step_blend={effective_last_step_blend:g}, "
+                f"last_center_blend={effective_last_center_blend:g}, "
+                f"last_size_blend={effective_last_size_blend:g}, "
                 f"score_threshold={cbl_refine_score_threshold:g}, "
                 f"extra_min_size_ratio={cbl_refine_extra_min_size_ratio:g}"
             )
