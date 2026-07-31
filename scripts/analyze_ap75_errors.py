@@ -420,7 +420,18 @@ def main() -> None:
                             config.get("cbl_refine_train_weight", 0.0)),
                         cbl_refine_separate_head=bool(
                             config.get(
-                                "cbl_refine_separate_head", False))).to(device)
+                                "cbl_refine_separate_head", False)),
+                        cbl_refine_stage2_classify=bool(
+                            config.get(
+                                "cbl_refine_stage2_classify", False)),
+                        cbl_refine_stage2_iou_threshold=float(
+                            config.get(
+                                "cbl_refine_stage2_iou_threshold", 0.6)),
+                        cbl_refine_stage2_cls_weight=float(
+                            config.get("cbl_refine_stage2_cls_weight", 1.0)),
+                        cbl_refine_stage2_score_weight=float(
+                            config.get(
+                                "cbl_refine_stage2_score_weight", 0.5))).to(device)
     model.load_state_dict(ckpt["model"])
 
     preds, gts = collect_predictions(model, loader, device, args.score_thr, args.topk)

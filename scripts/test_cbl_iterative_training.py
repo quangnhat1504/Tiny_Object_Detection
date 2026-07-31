@@ -14,10 +14,16 @@ sys.path.insert(0, str(ROOT))
 from common.config import DEVICE, seed_all
 from common.dataset import build_training_datasets, collate_fn
 from common.metrics import get_metric_fn
-from common.model import build_model
+from common.model import _assign_cascade_targets, build_model
 
 
-def run_variant(images, targets, *, separate_head: bool) -> None:
+def run_variant(
+    images,
+    targets,
+    *,
+    separate_head: bool,
+    stage2_classify: bool = False,
+) -> None:
     seed_all(42)
     build_kwargs = {
         "metric_fn": get_metric_fn("sa_alw_full"),
@@ -30,23 +36,43 @@ def run_variant(images, targets, *, separate_head: bool) -> None:
         "cbl_refine_blend": 1.0,
         "cbl_refine_score_threshold": 0.3,
         "cbl_refine_separate_head": separate_head,
+        "cbl_refine_stage2_classify": stage2_classify,
+        "cbl_refine_stage2_iou_threshold": 0.6,
+        "cbl_refine_stage2_cls_weight": 1.0,
+        "cbl_refine_stage2_score_weight": 0.5,
     }
     model = build_model(**build_kwargs).to(DEVICE)
     model.train()
     loss_dict = model(images, targets)
     assert "loss_box_refine" in loss_dict
+    assert ("loss_classifier_refine" in loss_dict) == stage2_classify
     refine_loss = loss_dict["loss_box_refine"]
     assert torch.isfinite(refine_loss) and refine_loss > 0
+    refine_objective = refine_loss
+    if stage2_classify:
+        classification_refine_loss = loss_dict["loss_classifier_refine"]
+        assert (
+            torch.isfinite(classification_refine_loss)
+            and classification_refine_loss > 0
+        )
+        refine_objective = refine_objective + classification_refine_loss
 
     model.zero_grad(set_to_none=True)
-    refine_loss.backward()
+    refine_objective.backward()
     if separate_head:
         gradient_parameters = {
             "refine_box_head": model.roi_heads.refine_box_head.fc7.weight,
             "refine_distribution": (
                 model.roi_heads.refine_box_predictor.bbox_dist.weight),
         }
-        assert model.roi_heads.refine_box_predictor.cls_score.weight.grad is None
+        classifier_gradient = (
+            model.roi_heads.refine_box_predictor.cls_score.weight.grad)
+        if stage2_classify:
+            assert classifier_gradient is not None
+            assert torch.isfinite(classifier_gradient).all()
+            assert classifier_gradient.abs().sum() > 0
+        else:
+            assert classifier_gradient is None
     else:
         gradient_parameters = {
             "box_head": model.roi_heads.box_head.fc7.weight,
@@ -58,7 +84,7 @@ def run_variant(images, targets, *, separate_head: bool) -> None:
         assert parameter.grad.abs().sum() > 0, f"{name} gradient is zero"
     print(
         f"{DEVICE.type.upper()} "
-        f"{'stage-specific' if separate_head else 'shared-head'} "
+        f"{'cascade' if stage2_classify else ('stage-specific' if separate_head else 'shared-head')} "
         f"iterative loss={float(refine_loss.detach()):.4f}"
     )
 
@@ -99,7 +125,7 @@ def run_variant(images, targets, *, separate_head: bool) -> None:
         )
     print(
         f"Iterative CBL "
-        f"{'stage-specific' if separate_head else 'shared-head'} "
+        f"{'cascade' if stage2_classify else ('stage-specific' if separate_head else 'shared-head')} "
         "train/inference/reload smoke PASSED"
     )
 
@@ -124,8 +150,27 @@ def main() -> None:
         }
         for target in targets
     ]
+    synthetic_proposals = [torch.tensor(
+        [[0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 7.0, 7.0]],
+        device=DEVICE,
+    )]
+    synthetic_targets = [{
+        "boxes": torch.tensor(
+            [[0.0, 0.0, 10.0, 10.0]], device=DEVICE),
+        "labels": torch.tensor([2], device=DEVICE),
+    }]
+    _, synthetic_labels = _assign_cascade_targets(
+        synthetic_proposals, synthetic_targets, 0.6)
+    assert synthetic_labels[0].tolist() == [2, 0]
+
     run_variant(images, targets, separate_head=False)
     run_variant(images, targets, separate_head=True)
+    run_variant(
+        images,
+        targets,
+        separate_head=True,
+        stage2_classify=True,
+    )
 
 
 if __name__ == "__main__":

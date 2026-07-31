@@ -64,6 +64,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  cbl_refine_blend: float = 1.0,
                  cbl_refine_score_threshold: float = 0.0,
                  cbl_refine_separate_head: bool = False,
+                 cbl_refine_stage2_classify: bool = False,
+                 cbl_refine_stage2_iou_threshold: float = 0.6,
+                 cbl_refine_stage2_cls_weight: float = 1.0,
+                 cbl_refine_stage2_score_weight: float = 0.5,
                  cbl_alpha: float = CBL_ALPHA,
                  cbl_num_bins: int = CBL_NUM_BINS,
                  cbl_grid_beta: float = CBL_GRID_BETA,
@@ -87,6 +91,12 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         )
         if cbl_refine_separate_head:
             metric_name = f"{metric_name}__irh2"
+        if cbl_refine_stage2_classify:
+            metric_name = (
+                f"{metric_name}c{cbl_refine_stage2_iou_threshold:g}"
+                f"cw{cbl_refine_stage2_cls_weight:g}"
+                f"sw{cbl_refine_stage2_score_weight:g}"
+            )
     output_name = f"{metric_name}__{placement}__seed{seed}"
     if tag:
         output_name = f"{output_name}__{tag}"
@@ -112,7 +122,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         f"inference steps={cbl_refine_steps}, "
         f"blend={cbl_refine_blend:g}, "
         f"score threshold={cbl_refine_score_threshold:g}, "
-        f"separate head={cbl_refine_separate_head}"
+        f"separate head={cbl_refine_separate_head}, "
+        f"stage2 classify={cbl_refine_stage2_classify}"
     )
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
@@ -169,6 +180,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         cbl_refine_blend=cbl_refine_blend,
         cbl_refine_score_threshold=cbl_refine_score_threshold,
         cbl_refine_separate_head=cbl_refine_separate_head,
+        cbl_refine_stage2_classify=cbl_refine_stage2_classify,
+        cbl_refine_stage2_iou_threshold=cbl_refine_stage2_iou_threshold,
+        cbl_refine_stage2_cls_weight=cbl_refine_stage2_cls_weight,
+        cbl_refine_stage2_score_weight=cbl_refine_stage2_score_weight,
         cbl_alpha=cbl_alpha,
         cbl_num_bins=cbl_num_bins,
         cbl_grid_beta=cbl_grid_beta,
@@ -251,6 +266,10 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "cbl_refine_blend": cbl_refine_blend,
         "cbl_refine_score_threshold": cbl_refine_score_threshold,
         "cbl_refine_separate_head": cbl_refine_separate_head,
+        "cbl_refine_stage2_classify": cbl_refine_stage2_classify,
+        "cbl_refine_stage2_iou_threshold": cbl_refine_stage2_iou_threshold,
+        "cbl_refine_stage2_cls_weight": cbl_refine_stage2_cls_weight,
+        "cbl_refine_stage2_score_weight": cbl_refine_stage2_score_weight,
         "cbl_alpha": cbl_alpha,
         "cbl_num_bins": cbl_num_bins,
         "cbl_grid_beta": cbl_grid_beta,
@@ -421,6 +440,14 @@ def main():
                         help="Preserve detections below this score")
     parser.add_argument("--cbl-refine-separate-head", action="store_true",
                         help="Use a stage-specific CBL head for the second pass")
+    parser.add_argument("--cbl-refine-stage2-classify", action="store_true",
+                        help="Re-match and classify refined stage-2 proposals")
+    parser.add_argument("--cbl-refine-stage2-iou-threshold", type=float, default=0.6,
+                        help="Foreground IoU threshold for stage-2 matching")
+    parser.add_argument("--cbl-refine-stage2-cls-weight", type=float, default=1.0,
+                        help="Stage-2 classification loss weight")
+    parser.add_argument("--cbl-refine-stage2-score-weight", type=float, default=0.5,
+                        help="Stage-2 share of averaged inference class score")
     parser.add_argument("--cbl-alpha", type=float, default=CBL_ALPHA,
                         help="CBL normalized delta range")
     parser.add_argument("--cbl-num-bins", type=int, default=CBL_NUM_BINS,
@@ -449,6 +476,13 @@ def main():
                   cbl_refine_score_threshold=(
                       args.cbl_refine_score_threshold),
                   cbl_refine_separate_head=args.cbl_refine_separate_head,
+                  cbl_refine_stage2_classify=args.cbl_refine_stage2_classify,
+                  cbl_refine_stage2_iou_threshold=(
+                      args.cbl_refine_stage2_iou_threshold),
+                  cbl_refine_stage2_cls_weight=(
+                      args.cbl_refine_stage2_cls_weight),
+                  cbl_refine_stage2_score_weight=(
+                      args.cbl_refine_stage2_score_weight),
                  cbl_alpha=args.cbl_alpha,
                  cbl_num_bins=args.cbl_num_bins,
                  cbl_grid_beta=args.cbl_grid_beta,

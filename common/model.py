@@ -954,13 +954,16 @@ def _iteratively_refine_cbl_detections(
     steps,
     blend,
     score_threshold,
+    stage2_classify=False,
+    stage2_score_weight=0.5,
 ):
-    """Reapply the trained CBL regressor while preserving labels and scores."""
+    """Apply one or more CBL refinements, optionally averaging cascade scores."""
     refine_box_head = getattr(
         roi_heads, "refine_box_head", roi_heads.box_head)
     refine_box_predictor = getattr(
         roi_heads, "refine_box_predictor", roi_heads.box_predictor)
     current_boxes = boxes
+    current_scores = scores
     for _ in range(steps):
         if not any(boxes_per_image.numel() for boxes_per_image in current_boxes):
             break
@@ -973,19 +976,33 @@ def _iteratively_refine_cbl_detections(
             raise RuntimeError(
                 "Iterative CBL refinement requires a distributional predictor")
 
-        _, box_regression, _ = predictor_out
+        class_logits, box_regression, _ = predictor_out
         decoded = roi_heads.box_coder.decode(box_regression, current_boxes)
-        decoded_per_image = decoded.split(
-            [len(boxes_per_image) for boxes_per_image in current_boxes], 0)
+        counts = [len(boxes_per_image) for boxes_per_image in current_boxes]
+        decoded_per_image = decoded.split(counts, 0)
+        if stage2_classify:
+            stage2_probabilities = F.softmax(
+                class_logits.float(), dim=-1).split(counts, 0)
+        else:
+            stage2_probabilities = [None] * len(counts)
 
         refined_boxes = []
+        refined_scores = []
         for (
             decoded_boxes,
             boxes_per_image,
             scores_per_image,
             labels_per_image,
             image_shape,
-        ) in zip(decoded_per_image, current_boxes, scores, labels, image_shapes):
+            stage2_probabilities_per_image,
+        ) in zip(
+            decoded_per_image,
+            current_boxes,
+            current_scores,
+            labels,
+            image_shapes,
+            stage2_probabilities,
+        ):
             if decoded_boxes.numel() == 0:
                 refined_boxes.append(decoded_boxes.reshape(0, 4))
                 continue
@@ -996,18 +1013,33 @@ def _iteratively_refine_cbl_detections(
                 boxes_per_image + blend * (selected - boxes_per_image)
             )
             if score_threshold > 0:
+                update_mask = scores_per_image >= score_threshold
                 selected = torch.where(
-                    (scores_per_image >= score_threshold).unsqueeze(1),
+                    update_mask.unsqueeze(1),
                     selected,
                     boxes_per_image,
                 )
+            else:
+                update_mask = torch.ones_like(scores_per_image, dtype=torch.bool)
             refined_boxes.append(
                 box_ops.clip_boxes_to_image(selected, image_shape))
+            if stage2_probabilities_per_image is None:
+                refined_scores.append(scores_per_image)
+            else:
+                stage2_scores = stage2_probabilities_per_image[
+                    row_ids, labels_per_image].to(dtype=scores_per_image.dtype)
+                averaged_scores = (
+                    (1.0 - stage2_score_weight) * scores_per_image
+                    + stage2_score_weight * stage2_scores
+                )
+                refined_scores.append(torch.where(
+                    update_mask, averaged_scores, scores_per_image))
         current_boxes = refined_boxes
+        current_scores = refined_scores
 
     final_boxes, final_scores, final_labels = [], [], []
     for boxes_per_image, scores_per_image, labels_per_image in zip(
-            current_boxes, scores, labels):
+            current_boxes, current_scores, labels):
         finite = torch.isfinite(boxes_per_image).all(dim=1)
         boxes_per_image = boxes_per_image[finite]
         scores_per_image = scores_per_image[finite]
@@ -1027,6 +1059,71 @@ def _iteratively_refine_cbl_detections(
         final_scores.append(scores_per_image[keep])
         final_labels.append(labels_per_image[keep])
     return final_boxes, final_scores, final_labels
+
+
+def _assign_cascade_targets(
+    proposals,
+    targets,
+    iou_threshold,
+):
+    """Match refined proposals to GT at a single higher cascade threshold."""
+    matched_boxes = []
+    matched_labels = []
+    for proposals_per_image, targets_per_image in zip(proposals, targets):
+        gt_boxes = targets_per_image["boxes"]
+        gt_labels = targets_per_image["labels"]
+        if gt_boxes.numel() == 0:
+            matched_boxes.append(torch.zeros_like(proposals_per_image))
+            matched_labels.append(torch.zeros(
+                len(proposals_per_image),
+                dtype=torch.int64,
+                device=proposals_per_image.device,
+            ))
+            continue
+
+        match_quality = box_iou(gt_boxes, proposals_per_image)
+        best_iou, matched_indices = match_quality.max(dim=0)
+        labels_per_image = gt_labels[matched_indices].to(dtype=torch.int64)
+        labels_per_image = labels_per_image.clone()
+        labels_per_image[best_iou < iou_threshold] = 0
+        matched_boxes.append(gt_boxes[matched_indices])
+        matched_labels.append(labels_per_image)
+    return matched_boxes, matched_labels
+
+
+def _subsample_cascade_targets(
+    proposals,
+    matched_boxes,
+    matched_labels,
+    batch_size_per_image,
+    positive_fraction,
+):
+    """Subsample refined RoIs without duplicating scarce positives."""
+    sampled_proposals = []
+    sampled_boxes = []
+    sampled_labels = []
+    max_positive = int(batch_size_per_image * positive_fraction)
+    for proposals_per_image, boxes_per_image, labels_per_image in zip(
+        proposals, matched_boxes, matched_labels
+    ):
+        positive = torch.where(labels_per_image > 0)[0]
+        negative = torch.where(labels_per_image == 0)[0]
+        num_positive = min(max_positive, positive.numel())
+        num_negative = min(
+            batch_size_per_image - num_positive, negative.numel())
+        positive = positive[
+            torch.randperm(
+                positive.numel(), device=positive.device)[:num_positive]
+        ]
+        negative = negative[
+            torch.randperm(
+                negative.numel(), device=negative.device)[:num_negative]
+        ]
+        sampled = torch.cat((positive, negative), dim=0)
+        sampled_proposals.append(proposals_per_image[sampled])
+        sampled_boxes.append(boxes_per_image[sampled])
+        sampled_labels.append(labels_per_image[sampled])
+    return sampled_proposals, sampled_boxes, sampled_labels
 
 
 def _iterative_cbl_training_loss(
@@ -1128,6 +1225,92 @@ def _iterative_cbl_training_loss(
     )
 
 
+def _cascade_cbl_training_losses(
+    roi_heads,
+    features,
+    proposals,
+    labels,
+    box_regression,
+    image_shapes,
+    targets,
+    uncertainty_weight,
+    box_loss_weight,
+    classification_loss_weight,
+    iou_threshold,
+):
+    """Train a stage-2 classifier and CBL regressor on refined proposals."""
+    counts = [len(proposals_per_image) for proposals_per_image in proposals]
+    num_classes = box_regression.shape[1] // 4
+    box_regression_per_image = box_regression.reshape(
+        -1, num_classes, 4).split(counts, 0)
+
+    refined_proposals = []
+    for (
+        proposals_per_image,
+        labels_per_image,
+        regression_per_image,
+        image_shape,
+    ) in zip(proposals, labels, box_regression_per_image, image_shapes):
+        refined = proposals_per_image.detach().clone()
+        positive = torch.where(labels_per_image > 0)[0]
+        if positive.numel() > 0:
+            first_pass_deltas = regression_per_image[
+                positive, labels_per_image[positive]]
+            decoded = roi_heads.box_coder.decode(
+                first_pass_deltas, [proposals_per_image[positive]])[:, 0]
+            decoded = box_ops.clip_boxes_to_image(decoded.detach(), image_shape)
+            valid = (
+                torch.isfinite(decoded).all(dim=1)
+                & ((decoded[:, 2:] - decoded[:, :2]).min(dim=1).values > 1e-2)
+            )
+            refined[positive[valid]] = decoded[valid]
+        refined_proposals.append(refined)
+
+    matched_boxes, stage2_labels = _assign_cascade_targets(
+        refined_proposals, targets, iou_threshold)
+    refined_proposals, matched_boxes, stage2_labels = (
+        _subsample_cascade_targets(
+            refined_proposals,
+            matched_boxes,
+            stage2_labels,
+            roi_heads.batch_size_per_image,
+            roi_heads.positive_fraction,
+        )
+    )
+    stage2_regression_targets = torch.cat(
+        roi_heads.box_coder.encode(matched_boxes, refined_proposals), dim=0)
+    stage2_labels_flat = torch.cat(stage2_labels, dim=0)
+
+    refine_box_head = roi_heads.refine_box_head
+    refine_box_predictor = roi_heads.refine_box_predictor
+    refined_features = roi_heads.box_roi_pool(
+        features, refined_proposals, image_shapes)
+    refined_features = refine_box_head(refined_features)
+    predictor_out = refine_box_predictor(refined_features)
+    if (not getattr(refine_box_predictor, "is_distributional", False)
+            or len(predictor_out) != 3):
+        raise RuntimeError(
+            "Cascade CBL training requires a distributional predictor")
+    stage2_class_logits, _, stage2_distribution_logits = predictor_out
+
+    classification_loss = classification_loss_weight * F.cross_entropy(
+        stage2_class_logits, stage2_labels_flat)
+    positive = torch.where(stage2_labels_flat > 0)[0]
+    if positive.numel() == 0:
+        box_loss = stage2_distribution_logits.sum() * 0.0
+    else:
+        positive_labels = stage2_labels_flat[positive]
+        selected_logits = stage2_distribution_logits[
+            positive, positive_labels]
+        box_loss = box_loss_weight * _cbl_localization_loss(
+            selected_logits,
+            stage2_regression_targets[positive],
+            refine_box_predictor.cbl_grid,
+            uncertainty_weight,
+        )
+    return classification_loss, box_loss
+
+
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        metric_loss_weight=1.0,
                                        box_loss_type="metric",
@@ -1144,6 +1327,10 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        cbl_refine_score_threshold=0.0,
                                        cbl_refine_train_weight=0.0,
                                        cbl_refine_separate_head=False,
+                                       cbl_refine_stage2_classify=False,
+                                       cbl_refine_stage2_iou_threshold=0.6,
+                                       cbl_refine_stage2_cls_weight=1.0,
+                                       cbl_refine_stage2_score_weight=0.5,
                                        cbl_um_weight=CBL_UM_WEIGHT):
     """Monkey-patch RoIHeads.forward to replace fastrcnn_loss with metric loss."""
     original_forward = roi_heads.forward
@@ -1162,6 +1349,11 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
     roi_heads._cbl_refine_score_threshold = cbl_refine_score_threshold
     roi_heads._cbl_refine_train_weight = cbl_refine_train_weight
     roi_heads._cbl_refine_separate_head = cbl_refine_separate_head
+    roi_heads._cbl_refine_stage2_classify = cbl_refine_stage2_classify
+    roi_heads._cbl_refine_stage2_iou_threshold = (
+        cbl_refine_stage2_iou_threshold)
+    roi_heads._cbl_refine_stage2_cls_weight = cbl_refine_stage2_cls_weight
+    roi_heads._cbl_refine_stage2_score_weight = cbl_refine_stage2_score_weight
     roi_heads._cbl_um_weight = cbl_um_weight
 
     def patched_forward(self, features, proposals, image_shapes, targets=None):
@@ -1229,17 +1421,36 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             refine_train_weight = getattr(
                 self, "_cbl_refine_train_weight", 0.0)
             if refine_train_weight > 0:
-                losses["loss_box_refine"] = _iterative_cbl_training_loss(
-                    self,
-                    features,
-                    proposals_sampled,
-                    labels,
-                    regression_targets,
-                    box_regression,
-                    image_shapes,
-                    cbl_um_weight,
-                    refine_train_weight,
-                )
+                if getattr(self, "_cbl_refine_stage2_classify", False):
+                    (
+                        losses["loss_classifier_refine"],
+                        losses["loss_box_refine"],
+                    ) = _cascade_cbl_training_losses(
+                        self,
+                        features,
+                        proposals_sampled,
+                        labels,
+                        box_regression,
+                        image_shapes,
+                        targets,
+                        cbl_um_weight,
+                        refine_train_weight,
+                        getattr(self, "_cbl_refine_stage2_cls_weight", 1.0),
+                        getattr(
+                            self, "_cbl_refine_stage2_iou_threshold", 0.6),
+                    )
+                else:
+                    losses["loss_box_refine"] = _iterative_cbl_training_loss(
+                        self,
+                        features,
+                        proposals_sampled,
+                        labels,
+                        regression_targets,
+                        box_regression,
+                        image_shapes,
+                        cbl_um_weight,
+                        refine_train_weight,
+                    )
             if quality_logits is not None and quality_loss_weight > 0:
                 losses["loss_quality"] = loss_quality
         else:
@@ -1268,6 +1479,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                     refine_steps,
                     getattr(self, "_cbl_refine_blend", 1.0),
                     getattr(self, "_cbl_refine_score_threshold", 0.0),
+                    getattr(self, "_cbl_refine_stage2_classify", False),
+                    getattr(self, "_cbl_refine_stage2_score_weight", 0.5),
                 )
             for i in range(len(boxes)):
                 result.append({"boxes": boxes[i], "labels": labels_out[i], "scores": scores[i]})
@@ -1424,6 +1637,10 @@ def build_model(
     cbl_refine_score_threshold: float = 0.0,
     cbl_refine_train_weight: float = 0.0,
     cbl_refine_separate_head: bool = False,
+    cbl_refine_stage2_classify: bool = False,
+    cbl_refine_stage2_iou_threshold: float = 0.6,
+    cbl_refine_stage2_cls_weight: float = 1.0,
+    cbl_refine_stage2_score_weight: float = 0.5,
     cbl_alpha: float = CBL_ALPHA,
     cbl_num_bins: int = CBL_NUM_BINS,
     cbl_grid_beta: float = CBL_GRID_BETA,
@@ -1459,6 +1676,10 @@ def build_model(
         cbl_refine_score_threshold: preserve boxes below this class score
         cbl_refine_train_weight: auxiliary shared-head second-pass CBL weight
         cbl_refine_separate_head: specialize a cloned head for the second pass
+        cbl_refine_stage2_classify: re-match and classify refined stage-2 RoIs
+        cbl_refine_stage2_iou_threshold: foreground IoU for stage-2 matching
+        cbl_refine_stage2_cls_weight: stage-2 cross-entropy loss weight
+        cbl_refine_stage2_score_weight: stage-2 share of averaged class score
         cbl_alpha: normalized delta range for confidence-driven localization
         cbl_num_bins: number of distribution logits per box coordinate
         cbl_grid_beta: interval-nonuniform grid density around zero
@@ -1581,6 +1802,15 @@ def build_model(
         raise ValueError(
             "Stage-specific CBL refinement requires positive training weight "
             "and exactly one inference step")
+    if cbl_refine_stage2_classify and not cbl_refine_separate_head:
+        raise ValueError(
+            "Stage-2 CBL classification requires a separate refinement head")
+    if not 0 < cbl_refine_stage2_iou_threshold <= 1:
+        raise ValueError("Stage-2 CBL IoU threshold must be in (0, 1]")
+    if cbl_refine_stage2_cls_weight < 0:
+        raise ValueError("Stage-2 CBL classification weight cannot be negative")
+    if not 0 <= cbl_refine_stage2_score_weight <= 1:
+        raise ValueError("Stage-2 CBL score weight must be in [0, 1]")
     if cbl_refine_steps > 0 and box_loss_type != "cbl":
         raise ValueError("Iterative CBL refinement requires CBL localization")
     if use_quality_focal and use_rank_sort:
@@ -1633,7 +1863,8 @@ def build_model(
             base.roi_heads.box_head)
         base.roi_heads.refine_box_predictor = copy.deepcopy(
             base.roi_heads.box_predictor)
-        base.roi_heads.refine_box_predictor.cls_score.requires_grad_(False)
+        if not cbl_refine_stage2_classify:
+            base.roi_heads.refine_box_predictor.cls_score.requires_grad_(False)
 
     # ── Replace box regression loss with metric distance ──────────────
     if (use_metric_loss or use_quality_focal or use_rank_sort or use_double_head or
@@ -1655,6 +1886,10 @@ def build_model(
             cbl_refine_score_threshold=cbl_refine_score_threshold,
             cbl_refine_train_weight=cbl_refine_train_weight,
             cbl_refine_separate_head=cbl_refine_separate_head,
+            cbl_refine_stage2_classify=cbl_refine_stage2_classify,
+            cbl_refine_stage2_iou_threshold=cbl_refine_stage2_iou_threshold,
+            cbl_refine_stage2_cls_weight=cbl_refine_stage2_cls_weight,
+            cbl_refine_stage2_score_weight=cbl_refine_stage2_score_weight,
             cbl_um_weight=cbl_um_weight)
         print(f"  [loss] fastrcnn_loss replaced, type={box_loss_type}, "
               f"warmup_epochs={box_loss_warmup_epochs}")
@@ -1684,6 +1919,13 @@ def build_model(
                 "  [CBL refine train] "
                 f"{'stage-specific' if cbl_refine_separate_head else 'shared-head'} "
                 f"second pass, loss_weight={cbl_refine_train_weight:g}"
+            )
+        if cbl_refine_stage2_classify:
+            print(
+                "  [CBL cascade] "
+                f"iou_threshold={cbl_refine_stage2_iou_threshold:g}, "
+                f"cls_weight={cbl_refine_stage2_cls_weight:g}, "
+                f"score_weight={cbl_refine_stage2_score_weight:g}"
             )
 
     # ── Wrap forward to optionally use metric NMS in inference ──────────

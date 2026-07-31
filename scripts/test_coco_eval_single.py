@@ -40,6 +40,8 @@ def main():
                         help="Fraction of each iterative CBL box update")
     parser.add_argument("--cbl-refine-score-threshold", type=float, default=None,
                         help="Preserve detections below this score")
+    parser.add_argument("--cbl-refine-stage2-score-weight", type=float, default=None,
+                        help="Override the stage-2 share of cascade class score")
     parser.add_argument("--out", type=str, default=None,
                         help="Output JSON path (default: runs/test_coco_<metric>.json)")
     args = parser.parse_args()
@@ -91,6 +93,11 @@ def main():
         if args.cbl_refine_score_threshold is None
         else args.cbl_refine_score_threshold
     )
+    stage2_score_weight = (
+        float(stored_config.get("cbl_refine_stage2_score_weight", 0.5))
+        if args.cbl_refine_stage2_score_weight is None
+        else args.cbl_refine_stage2_score_weight
+    )
 
     print(f"Stored config: metric={effective_metric}, placement={effective_placement}")
     print(f"Checkpoint epoch: {ck.get('epoch', 'unknown')}")
@@ -136,6 +143,14 @@ def main():
             stored_config.get("cbl_refine_train_weight", 0.0)),
         cbl_refine_separate_head=bool(
             stored_config.get("cbl_refine_separate_head", False)),
+        cbl_refine_stage2_classify=bool(
+            stored_config.get("cbl_refine_stage2_classify", False)),
+        cbl_refine_stage2_iou_threshold=float(
+            stored_config.get("cbl_refine_stage2_iou_threshold", 0.6)),
+        cbl_refine_stage2_cls_weight=float(
+            stored_config.get("cbl_refine_stage2_cls_weight", 1.0)),
+        cbl_refine_stage2_score_weight=float(
+            stage2_score_weight),
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),
@@ -176,6 +191,9 @@ def main():
         "cbl_refine_score_threshold": refine_score_threshold,
         "cbl_refine_separate_head": bool(
             stored_config.get("cbl_refine_separate_head", False)),
+        "cbl_refine_stage2_classify": bool(
+            stored_config.get("cbl_refine_stage2_classify", False)),
+        "cbl_refine_stage2_score_weight": stage2_score_weight,
         "ckpt_epoch": ck.get("epoch", "unknown"),
         "checkpoint_model_source": checkpoint_model_source,
         "stored_metrics_source": stored_metrics_source,
