@@ -28,7 +28,7 @@ from common.config import (
     BATCH_SIZE, NUM_WORKERS, DEVICE,
     USE_EMA, BOX_LOSS_WARMUP_EPOCHS,
     CBL_ALPHA, CBL_NUM_BINS, CBL_GRID_BETA, CBL_UM_WEIGHT,
-    MIN_SIZE, MAX_SIZE,
+    MIN_SIZE, MAX_SIZE, RPN_BG_IOU,
     seed_all, make_output_dir,
 )
 from common.dataset import (
@@ -51,6 +51,25 @@ def _select_evaluation_model(model, ema):
 def _set_transform_sizes(model, min_sizes, max_size):
     model.transform.min_size = tuple(int(size) for size in min_sizes)
     model.transform.max_size = int(max_size)
+
+
+def _parse_snip_valid_range(value: str) -> tuple[float, float]:
+    try:
+        lower_text, upper_text = value.split(":", maxsplit=1)
+        lower = float(lower_text)
+        upper = (
+            float("inf")
+            if upper_text.lower() in {"inf", "infinity"}
+            else float(upper_text)
+        )
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "SNIP ranges must use LOWER:UPPER, for example 20:inf"
+        ) from error
+    if lower < 0 or upper <= lower:
+        raise argparse.ArgumentTypeError(
+            "SNIP ranges require 0 <= LOWER < UPPER")
+    return lower, upper
 
 
 def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
@@ -78,7 +97,11 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
                  cbl_grid_beta: float = CBL_GRID_BETA,
                  cbl_um_weight: float = CBL_UM_WEIGHT,
                  train_min_sizes: tuple[int, ...] | None = None,
-                 train_max_size: int | None = None):
+                 train_max_size: int | None = None,
+                 snip_valid_ranges: (
+                     tuple[tuple[float, float], ...] | None
+                 ) = None,
+                 snip_rpn_ignore_iou_thresh: float = RPN_BG_IOU):
     train_min_sizes = tuple(train_min_sizes or (MIN_SIZE,))
     if any(size <= 0 for size in train_min_sizes):
         raise ValueError("Training minimum sizes must be positive")
@@ -88,6 +111,12 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
     if train_max_size < max(train_min_sizes):
         raise ValueError(
             "Training max size must be at least the largest minimum size")
+    if (
+        snip_valid_ranges is not None
+        and len(snip_valid_ranges) != len(train_min_sizes)
+    ):
+        raise ValueError(
+            "SNIP valid ranges must match the number of training sizes")
 
     metric_name = metric if box_loss == "metric" else f"{metric}__{box_loss}"
     if quality_score:
@@ -142,6 +171,16 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         f"  Transform: train min={train_min_sizes}, "
         f"train max={train_max_size}; eval={MIN_SIZE}/{MAX_SIZE}"
     )
+    if snip_valid_ranges is not None:
+        print(
+            "  SNIP ranges: "
+            + ", ".join(
+                f"{size}=[{lower:g},{upper:g}]"
+                for size, (lower, upper) in zip(
+                    train_min_sizes, snip_valid_ranges)
+            )
+            + f"; RPN invalid-IoU>={snip_rpn_ignore_iou_thresh:g}"
+        )
     print(f"  Output: {OUTPUT_DIR}")
     print(f"  Resume: {resume}")
     print(f"{'='*70}\n")
@@ -206,6 +245,8 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         cbl_um_weight=cbl_um_weight,
         transform_min_sizes=train_min_sizes,
         transform_max_size=train_max_size,
+        snip_valid_ranges=snip_valid_ranges,
+        snip_rpn_ignore_iou_thresh=snip_rpn_ignore_iou_thresh,
     ).to(DEVICE)
 
     # ── Optimizer ──
@@ -297,6 +338,12 @@ def train_metric(metric: str, placement: str, seed: int, resume: bool = False,
         "train_max_size": train_max_size,
         "eval_min_size": MIN_SIZE,
         "eval_max_size": MAX_SIZE,
+        "snip_valid_ranges": (
+            [list(valid_range) for valid_range in snip_valid_ranges]
+            if snip_valid_ranges is not None
+            else None
+        ),
+        "snip_rpn_ignore_iou_thresh": snip_rpn_ignore_iou_thresh,
         "use_ema": USE_EMA,
     }
 
@@ -517,6 +564,22 @@ def main():
             "ratio scaled to the largest training minimum size"
         ),
     )
+    parser.add_argument(
+        "--snip-valid-ranges",
+        type=_parse_snip_valid_range,
+        nargs="+",
+        default=None,
+        help=(
+            "Scale-specific transformed sqrt-area ranges aligned with "
+            "--train-min-sizes, for example 20:inf 12.5:50 0:30"
+        ),
+    )
+    parser.add_argument(
+        "--snip-rpn-ignore-iou-threshold",
+        type=float,
+        default=RPN_BG_IOU,
+        help="Ignore negative RPN anchors overlapping invalid-scale GT",
+    )
     args = parser.parse_args()
 
     train_metric(args.metric, args.placement, args.seed, args.resume,
@@ -553,7 +616,15 @@ def main():
                      if args.train_min_sizes is not None
                      else None
                  ),
-                 train_max_size=args.train_max_size)
+                 train_max_size=args.train_max_size,
+                 snip_valid_ranges=(
+                     tuple(args.snip_valid_ranges)
+                     if args.snip_valid_ranges is not None
+                     else None
+                 ),
+                 snip_rpn_ignore_iou_thresh=(
+                     args.snip_rpn_ignore_iou_threshold
+                 ))
 
 
 if __name__ == "__main__":
