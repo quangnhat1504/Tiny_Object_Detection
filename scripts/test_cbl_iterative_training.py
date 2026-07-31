@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -20,15 +19,15 @@ from common.model import build_model
 def main() -> None:
     seed_all(42)
     dataset = build_training_datasets(use_patches=False, is_train=True)
-    loader = DataLoader(
-        dataset,
-        batch_size=1,
-        shuffle=False,
-        num_workers=0,
-        collate_fn=collate_fn,
-        pin_memory=(DEVICE.type == "cuda"),
-    )
-    images, targets = next(iter(loader))
+    sample = None
+    for index in range(len(dataset)):
+        candidate = dataset[index]
+        areas = candidate[1]["area"]
+        if len(areas) > 0 and float(areas.sqrt().max()) >= 16.0:
+            sample = candidate
+            break
+    assert sample is not None
+    images, targets = collate_fn([sample])
     images = [image.to(DEVICE) for image in images]
     targets = [
         {
@@ -45,9 +44,11 @@ def main() -> None:
         "box_loss_type": "cbl",
         "box_loss_warmup_epochs": 0,
         "cbl_refine_train_weight": 0.5,
-        "cbl_refine_steps": 1,
+        "cbl_refine_train_steps": 3,
+        "cbl_refine_steps": 3,
         "cbl_refine_blend": 1.0,
         "cbl_refine_score_threshold": 0.3,
+        "cbl_refine_extra_min_size_ratio": 0.0234375,
     }
     model = build_model(**build_kwargs).to(DEVICE)
     model.train()
@@ -55,6 +56,13 @@ def main() -> None:
     assert "loss_box_refine" in loss_dict
     refine_loss = loss_dict["loss_box_refine"]
     assert torch.isfinite(refine_loss) and refine_loss > 0
+    pass_counts = model.roi_heads._last_cbl_refine_train_counts
+    pass_losses = model.roi_heads._last_cbl_refine_train_losses
+    assert len(pass_counts) == 3
+    assert all(count > 0 for count in pass_counts)
+    assert pass_counts[0] >= pass_counts[1] >= pass_counts[2]
+    assert len(pass_losses) == 3
+    assert all(torch.isfinite(torch.tensor(value)) for value in pass_losses)
 
     model.zero_grad(set_to_none=True)
     refine_loss.backward()
@@ -68,7 +76,8 @@ def main() -> None:
         assert parameter.grad.abs().sum() > 0, f"{name} gradient is zero"
     print(
         f"{DEVICE.type.upper()} iterative loss="
-        f"{float(refine_loss.detach()):.4f}"
+        f"{float(refine_loss.detach()):.4f}, "
+        f"pass_counts={pass_counts}, pass_losses={pass_losses}"
     )
 
     model.eval()

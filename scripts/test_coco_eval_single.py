@@ -164,6 +164,8 @@ def main():
         cbl_refine_extra_min_size_ratio=refine_extra_min_size_ratio,
         cbl_refine_train_weight=float(
             stored_config.get("cbl_refine_train_weight", 0.0)),
+        cbl_refine_train_steps=int(
+            stored_config.get("cbl_refine_train_steps", 1)),
         cbl_alpha=float(stored_config.get("cbl_alpha", 5.0)),
         cbl_num_bins=int(stored_config.get("cbl_num_bins", 6)),
         cbl_grid_beta=float(stored_config.get("cbl_grid_beta", 1.0)),
