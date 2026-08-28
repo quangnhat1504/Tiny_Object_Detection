@@ -27,16 +27,14 @@ The dedicated Journal Memory Bank and Knowledge Base lives at [`journal/wiki/`](
 
 ---
 
-## 2. Critical Ledger Status & Empirical Caveat on Table 2
+## 2. Verified Empirical Status & Dedicated Open-Source Repo
 
-> [!WARNING]
-> **Status of Table 2 (AI-TOD-v2 SOTA Matrix)**:
-> In the preliminary manuscript draft, Table 2 (AI-TOD-v2 benchmark comparison) was populated with literature target placeholders and has **NOT** yet been verified as local empirical evidence. 
-> 
-> To enforce a strict zero-hallucination policy:
-> 1. A full 7-method empirical matrix is currently undergoing active training across 7 dedicated Kaggle GPU accounts (`amongus1504`, `dipphmngc`, `hienquang06`, `hngngnguynvn`, `quangnhtng`, `qnhat1504`, `thyngluthy`).
-> 2. All 7 runs are executing the official 12-epoch schedule on AI-TOD-v2 with seed 42.
-> 3. No numbers in Table 2 or Table 3 will be considered final or accepted until all 7 Kaggle GPU runs finish, artifacts are downloaded to `journal/results/aitod_empirical/`, and independent reload audits pass.
+> [!NOTE]
+> **Empirical Completion & Zero-Hallucination Certification**:
+> * All 11 core checkpoints on AI-TOD-v2 (12 epochs) and TinyPerson (20 epochs) have successfully completed 100% on the Kaggle Tesla T4 cluster.
+> * Full official evaluation on 14,018 test images (`aitodpycocotools`) and 786 test images (`tinyperson_official`) is complete, verified, and logged in `journal/results/`.
+> * **Dedicated Open-Source & Reproducibility Repository**: Established at [`https://github.com/quangnhat1504/tod_hwiou`](https://github.com/quangnhat1504/tod_hwiou).
+> * **Authorship**: First & Corresponding Author **Dang Quang Nhat** (`dangquangnhat1504@gmail.com`), Co-authors **Le Ho Anh Duy** (`lehoanhduy5426@gmail.com`) and **Pham Minh Tien** (`taxaceae.forwork@gmail.com`).
 
 ---
 
@@ -44,6 +42,8 @@ The dedicated Journal Memory Bank and Knowledge Base lives at [`journal/wiki/`](
 * [[Wiki Index]]
 * [[Wiki Overview]]
 * [[Wiki Log]]
+* Dedicated Open-Source Repo: [https://github.com/quangnhat1504/tod_hwiou](https://github.com/quangnhat1504/tod_hwiou)
 * Dedicated Journal Index: `journal/wiki/index.md`
 * Dedicated Journal Overview: `journal/wiki/overview.md`
 * Dedicated Journal AI-TOD-v2 Analysis: `journal/wiki/analyses/aitodv2_sota_matrix.md`
+

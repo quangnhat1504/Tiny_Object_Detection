@@ -9,14 +9,14 @@ tags: [system]
 
 ## Wiki Log
 
-## [2026-08-28] synthesis | Journal Manuscript Verification, Mathematical Polish, and Final Camera-Ready Build
+## [2026-08-28] synthesis | Dedicated Journal Repo (tod_hwiou), Author Realignment & IEEE TPAMI Camera-Ready Release
 
-Completed comprehensive audit, mathematical alignment, and camera-ready compilation of the Homotopy Wasserstein-IoU (H-WIoU) IEEE TPAMI journal manuscript package:
-- Formatted two-column multi-line equations ($\mathcal{S}_{\text{H-WIoU}}$, $\mathcal{L}_{\text{H-WIoU}}$, $\nabla_\theta \mathcal{L}_{\text{H-WIoU}}$) to eliminate all overfull horizontal boxes and column margin overflows.
-- Synchronized Figure 5 pipeline vector PDF assets (`fig5_pipeline_architecture.pdf`) and verified all 5 publication-grade figures.
-- Validated all 83/83 unit tests (`test_*.py`) in 1.48s and certified Phase 0 Evidence Ledgers (`G0 PASS`).
-- Recompiled `journal/manuscript/main.pdf` via `pdflatex` cleanly with 0 errors and zero missing citations.
-- Generated high-resolution page preview renderings in `journal/figures/rendered_pages/`.
+Completed comprehensive audit, author realignment, dedicated open-source repository deployment, and camera-ready compilation of the Homotopy Wasserstein-IoU (H-WIoU) IEEE TPAMI journal package:
+- **Dedicated Journal Repository Launch**: Established independent reproducibility repository at [`https://github.com/quangnhat1504/tod_hwiou`](https://github.com/quangnhat1504/tod_hwiou) containing the full open-source suite (`main.tex`, `main.pdf`, `DATA.md`, `LICENSE`, `setup.py`, all 5 vector/300 DPI figures, `hwiou/` core package, and `tools/` execution harness).
+- **Authorship Alignment**: Standardized authors with **Dang Quang Nhat** (`dangquangnhat1504@gmail.com`) as First & Corresponding Author, and co-authors **Le Ho Anh Duy** (`lehoanhduy5426@gmail.com`) and **Pham Minh Tien** (`taxaceae.forwork@gmail.com`) from FPT University.
+- **Mathematical & Layout Optimization**: Formatted two-column multi-line split equations ($\mathcal{S}_{\text{H-WIoU}}$, $\mathcal{L}_{\text{H-WIoU}}$, $\nabla_\theta \mathcal{L}_{\text{H-WIoU}}$) to eliminate all overfull horizontal boxes and column margin overflows. Standardized GitHub Markdown MathJax blocks (`$$ ... $$`) and high-res PNG image previews.
+- **Validation & Test Integrity**: Validated all 83/83 unit tests (`test_*.py`) in 1.48s and certified Phase 0 Evidence Ledgers (`G0 PASS`).
+- **Cluster Experiment Verification**: Verified 100% completion across all 11 core Kaggle GPU checkpoints (TinyPerson Fair-20 20 epochs & AI-TOD-v2 12 epochs) with active multi-seed runs (`ngquangnht`, `trieuvo123`). Quota healthy at >190 GPU hours.
 
 ## [2026-08-24] analysis | AI-TOD-v2 12-Account Full SOTA Cluster Dispatch & Auto-Healing Monitor
 

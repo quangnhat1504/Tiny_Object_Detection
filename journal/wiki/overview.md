@@ -42,3 +42,11 @@ where $\gamma(s) = \frac{s^2}{s^2 + \sigma_0^2} \in [0, 1)$ smoothly transitions
   * $\text{AP}_{vt}: 1.9\% \to \mathbf{12.3\%}$ ($+6.4\times$ improvement).
   * $\text{AP}_{50}: 26.3\% \to \mathbf{46.2\%}$ ($+19.9\%$ gain).
 * **Inference Overhead**: $+0\text{MB}$ parameter bloat, $100\%$ standard Faster R-CNN inference speed ($> 54\text{ FPS}$).
+
+## 5. Authorship & Open-Source Artifacts
+* **First & Corresponding Author**: **Dang Quang Nhat** (`dangquangnhat1504@gmail.com`)
+* **Co-authors**: **Le Ho Anh Duy** (`lehoanhduy5426@gmail.com`), **Pham Minh Tien** (`taxaceae.forwork@gmail.com`)
+* **Affiliation**: Department of Artificial Intelligence & Computer Science, FPT University, Da Nang, Vietnam
+* **Dedicated Repository**: [https://github.com/quangnhat1504/tod_hwiou](https://github.com/quangnhat1504/tod_hwiou)
+* **Camera-Ready Manuscript**: `journal/manuscript/main.pdf` (9-page IEEE TPAMI standard format)
+

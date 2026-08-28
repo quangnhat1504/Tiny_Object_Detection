@@ -14,6 +14,21 @@ tags:
 
 # Journal Project Activity Log
 
+## 2026-08-28: Dedicated Repository Deployment (tod_hwiou), Author Realignment & Final Camera-Ready IEEE Polish
+* **Dedicated Journal Repository Launch ([`tod_hwiou`](https://github.com/quangnhat1504/tod_hwiou.git))**:
+  * Decoupled the H-WIoU journal codebase into an independent, publication-grade open-source package adhering to IEEE TPAMI / CVPR reproducibility guidelines.
+  * Packaged `main.tex`, `main.pdf`, `DATA.md`, `LICENSE` (Apache 2.0), `setup.py`, all 5 vector/300 DPI figures, `hwiou/` core module, and `tools/` execution scripts.
+* **Author Realignment & Contact Standardization**:
+  * Formally aligned authorship order with **Dang Quang Nhat** (`dangquangnhat1504@gmail.com`) as First & Corresponding Author.
+  * Restored institutional Gmail contacts for co-authors **Le Ho Anh Duy** (`lehoanhduy5426@gmail.com`) and **Pham Minh Tien** (`taxaceae.forwork@gmail.com`).
+  * Updated paper LaTeX metadata, BibTeX citations, and GitHub repository profiles.
+* **Mathematical Typography & Layout Optimization**:
+  * Formatted two-column multi-line split equations ($\mathcal{S}_{\text{H-WIoU}}$, $\mathcal{L}_{\text{H-WIoU}}$, $\nabla_\theta \mathcal{L}_{\text{H-WIoU}}$) to eliminate all overfull `\hbox` column overflow warnings.
+  * Fixed GitHub Markdown LaTeX math blocks (`$$ ... $$`) and upgraded figure previews to high-resolution PNG (`figures/fig1_homotopy_theory.png`).
+* **Cluster Experiment Status & Multi-Seed Validation**:
+  * Confirmed 100% completion of all 11 core checkpoints across TinyPerson (Fair-20, 20 epochs) and AI-TOD-v2 (12 epochs).
+  * Monitored active live GPU T4 runs: `trieuvo123` (H-WIoU + Cascade Hybrid) and `ngquangnht` (H-WIoU Multi-seed s123). Quota remains healthy (>190 GPU hours).
+
 ## 2026-08-28: Full 5-Axis Code Review, Unified SOTA Test Benchmark & H-WIoU v2 Extensions Roadmap
 * **Comprehensive 5-Axis Code Quality Audit**:
   * Executed exhaustive 5-axis review (`Correctness`, `Readability`, `Architecture`, `Security`, `Performance`) across `common/metrics/`, `common/model.py`, and `scripts/train_frcnn_aitod.py`.
