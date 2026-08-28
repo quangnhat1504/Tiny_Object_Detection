@@ -1,0 +1,137 @@
+{
+  "comparison_id": "wp03_a4_sa_alw_minus_alw",
+  "dataset": "TinyPerson",
+  "method_a": "alw_canonical",
+  "method_b": "sa_alw_canonical",
+  "delta_definition": "method_b_minus_method_a",
+  "bootstrap_unit": "original_image",
+  "sampling": "same multinomial image multiplicities shared across all methods and fixed seeds",
+  "confidence_interval": "two-sided percentile 95%",
+  "ground_truth_sha256": "9e8143e8fa6e610264e87a36fc1e8857a0b886cfcef4fe8972e7d9e37eb28199",
+  "manifest_sha256": "27c6797431d76584e09b874c7e536818502d277959c2c3f0ef09579f2175da62",
+  "provenance": [
+    {
+      "seed": 42,
+      "runs": {
+        "method_a": {
+          "run_dir": ".runtime\\kaggle\\wp03\\a3_seed42\\pptlyn11\\outputs\\shard_1\\runs\\wp01_pilot_alw_canonical__seed42__wp03_a3",
+          "ground_truth_sha256": "9e8143e8fa6e610264e87a36fc1e8857a0b886cfcef4fe8972e7d9e37eb28199",
+          "detections_sha256": "d7e22632a6f882d89fb85c7d679ffbe668240c4a909fc3ddfc5d8fcbb7a3178c",
+          "results_sha256": "ec2004fa3685d668144ab0d58b52d138213b70fe9b907ff089461b7d2c8aba7d",
+          "metrics": {
+            "AP": 0.15810978514225782,
+            "AP50": 0.4341009448077776,
+            "AP75": 0.07039884135526817
+          },
+          "maximum_replay_delta": 0.0
+        },
+        "method_b": {
+          "run_dir": ".runtime\\kaggle\\wp03\\a3_seed42\\pptlyn11\\outputs\\shard_2\\runs\\wp01_pilot_sa_alw_full__seed42__wp03_a3",
+          "ground_truth_sha256": "9e8143e8fa6e610264e87a36fc1e8857a0b886cfcef4fe8972e7d9e37eb28199",
+          "detections_sha256": "aba728b3b893cbf0400ce0d56481f3aaea094623273efa455f5d871fa4081fff",
+          "results_sha256": "eb4061aaa6eab2dae0de31b4832d26e30a63b9ab92eb0b6fa3829fc93727a377",
+          "metrics": {
+            "AP": 0.15246335474565692,
+            "AP50": 0.421882808994074,
+            "AP75": 0.06686118692069079
+          },
+          "maximum_replay_delta": 0.0
+        }
+      },
+      "deltas": {
+        "AP": -0.005646430396600899,
+        "AP50": -0.012218135813703623,
+        "AP75": -0.0035376544345773753
+      }
+    },
+    {
+      "seed": 123,
+      "runs": {
+        "method_a": {
+          "run_dir": ".runtime\\kaggle\\wp03\\v8\\outputs\\alw_canonical_s123\\runs\\wp01_pilot_alw_canonical__seed123__wp03_v8",
+          "ground_truth_sha256": "9e8143e8fa6e610264e87a36fc1e8857a0b886cfcef4fe8972e7d9e37eb28199",
+          "detections_sha256": "ee3e90dbff170eecb9571d476471a29b59b4fadc39556498dfe68a34bedbb65c",
+          "results_sha256": "d26826a1b61db7276c417e73c1c8d268aab1adc9195537a679c38706c58d0f38",
+          "metrics": {
+            "AP": 0.15514144890556494,
+            "AP50": 0.4314367599206488,
+            "AP75": 0.0660875162289567
+          },
+          "maximum_replay_delta": 0.0
+        },
+        "method_b": {
+          "run_dir": ".runtime\\kaggle\\wp03\\v8\\outputs\\sa_alw_full_s123\\runs\\wp01_pilot_sa_alw_full__seed123__wp03_v8",
+          "ground_truth_sha256": "9e8143e8fa6e610264e87a36fc1e8857a0b886cfcef4fe8972e7d9e37eb28199",
+          "detections_sha256": "b929af89bdb41be938e84b2846729f5ab031a9b2a8579ee06944d5435053c03d",
+          "results_sha256": "6d6d96aed52c4997ed95bc2ac9807dc9e5b72ae2c17ea14a7fdc0d8a72b6ca68",
+          "metrics": {
+            "AP": 0.15593770072543964,
+            "AP50": 0.4286229193881628,
+            "AP75": 0.07124082819991336
+          },
+          "maximum_replay_delta": 0.0
+        }
+      },
+      "deltas": {
+        "AP": 0.0007962518198746937,
+        "AP50": -0.002813840532485956,
+        "AP75": 0.005153311970956656
+      }
+    },
+    {
+      "seed": 2024,
+      "runs": {
+        "method_a": {
+          "run_dir": ".runtime\\kaggle\\wp03\\v8\\outputs\\alw_canonical_s2024\\runs\\wp01_pilot_alw_canonical__seed2024__wp03_v8",
+          "ground_truth_sha256": "9e8143e8fa6e610264e87a36fc1e8857a0b886cfcef4fe8972e7d9e37eb28199",
+          "detections_sha256": "33a533c8bc44deadaca6f1864defadaeeb15b889bc72a2e1a9429379c75efca5",
+          "results_sha256": "e0ae4059c8e1b4796a2e264e82c6614a1d0ef050d73ae7a535cbb2e5fc26ad6e",
+          "metrics": {
+            "AP": 0.15596566743639123,
+            "AP50": 0.4274275688243536,
+            "AP75": 0.07206952578380148
+          },
+          "maximum_replay_delta": 0.0
+        },
+        "method_b": {
+          "run_dir": ".runtime\\kaggle\\wp03\\v8\\outputs\\sa_alw_full_s2024\\runs\\wp01_pilot_sa_alw_full__seed2024__wp03_v8",
+          "ground_truth_sha256": "9e8143e8fa6e610264e87a36fc1e8857a0b886cfcef4fe8972e7d9e37eb28199",
+          "detections_sha256": "8e18b14995eb722943f7c6ab54e11865fba668ae10f17f48a35fb0eb1a7db162",
+          "results_sha256": "4fb01cff1aabd42829de5f1baa7410351a8242d5c158af94defe5cb479e51479",
+          "metrics": {
+            "AP": 0.15695813776181053,
+            "AP50": 0.4284907959447172,
+            "AP75": 0.0755049641837157
+          },
+          "maximum_replay_delta": 0.0
+        }
+      },
+      "deltas": {
+        "AP": 0.000992470325419298,
+        "AP50": 0.0010632271203635524,
+        "AP75": 0.0034354383999142257
+      }
+    }
+  ],
+  "replicates": 2000,
+  "rng_seed": 20260814,
+  "image_count": 2041,
+  "seed_pair_count": 3,
+  "metrics": {
+    "AP": {
+      "delta_mean": -0.0012859027504356357,
+      "ci_low": -0.002938801107252579,
+      "ci_high": 0.0012769412496593155
+    },
+    "AP50": {
+      "delta_mean": -0.004656249741942009,
+      "ci_low": -0.009807236905529003,
+      "ci_high": 0.0007848008653007036
+    },
+    "AP75": {
+      "delta_mean": 0.0016836986454311688,
+      "ci_low": -0.0017779796111120516,
+      "ci_high": 0.004946310514367614
+    }
+  }
+}

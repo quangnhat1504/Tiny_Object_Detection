@@ -1,0 +1,67 @@
+[{"stream_name":"stderr","time":7.831989501,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.8320669590000005,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.83207308,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.832076695,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.448715464,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.448750151,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.448755041,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.44875854,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":19.167523434,"data":"Applied latest hot-patch fixes to /kaggle/working/aitod_nwd_s42\n"}
+,{"stream_name":"stdout","time":23.761135547,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric nwd --placement everywhere --box-loss metric --seed 42 --epochs 12 --batch-size 2\n"}
+,{"stream_name":"stdout","time":45.525762365,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stdout","time":45.525800413,"data":"=== AI-TOD-v2 Training: Metric=nwd, Placement=everywhere, Loss=metric, Seed=42, Device=cuda ===\n"}
+,{"stream_name":"stdout","time":45.525807476,"data":"Data root: /kaggle/input/datasets/simplestzyp/tiny-object-detection-in-aerial-images/AI-TOD\n"}
+,{"stream_name":"stdout","time":45.525812073,"data":"Loading datasets...\n"}
+,{"stream_name":"stdout","time":45.525818005,"data":"Train samples: 14018, Val samples: 14018\n"}
+,{"stream_name":"stdout","time":45.525826267,"data":"Building Faster R-CNN with 9 classes (8 foreground + background)...\n"}
+,{"stream_name":"stdout","time":45.525829533,"data":"\n"}
+,{"stream_name":"stdout","time":45.525832476,"data":"=== Beginning Training ===\n"}
+,{"stream_name":"stdout","time":2232.538610287,"data":"\n"}
+,{"stream_name":"stdout","time":2232.538680713,"data":"Evaluating Epoch 1/12 (Train loss: 0.5435, time: 2187.0s)...\n"}
+,{"stream_name":"stderr","time":2232.604454924,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":2232.604494633,"data":"  File \"/kaggle/working/aitod_nwd_s42/scripts/train_frcnn_aitod.py\", line 299, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":2232.604935639,"data":"    main()\n"}
+,{"stream_name":"stderr","time":2232.605321464,"data":"  File \"/kaggle/working/aitod_nwd_s42/scripts/train_frcnn_aitod.py\", line 281, in main\n"}
+,{"stream_name":"stderr","time":2232.605481587,"data":"    train_aitod(\n"}
+,{"stream_name":"stderr","time":2232.605494285,"data":"  File \"/kaggle/working/aitod_nwd_s42/scripts/train_frcnn_aitod.py\", line 193, in train_aitod\n"}
+,{"stream_name":"stderr","time":2232.605622345,"data":"    for images, targets in val_loader:\n"}
+,{"stream_name":"stderr","time":2232.605632959,"data":"                           ^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2232.60563888,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/dataloader.py\", line 741, in __next__\n"}
+,{"stream_name":"stderr","time":2232.60599417,"data":"    data = self._next_data()\n"}
+,{"stream_name":"stderr","time":2232.606007107,"data":"           ^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2232.606012085,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/dataloader.py\", line 1548, in _next_data\n"}
+,{"stream_name":"stderr","time":2232.606641133,"data":"    return self._process_data(data, worker_id)\n"}
+,{"stream_name":"stderr","time":2232.606676457,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2232.606681547,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/dataloader.py\", line 1586, in _process_data\n"}
+,{"stream_name":"stderr","time":2232.607103682,"data":"    data.reraise()\n"}
+,{"stream_name":"stderr","time":2232.607110319,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/_utils.py\", line 775, in reraise\n"}
+,{"stream_name":"stderr","time":2232.610757208,"data":"    raise exception\n"}
+,{"stream_name":"stderr","time":2232.610773383,"data":"FileNotFoundError: Caught FileNotFoundError in DataLoader worker process 0.\n"}
+,{"stream_name":"stderr","time":2232.61077789,"data":"Original Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":2232.610781531,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/_utils/worker.py\", line 358, in _worker_loop\n"}
+,{"stream_name":"stderr","time":2232.610786962,"data":"    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]\n"}
+,{"stream_name":"stderr","time":2232.61079383,"data":"           ^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2232.610796165,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/_utils/fetch.py\", line 54, in fetch\n"}
+,{"stream_name":"stderr","time":2232.61079889,"data":"    data = [self.dataset[idx] for idx in possibly_batched_index]\n"}
+,{"stream_name":"stderr","time":2232.610801458,"data":"            ~~~~~~~~~~~~^^^^^\n"}
+,{"stream_name":"stderr","time":2232.61080381,"data":"  File \"/kaggle/working/aitod_nwd_s42/paper_a/datasets/coco_original.py\", line 105, in __getitem__\n"}
+,{"stream_name":"stderr","time":2232.610806299,"data":"    image = self._load_image(image_info)\n"}
+,{"stream_name":"stderr","time":2232.610808707,"data":"            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2232.610811168,"data":"  File \"/kaggle/working/aitod_nwd_s42/paper_a/datasets/coco_original.py\", line 99, in _load_image\n"}
+,{"stream_name":"stderr","time":2232.610813482,"data":"    with Image.open(image_path) as source:\n"}
+,{"stream_name":"stderr","time":2232.610815701,"data":"         ^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2232.610817998,"data":"  File \"/usr/local/lib/python3.12/dist-packages/PIL/Image.py\", line 3513, in open\n"}
+,{"stream_name":"stderr","time":2232.610820365,"data":"    fp = builtins.open(filename, \"rb\")\n"}
+,{"stream_name":"stderr","time":2232.610822626,"data":"         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2232.610824917,"data":"FileNotFoundError: [Errno 2] No such file or directory: '/kaggle/input/datasets/simplestzyp/tiny-object-detection-in-aerial-images/AI-TOD/images/val/6a6abd9bd.png'\n"}
+,{"stream_name":"stderr","time":2232.610827385,"data":"\n"}
+,{"stream_name":"stdout","time":2239.362895266,"data":"Execution finished with exit code: 1\n"}
+,{"stream_name":"stderr","time":2242.44571545,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":2242.445744347,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":2242.62264658,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":2242.622675779,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":2243.252057465,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":2243.554370067,"data":"[NbConvertApp] Writing 80497 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":2245.906803436,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":2246.727475506,"data":"[NbConvertApp] Writing 359200 bytes to __results__.html\n"}
+]

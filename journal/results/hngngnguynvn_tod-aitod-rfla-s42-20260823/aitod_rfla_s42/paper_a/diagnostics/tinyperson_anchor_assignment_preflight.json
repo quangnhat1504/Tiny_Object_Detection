@@ -1,0 +1,2797 @@
+{
+  "status": "TRAIN_ANNOTATION_ANCHOR_PREFLIGHT",
+  "evidence_class": "validation_evidence_not_submission_evidence",
+  "annotation_file": "tiny_set_train_sw640_sh512_all.json",
+  "annotation_sha256": "8474f1242a072a4a6cfb55ef97c1b3661f2ab2ce2069670c8801a97aad5428bd",
+  "schedule_file": "tinyperson_train_p10_p90.json",
+  "schedule_audit_sha256": "2ae4fb56295b9c3ad292ced030bd4472cfbc2a3eb63199e08cdfdf9099093ff9",
+  "schedule": {
+    "s_min": 7.43283998617652,
+    "s_max": 44.846834283710336,
+    "beta_min": 8.0,
+    "beta_max": 10.0,
+    "w_min": 1.0,
+    "w_max": 1.5,
+    "schedule_form": "linear"
+  },
+  "device": "cuda",
+  "seed": 42,
+  "eligible_image_count": 2426,
+  "sample_size": 64,
+  "selected_image_ids": [
+    136,
+    433,
+    474,
+    495,
+    530,
+    659,
+    676,
+    1110,
+    1218,
+    1238,
+    1354,
+    1397,
+    1404,
+    1439,
+    1484,
+    1489,
+    1490,
+    1635,
+    1883,
+    2050,
+    2235,
+    2327,
+    2351,
+    2748,
+    2791,
+    2962,
+    2994,
+    3021,
+    3113,
+    3140,
+    3186,
+    3187,
+    3479,
+    3670,
+    3750,
+    3763,
+    3767,
+    3866,
+    3891,
+    4314,
+    4363,
+    4430,
+    4602,
+    4625,
+    4654,
+    4689,
+    4742,
+    4824,
+    4874,
+    5523,
+    5536,
+    5539,
+    5848,
+    5912,
+    5980,
+    6654,
+    7078,
+    7194,
+    7201,
+    7303,
+    7483,
+    7865,
+    7936,
+    7953
+  ],
+  "selection_rule": "seeded sample over valid 640x800 resized train images; labels not used for selection",
+  "anchor_contract": {
+    "transformed_shape": [
+      800,
+      640
+    ],
+    "anchor_count": 383580,
+    "fpn_strides": [
+      4,
+      8,
+      16,
+      32,
+      64
+    ],
+    "sizes": [
+      [
+        4,
+        8,
+        16
+      ],
+      [
+        16,
+        32,
+        64
+      ],
+      [
+        64,
+        128,
+        256
+      ],
+      [
+        128,
+        256,
+        512
+      ],
+      [
+        256,
+        512,
+        1024
+      ]
+    ],
+    "aspect_ratios": [
+      [
+        0.5,
+        1.0,
+        2.0
+      ],
+      [
+        0.5,
+        1.0,
+        2.0
+      ],
+      [
+        0.5,
+        1.0,
+        2.0
+      ],
+      [
+        0.5,
+        1.0,
+        2.0
+      ],
+      [
+        0.5,
+        1.0,
+        2.0
+      ]
+    ],
+    "hierarchical_assignment_passes": 2
+  },
+  "gt_count": 624,
+  "gt_scale_bin_counts": {
+    "adaptive_interval": 528,
+    "above_s_max": 73,
+    "below_s_min": 23
+  },
+  "variant_positive_counts": {
+    "alw": 2442,
+    "beta_only": 2395,
+    "position_only": 2383,
+    "full": 2360
+  },
+  "variant_gt_coverage_counts": {
+    "alw": 622,
+    "beta_only": 622,
+    "position_only": 622,
+    "full": 622
+  },
+  "variant_gt_coverage_by_scale": {
+    "alw": {
+      "adaptive_interval": 526,
+      "above_s_max": 73,
+      "below_s_min": 23
+    },
+    "beta_only": {
+      "adaptive_interval": 526,
+      "above_s_max": 73,
+      "below_s_min": 23
+    },
+    "position_only": {
+      "adaptive_interval": 526,
+      "above_s_max": 73,
+      "below_s_min": 23
+    },
+    "full": {
+      "adaptive_interval": 526,
+      "above_s_max": 73,
+      "below_s_min": 23
+    }
+  },
+  "comparison_totals": {
+    "beta_only_vs_alw": {
+      "changed_anchor_count": 127,
+      "positive_set_change_count": 127,
+      "added_positive_count": 40,
+      "dropped_positive_count": 87,
+      "owner_change_count": 0
+    },
+    "position_only_vs_alw": {
+      "changed_anchor_count": 241,
+      "positive_set_change_count": 241,
+      "added_positive_count": 91,
+      "dropped_positive_count": 150,
+      "owner_change_count": 0
+    },
+    "full_vs_alw": {
+      "changed_anchor_count": 358,
+      "positive_set_change_count": 358,
+      "added_positive_count": 138,
+      "dropped_positive_count": 220,
+      "owner_change_count": 0
+    },
+    "full_vs_position_only": {
+      "changed_anchor_count": 141,
+      "positive_set_change_count": 141,
+      "added_positive_count": 59,
+      "dropped_positive_count": 82,
+      "owner_change_count": 0
+    }
+  },
+  "elapsed_seconds": 1.486032900000282,
+  "per_image": [
+    {
+      "image_id": 136,
+      "gt_count": 3,
+      "positive_counts": {
+        "alw": 13,
+        "beta_only": 12,
+        "position_only": 12,
+        "full": 11
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 433,
+      "gt_count": 5,
+      "positive_counts": {
+        "alw": 29,
+        "beta_only": 29,
+        "position_only": 29,
+        "full": 28
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 474,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 3,
+        "beta_only": 3,
+        "position_only": 3,
+        "full": 3
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 495,
+      "gt_count": 9,
+      "positive_counts": {
+        "alw": 36,
+        "beta_only": 33,
+        "position_only": 33,
+        "full": 31
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 0,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 530,
+      "gt_count": 39,
+      "positive_counts": {
+        "alw": 146,
+        "beta_only": 145,
+        "position_only": 141,
+        "full": 142
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 2,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 19,
+          "positive_set_change_count": 19,
+          "added_positive_count": 7,
+          "dropped_positive_count": 12,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 24,
+          "positive_set_change_count": 24,
+          "added_positive_count": 10,
+          "dropped_positive_count": 14,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 3,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 659,
+      "gt_count": 7,
+      "positive_counts": {
+        "alw": 26,
+        "beta_only": 25,
+        "position_only": 25,
+        "full": 25
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 676,
+      "gt_count": 13,
+      "positive_counts": {
+        "alw": 51,
+        "beta_only": 46,
+        "position_only": 49,
+        "full": 44
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 0,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 8,
+          "positive_set_change_count": 8,
+          "added_positive_count": 3,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 11,
+          "positive_set_change_count": 11,
+          "added_positive_count": 2,
+          "dropped_positive_count": 9,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 0,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1110,
+      "gt_count": 7,
+      "positive_counts": {
+        "alw": 21,
+        "beta_only": 21,
+        "position_only": 21,
+        "full": 21
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 1,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 1,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1218,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 7,
+        "beta_only": 8,
+        "position_only": 8,
+        "full": 8
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 2,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 2,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 2,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1238,
+      "gt_count": 6,
+      "positive_counts": {
+        "alw": 25,
+        "beta_only": 24,
+        "position_only": 24,
+        "full": 22
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1354,
+      "gt_count": 5,
+      "positive_counts": {
+        "alw": 24,
+        "beta_only": 20,
+        "position_only": 20,
+        "full": 20
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 4,
+          "positive_set_change_count": 4,
+          "added_positive_count": 0,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 4,
+          "positive_set_change_count": 4,
+          "added_positive_count": 0,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 4,
+          "positive_set_change_count": 4,
+          "added_positive_count": 0,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1397,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 3,
+        "beta_only": 3,
+        "position_only": 3,
+        "full": 3
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1404,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 4,
+        "beta_only": 4,
+        "position_only": 4,
+        "full": 4
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1439,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 3,
+        "beta_only": 3,
+        "position_only": 3,
+        "full": 3
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1484,
+      "gt_count": 13,
+      "positive_counts": {
+        "alw": 45,
+        "beta_only": 44,
+        "position_only": 44,
+        "full": 52
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 13,
+          "positive_set_change_count": 13,
+          "added_positive_count": 10,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 10,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1489,
+      "gt_count": 29,
+      "positive_counts": {
+        "alw": 113,
+        "beta_only": 116,
+        "position_only": 117,
+        "full": 120
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 11,
+          "positive_set_change_count": 11,
+          "added_positive_count": 7,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 8,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 17,
+          "positive_set_change_count": 17,
+          "added_positive_count": 12,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 4,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1490,
+      "gt_count": 19,
+      "positive_counts": {
+        "alw": 69,
+        "beta_only": 73,
+        "position_only": 73,
+        "full": 83
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 10,
+          "positive_set_change_count": 10,
+          "added_positive_count": 7,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 8,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 24,
+          "positive_set_change_count": 24,
+          "added_positive_count": 19,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 11,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1635,
+      "gt_count": 11,
+      "positive_counts": {
+        "alw": 45,
+        "beta_only": 41,
+        "position_only": 40,
+        "full": 38
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 6,
+          "positive_set_change_count": 6,
+          "added_positive_count": 1,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 9,
+          "positive_set_change_count": 9,
+          "added_positive_count": 2,
+          "dropped_positive_count": 7,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 11,
+          "positive_set_change_count": 11,
+          "added_positive_count": 2,
+          "dropped_positive_count": 9,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 4,
+          "positive_set_change_count": 4,
+          "added_positive_count": 1,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 1883,
+      "gt_count": 5,
+      "positive_counts": {
+        "alw": 20,
+        "beta_only": 20,
+        "position_only": 20,
+        "full": 20
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 1,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 1,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 2050,
+      "gt_count": 11,
+      "positive_counts": {
+        "alw": 48,
+        "beta_only": 47,
+        "position_only": 46,
+        "full": 47
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 2,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 2,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 2235,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 3,
+        "beta_only": 3,
+        "position_only": 3,
+        "full": 3
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 2327,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 16,
+        "beta_only": 13,
+        "position_only": 13,
+        "full": 11
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 0,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 2351,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 3,
+        "beta_only": 3,
+        "position_only": 3,
+        "full": 3
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 2748,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 8,
+        "beta_only": 8,
+        "position_only": 8,
+        "full": 8
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 2791,
+      "gt_count": 27,
+      "positive_counts": {
+        "alw": 99,
+        "beta_only": 98,
+        "position_only": 95,
+        "full": 94
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 7,
+          "positive_set_change_count": 7,
+          "added_positive_count": 3,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 14,
+          "positive_set_change_count": 14,
+          "added_positive_count": 5,
+          "dropped_positive_count": 9,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 19,
+          "positive_set_change_count": 19,
+          "added_positive_count": 7,
+          "dropped_positive_count": 12,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 2,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 2962,
+      "gt_count": 36,
+      "positive_counts": {
+        "alw": 140,
+        "beta_only": 141,
+        "position_only": 141,
+        "full": 138
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 2,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 3,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 6,
+          "positive_set_change_count": 6,
+          "added_positive_count": 2,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 2994,
+      "gt_count": 3,
+      "positive_counts": {
+        "alw": 10,
+        "beta_only": 10,
+        "position_only": 10,
+        "full": 10
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3021,
+      "gt_count": 3,
+      "positive_counts": {
+        "alw": 12,
+        "beta_only": 12,
+        "position_only": 12,
+        "full": 15
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 4,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 4,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3113,
+      "gt_count": 4,
+      "positive_counts": {
+        "alw": 15,
+        "beta_only": 14,
+        "position_only": 14,
+        "full": 14
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3140,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 11,
+        "beta_only": 10,
+        "position_only": 10,
+        "full": 11
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 4,
+          "positive_set_change_count": 4,
+          "added_positive_count": 2,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 2,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3186,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 8,
+        "beta_only": 7,
+        "position_only": 7,
+        "full": 7
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3187,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 4,
+        "beta_only": 4,
+        "position_only": 4,
+        "full": 4
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3479,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 5,
+        "beta_only": 5,
+        "position_only": 5,
+        "full": 5
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 1,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 1,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3670,
+      "gt_count": 30,
+      "positive_counts": {
+        "alw": 111,
+        "beta_only": 110,
+        "position_only": 109,
+        "full": 101
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 11,
+          "positive_set_change_count": 11,
+          "added_positive_count": 5,
+          "dropped_positive_count": 6,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 22,
+          "positive_set_change_count": 22,
+          "added_positive_count": 10,
+          "dropped_positive_count": 12,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 24,
+          "positive_set_change_count": 24,
+          "added_positive_count": 7,
+          "dropped_positive_count": 17,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 8,
+          "positive_set_change_count": 8,
+          "added_positive_count": 0,
+          "dropped_positive_count": 8,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3750,
+      "gt_count": 3,
+      "positive_counts": {
+        "alw": 9,
+        "beta_only": 9,
+        "position_only": 9,
+        "full": 9
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3763,
+      "gt_count": 9,
+      "positive_counts": {
+        "alw": 31,
+        "beta_only": 29,
+        "position_only": 29,
+        "full": 29
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3767,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 7,
+        "beta_only": 7,
+        "position_only": 7,
+        "full": 7
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3866,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 7,
+        "beta_only": 7,
+        "position_only": 7,
+        "full": 7
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 3891,
+      "gt_count": 3,
+      "positive_counts": {
+        "alw": 12,
+        "beta_only": 12,
+        "position_only": 12,
+        "full": 12
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4314,
+      "gt_count": 4,
+      "positive_counts": {
+        "alw": 15,
+        "beta_only": 15,
+        "position_only": 15,
+        "full": 15
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4363,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 5,
+        "beta_only": 5,
+        "position_only": 5,
+        "full": 5
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4430,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 9,
+        "beta_only": 8,
+        "position_only": 7,
+        "full": 6
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4602,
+      "gt_count": 8,
+      "positive_counts": {
+        "alw": 29,
+        "beta_only": 29,
+        "position_only": 28,
+        "full": 27
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4625,
+      "gt_count": 14,
+      "positive_counts": {
+        "alw": 58,
+        "beta_only": 58,
+        "position_only": 55,
+        "full": 55
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4654,
+      "gt_count": 3,
+      "positive_counts": {
+        "alw": 11,
+        "beta_only": 10,
+        "position_only": 10,
+        "full": 10
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4689,
+      "gt_count": 26,
+      "positive_counts": {
+        "alw": 111,
+        "beta_only": 108,
+        "position_only": 107,
+        "full": 99
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 9,
+          "positive_set_change_count": 9,
+          "added_positive_count": 3,
+          "dropped_positive_count": 6,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 18,
+          "positive_set_change_count": 18,
+          "added_positive_count": 7,
+          "dropped_positive_count": 11,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 20,
+          "positive_set_change_count": 20,
+          "added_positive_count": 4,
+          "dropped_positive_count": 16,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 8,
+          "positive_set_change_count": 8,
+          "added_positive_count": 0,
+          "dropped_positive_count": 8,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4742,
+      "gt_count": 3,
+      "positive_counts": {
+        "alw": 10,
+        "beta_only": 10,
+        "position_only": 10,
+        "full": 10
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4824,
+      "gt_count": 7,
+      "positive_counts": {
+        "alw": 22,
+        "beta_only": 22,
+        "position_only": 22,
+        "full": 22
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 4874,
+      "gt_count": 4,
+      "positive_counts": {
+        "alw": 12,
+        "beta_only": 12,
+        "position_only": 12,
+        "full": 12
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 5523,
+      "gt_count": 25,
+      "positive_counts": {
+        "alw": 107,
+        "beta_only": 106,
+        "position_only": 102,
+        "full": 96
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 9,
+          "positive_set_change_count": 9,
+          "added_positive_count": 4,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 13,
+          "positive_set_change_count": 13,
+          "added_positive_count": 4,
+          "dropped_positive_count": 9,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 19,
+          "positive_set_change_count": 19,
+          "added_positive_count": 4,
+          "dropped_positive_count": 15,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 6,
+          "positive_set_change_count": 6,
+          "added_positive_count": 0,
+          "dropped_positive_count": 6,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 5536,
+      "gt_count": 32,
+      "positive_counts": {
+        "alw": 124,
+        "beta_only": 124,
+        "position_only": 120,
+        "full": 122
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 10,
+          "positive_set_change_count": 10,
+          "added_positive_count": 3,
+          "dropped_positive_count": 7,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 18,
+          "positive_set_change_count": 18,
+          "added_positive_count": 8,
+          "dropped_positive_count": 10,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 10,
+          "positive_set_change_count": 10,
+          "added_positive_count": 6,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 5539,
+      "gt_count": 30,
+      "positive_counts": {
+        "alw": 114,
+        "beta_only": 109,
+        "position_only": 108,
+        "full": 103
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 7,
+          "positive_set_change_count": 7,
+          "added_positive_count": 1,
+          "dropped_positive_count": 6,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 3,
+          "dropped_positive_count": 9,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 19,
+          "positive_set_change_count": 19,
+          "added_positive_count": 4,
+          "dropped_positive_count": 15,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 7,
+          "positive_set_change_count": 7,
+          "added_positive_count": 1,
+          "dropped_positive_count": 6,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 5848,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 7,
+        "beta_only": 7,
+        "position_only": 7,
+        "full": 7
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 5912,
+      "gt_count": 4,
+      "positive_counts": {
+        "alw": 14,
+        "beta_only": 14,
+        "position_only": 14,
+        "full": 24
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 11,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 11,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 5980,
+      "gt_count": 18,
+      "positive_counts": {
+        "alw": 66,
+        "beta_only": 61,
+        "position_only": 61,
+        "full": 60
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 0,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 9,
+          "positive_set_change_count": 9,
+          "added_positive_count": 2,
+          "dropped_positive_count": 7,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 10,
+          "positive_set_change_count": 10,
+          "added_positive_count": 2,
+          "dropped_positive_count": 8,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 6654,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 7,
+        "beta_only": 7,
+        "position_only": 7,
+        "full": 7
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 7078,
+      "gt_count": 1,
+      "positive_counts": {
+        "alw": 3,
+        "beta_only": 3,
+        "position_only": 3,
+        "full": 3
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 7194,
+      "gt_count": 5,
+      "positive_counts": {
+        "alw": 19,
+        "beta_only": 20,
+        "position_only": 18,
+        "full": 16
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 1,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 1,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 1,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 2,
+          "positive_set_change_count": 2,
+          "added_positive_count": 0,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 7201,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 7,
+        "beta_only": 6,
+        "position_only": 6,
+        "full": 6
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 7303,
+      "gt_count": 20,
+      "positive_counts": {
+        "alw": 86,
+        "beta_only": 83,
+        "position_only": 88,
+        "full": 85
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 3,
+          "positive_set_change_count": 3,
+          "added_positive_count": 0,
+          "dropped_positive_count": 3,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 7,
+          "dropped_positive_count": 5,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 13,
+          "positive_set_change_count": 13,
+          "added_positive_count": 6,
+          "dropped_positive_count": 7,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 5,
+          "positive_set_change_count": 5,
+          "added_positive_count": 1,
+          "dropped_positive_count": 4,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 7483,
+      "gt_count": 8,
+      "positive_counts": {
+        "alw": 29,
+        "beta_only": 29,
+        "position_only": 29,
+        "full": 29
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 7865,
+      "gt_count": 50,
+      "positive_counts": {
+        "alw": 192,
+        "beta_only": 187,
+        "position_only": 183,
+        "full": 176
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 9,
+          "positive_set_change_count": 9,
+          "added_positive_count": 2,
+          "dropped_positive_count": 7,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 15,
+          "positive_set_change_count": 15,
+          "added_positive_count": 3,
+          "dropped_positive_count": 12,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 22,
+          "positive_set_change_count": 22,
+          "added_positive_count": 3,
+          "dropped_positive_count": 19,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 7,
+          "positive_set_change_count": 7,
+          "added_positive_count": 0,
+          "dropped_positive_count": 7,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 7936,
+      "gt_count": 30,
+      "positive_counts": {
+        "alw": 136,
+        "beta_only": 136,
+        "position_only": 146,
+        "full": 145
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 12,
+          "positive_set_change_count": 12,
+          "added_positive_count": 11,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 13,
+          "positive_set_change_count": 13,
+          "added_positive_count": 11,
+          "dropped_positive_count": 2,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 1,
+          "positive_set_change_count": 1,
+          "added_positive_count": 0,
+          "dropped_positive_count": 1,
+          "owner_change_count": 0
+        }
+      }
+    },
+    {
+      "image_id": 7953,
+      "gt_count": 2,
+      "positive_counts": {
+        "alw": 7,
+        "beta_only": 7,
+        "position_only": 7,
+        "full": 7
+      },
+      "comparisons": {
+        "beta_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "position_only_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_alw": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        },
+        "full_vs_position_only": {
+          "changed_anchor_count": 0,
+          "positive_set_change_count": 0,
+          "added_positive_count": 0,
+          "dropped_positive_count": 0,
+          "owner_change_count": 0
+        }
+      }
+    }
+  ],
+  "restrictions": [
+    "training annotations only",
+    "exact frozen anchor and HLA geometry but no image features or optimizer updates",
+    "bounded seeded sample rather than full training split",
+    "AI-TOD-v2 mechanism evidence cannot freeze TinyPerson endpoints",
+    "no performance or final-test claim"
+  ]
+}

@@ -1,0 +1,255 @@
+{
+  "title": "H-WIoU Quiz",
+  "questions": [
+    {
+      "question": "What is the primary mathematical purpose of the scale-homotopy parameter $\\gamma(s) = \\frac{s^2}{s^2 + \\sigma_0^2}$ in the H-WIoU framework?",
+      "answerOptions": [
+        {
+          "text": "To smoothly transition between pure Wasserstein optimal transport and discrete Lebesgue measure spaces.",
+          "isCorrect": true,
+          "rationale": "The parameter acts as a continuous map that modulates the influence of the distance-based metric and the area-overlap metric based on the characteristic scale $s$."
+        },
+        {
+          "text": "To increase the spatial resolution of the feature pyramid network layers.",
+          "isCorrect": false,
+          "rationale": "The homotopy parameter is a metric modulation tool and does not change the architectural resolution of the backbone or neck."
+        },
+        {
+          "text": "To provide a hard threshold for discarding anchor proposals below 8 pixels.",
+          "isCorrect": false,
+          "rationale": "H-WIoU aims to recover tiny objects through continuous gradients rather than discarding them via hard thresholds."
+        },
+        {
+          "text": "To normalize the aspect ratios of predicted boxes across different image domains.",
+          "isCorrect": false,
+          "rationale": "While scale-invariant, the primary function is the scale-dependent transition between metric regimes, not aspect ratio normalization."
+        }
+      ],
+      "hint": "Consider how the formula behaves as the object scale $s$ approaches zero versus when it becomes very large."
+    },
+    {
+      "question": "According to Theorem 1, what is the gradient norm asymptotic of the H-WIoU loss $\\mathcal{L}_{\\text{H-WIoU}}$ for a predicted box $A$ that is disjoint ($\\text{IoU} = 0$) from a microscopic target $B$?",
+      "answerOptions": [
+        {
+          "text": "$\\|\\nabla_\\theta \\mathcal{L}_{\\text{H-WIoU}}\\| = \\mathcal{O}(1) > 0$",
+          "isCorrect": true,
+          "rationale": "H-WIoU ensures a non-vanishing gradient bound, allowing the optimizer to 'pull' disjoint boxes together even when there is no physical overlap."
+        },
+        {
+          "text": "$\\|\\nabla_\\theta \\mathcal{L}_{\\text{H-WIoU}}\\| \\equiv 0$",
+          "isCorrect": false,
+          "rationale": "This zero-gradient collapse is the failure mode of standard IoU that the H-WIoU framework is specifically designed to eliminate."
+        },
+        {
+          "text": "$\\|\\nabla_\\theta \\mathcal{L}_{\\text{H-WIoU}}\\| \\to \\infty$",
+          "isCorrect": false,
+          "rationale": "The loss is bounded between $[0, 1]$, which prevents gradient explosion and ensures numerical stability."
+        },
+        {
+          "text": "$\\|\\nabla_\\theta \\mathcal{L}_{\\text{H-WIoU}}\\| = \\log(s_B)$",
+          "isCorrect": false,
+          "rationale": "The gradient maintains a bounded linear restoration force rather than a logarithmic scale-dependent value."
+        }
+      ],
+      "hint": "Think about whether the gradient vanishes or remains useful for optimization when boxes do not overlap."
+    },
+    {
+      "question": "What specific empirical gain in positive anchor survival rate was achieved by using Homotopy Label Assignment (HLA) in the RPN?",
+      "answerOptions": [
+        {
+          "text": "An increase from $0.18$ to $0.94$ positive anchors per target.",
+          "isCorrect": true,
+          "rationale": "By expanding the effective receptive field through Wasserstein similarity, HLA dramatically reduces anchor starvation for tiny objects."
+        },
+        {
+          "text": "An increase from $0.50$ to $1.0$ positive anchors per target.",
+          "isCorrect": false,
+          "rationale": "Baseline survival rates for microscopic targets are significantly lower than $0.50$ due to the discrete nature of IoU grids."
+        },
+        {
+          "text": "A reduction of anchor starvation from $70\\%$ to $35\\%$.",
+          "isCorrect": false,
+          "rationale": "While starvation is reduced, the reported metric highlights a $5.2\\times$ gain in the actual count of surviving anchors."
+        },
+        {
+          "text": "A fixed survival rate of $2.0$ anchors across all object scales.",
+          "isCorrect": false,
+          "rationale": "HLA is dynamic and scale-adaptive; it does not enforce a fixed number of anchors regardless of scale."
+        }
+      ],
+      "hint": "Recall the $5.2\\times$ improvement factor mentioned in the Two-Stage Integration Pipeline section."
+    },
+    {
+      "question": "In the H-WIoU similarity formula $\\mathcal{S}_{\\text{H-WIoU}}(A, B) = [\\text{IoU}(A, B)]^{\\gamma(s)} \\cdot \\exp(-(1 - \\gamma(s))\\mathcal{D}_{\\mathcal{W}}^2(A, B))$, what happens as $s \\to \\infty$?",
+      "answerOptions": [
+        {
+          "text": "The metric converges to pure discrete IoU.",
+          "isCorrect": true,
+          "rationale": "As $s \\to \\infty$, $\\gamma(s) \\to 1$, which makes the exponent of IoU equal to $1$ and the exponent of the exponential term equal to $0$."
+        },
+        {
+          "text": "The metric converges to pure Gaussian Wasserstein Distance.",
+          "isCorrect": false,
+          "rationale": "This behavior occurs in the opposite limit, where $s \\to 0$, activating the optimal transport regime."
+        },
+        {
+          "text": "The similarity score becomes a constant value of $1.0$ regardless of overlap.",
+          "isCorrect": false,
+          "rationale": "The homotopy is designed to recover area-based precision for larger objects, not to neutralize the metric."
+        },
+        {
+          "text": "The metric collapses to the Euclidean distance between centroids.",
+          "isCorrect": false,
+          "rationale": "While the centroid distance is part of the Wasserstein calculation, the macroscopic limit focuses on recovering the discrete Lebesgue measure (IoU)."
+        }
+      ],
+      "hint": "Evaluate the limit of the homotopy parameter $\\gamma(s)$ as $s$ becomes very large."
+    },
+    {
+      "question": "Which benchmark and category showed a $6.4\\times$ improvement (from $1.9\\%$ to $12.3\\%$) when applying H-WIoU?",
+      "answerOptions": [
+        {
+          "text": "The $AP_{vt}$ (Very Tiny) metric on the AI-TOD-v2 dataset.",
+          "isCorrect": true,
+          "rationale": "H-WIoU's ability to supervise disjoint boxes provides massive relative gains on the most microscopic category in aerial imagery."
+        },
+        {
+          "text": "The $AP_{micro}$ metric on the TinyPerson dataset.",
+          "isCorrect": false,
+          "rationale": "While $AP_{micro}$ improved on TinyPerson, the $6.4\\times$ gain specifically refers to the $AP_{vt}$ category in the AI-TOD-v2 matrix."
+        },
+        {
+          "text": "The Airplane category in AI-TOD-v2.",
+          "isCorrect": false,
+          "rationale": "The Airplane category showed improvement (from $44.5\\%$ to $63.4\\%$), but this is not the $6.4\\times$ scale gain described."
+        },
+        {
+          "text": "The $AP_{75}$ metric on the MS COCO dataset.",
+          "isCorrect": false,
+          "rationale": "The source material focuses on TinyPerson and AI-TOD-v2, and $AP_{75}$ typically sees precision-based recovery rather than $6\\times$ magnitude gains."
+        }
+      ],
+      "hint": "Look for the specific 'Very Tiny' scale partition results in the AI-TOD-v2 empirical highlights."
+    },
+    {
+      "question": "What is the primary benefit of the Bounded Homotopy Box Loss in Stage 2 compared to unconstrained Gaussian modeling like NWD?",
+      "answerOptions": [
+        {
+          "text": "It prevents boundary blurring and localization drift on medium-scale objects, preserving $AP_{75}$.",
+          "isCorrect": true,
+          "rationale": "By recovering exact IoU boundaries for larger targets, H-WIoU avoids the isotropic low-pass filtering effect of pure Gaussian distance metrics."
+        },
+        {
+          "text": "It reduces the parameter count of the RoI Head by $15\\%$.",
+          "isCorrect": false,
+          "rationale": "H-WIoU is parameter-free and does not modify the number of weights in the network architecture."
+        },
+        {
+          "text": "It allows the detector to run at twice the inference speed of Faster R-CNN.",
+          "isCorrect": false,
+          "rationale": "The method maintains the same inference speed ($1.0\\times$) as the baseline, rather than doubling it."
+        },
+        {
+          "text": "It replaces the cross-entropy loss used for object classification.",
+          "isCorrect": false,
+          "rationale": "H-WIoU is a regression loss for bounding box coordinates, while classification still utilizes standard cross-entropy."
+        }
+      ],
+      "hint": "Consider the trade-off described as 'Optimal Transport Boundary Blurring' in the problem statement."
+    },
+    {
+      "question": "Based on the ablation study, which value of the characteristic scale threshold $\\sigma_0$ provided the optimal balance for peak microscopic sensitivity ($AP_{micro}$)?",
+      "answerOptions": [
+        {
+          "text": "$\\sigma_0 = 8.0\\text{px}$",
+          "isCorrect": true,
+          "rationale": "Empirical results showed that $\\sigma_0 = 8.0\\text{px}$ achieved the highest $AP_{micro}$ score of $0.3616$."
+        },
+        {
+          "text": "$\\sigma_0 = 4.0\\text{px}$",
+          "isCorrect": false,
+          "rationale": "A threshold of $4.0\\text{px}$ resulted in an under-weighted Wasserstein component, leading to lower sensitivity for tiny objects."
+        },
+        {
+          "text": "$\\sigma_0 = 12.0\\text{px}$",
+          "isCorrect": false,
+          "rationale": "Setting $\\sigma_0$ to $12.0\\text{px}$ introduced excessive Gaussian blur on objects larger than $16$ pixels, degrading boundary precision."
+        },
+        {
+          "text": "$\\sigma_0 = 20.0\\text{px}$",
+          "isCorrect": false,
+          "rationale": "The optimal basin was found to be between $6.0$ and $10.0$ pixels; $20.0$ pixels would be far outside the effective range for tiny objects."
+        }
+      ],
+      "hint": "Check the sensitivity table for the 'Optimal Overall & Micro Peak' note."
+    },
+    {
+      "question": "Which mathematical property of the 'Rational Quadratic' homotopy form is cited as the reason for its superior performance (+0.42% to +1.82%) over sigmoid or exponential forms?",
+      "answerOptions": [
+        {
+          "text": "Smooth second-order derivative matching physical aspect ratio variations.",
+          "isCorrect": true,
+          "rationale": "The rational quadratic form provides a more natural geometric transition that aligns with how anchor dimensions vary in spatial grids."
+        },
+        {
+          "text": "Lower computational complexity during the backpropagation step.",
+          "isCorrect": false,
+          "rationale": "The performance gain is attributed to its mathematical properties for optimization, not its computational efficiency."
+        },
+        {
+          "text": "A steeper gradient at the intersection point of $s = \\sigma_0$.",
+          "isCorrect": false,
+          "rationale": "A smoother transition, rather than a steeper one, is typically preferred for stable training in homotopy methods."
+        },
+        {
+          "text": "The ability to produce negative similarity scores for negative samples.",
+          "isCorrect": false,
+          "rationale": "The similarity score is strictly bounded in the range $[0, 1]$, as negative similarities are not mathematically valid for this framework."
+        }
+      ],
+      "hint": "Look for the specific note in the 'Homotopy Functional Forms' ablation section regarding 'second-order' properties."
+    },
+    {
+      "question": "True or False: H-WIoU introduces approximately $4.3\\text{MB}$ of additional parameter overhead to the standard Faster R-CNN architecture.",
+      "answerOptions": [
+        {
+          "text": "False",
+          "isCorrect": true,
+          "rationale": "H-WIoU is a training-time loss and assignment modification that introduces $+0\\text{MB}$ of parameter bloat."
+        },
+        {
+          "text": "True",
+          "isCorrect": false,
+          "rationale": "The framework is specifically designed to have zero impact on the model's parameter count and inference latency."
+        }
+      ],
+      "hint": "Review the 'Inference Overhead' and 'Computational Efficiency' sections."
+    },
+    {
+      "question": "What statistical test result was used to confirm that the performance gains of H-WIoU are definitive and not due to chance?",
+      "answerOptions": [
+        {
+          "text": "A paired Student's $t$-test with $p = 1.42 \\times 10^{-20}$.",
+          "isCorrect": true,
+          "rationale": "The extremely low p-value (much less than $0.0001$) indicates that the improvement is highly statistically significant."
+        },
+        {
+          "text": "A Chi-squared test on the distribution of bounding box centroids.",
+          "isCorrect": false,
+          "rationale": "The analysis focused on performance consistency ($mAP$) across folds rather than spatial distributions."
+        },
+        {
+          "text": "A Pearson correlation between $AP_{micro}$ and $AP_{75}$.",
+          "isCorrect": false,
+          "rationale": "While those metrics are compared, correlation does not establish statistical significance of performance superiority."
+        },
+        {
+          "text": "A single-trial evaluation on the COCO test-dev server.",
+          "isCorrect": false,
+          "rationale": "The paper uses $16$-fold partition folds and $N=10,000$ bootstrap resamplings to ensure rigorous verification."
+        }
+      ],
+      "hint": "Look for the p-value and t-statistic mentioned in the 'Statistical Significance Analysis' section."
+    }
+  ]
+}

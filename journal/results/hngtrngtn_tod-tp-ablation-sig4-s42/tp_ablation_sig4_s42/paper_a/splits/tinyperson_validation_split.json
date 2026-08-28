@@ -1,0 +1,62 @@
+{
+  "protocol_entry": "PL-001",
+  "status": "FROZEN_VALIDATION_SPLIT",
+  "annotation_file": "tiny_set_train_sw640_sh512_all.json",
+  "annotation_sha256": "8474f1242a072a4a6cfb55ef97c1b3661f2ab2ce2069670c8801a97aad5428bd",
+  "val_fraction": 0.2,
+  "group_rule": "video = stem without trailing _I<frame>; image = full stem; sha256(tinyperson_<kind>_<identity>) ordering per class",
+  "group_counts": {
+    "video": 37,
+    "image": 93
+  },
+  "val_groups": {
+    "video": [
+      "bb_V0008",
+      "bb_V0024",
+      "youtube_V0004",
+      "bb_V0036",
+      "bb_V0003",
+      "bb_V0033",
+      "bb_V0023"
+    ],
+    "image": [
+      "bing_P000_134852jxzc9mwzbpmsxmtr",
+      "google_P000_3Me8FUprdYteMM",
+      "google_P000_kLnIj_BeeD_RVM",
+      "baidu_P000_14",
+      "baidu_P001_0e26f2e0dfec4878a35c05d6aa7ff3fa_th",
+      "google_P000_dpd-4cxuNIXxnM",
+      "bing_P000_9764692_194607386000_2",
+      "bing_P000_6308827_060005495772_2",
+      "bing_P000_367362_174157147172_2",
+      "bing_P000_721cd50a43e14ef199398827d3de3754_th",
+      "google_P000_2",
+      "bing_P000_201508171437108276",
+      "bing_P000_1165551_234642054401_2",
+      "bing000_4261212_210023002000_2",
+      "google_P000_0nrCTp8efu7wxM",
+      "baidu_P000_16",
+      "bing_P000_201212281136185077",
+      "baidu_P000_4",
+      "google_P000__IGGWXSKrNijiM"
+    ]
+  },
+  "sides": {
+    "train_sub": {
+      "crops": 6215,
+      "positives": 27711
+    },
+    "val": {
+      "crops": 2041,
+      "positives": 4719
+    }
+  },
+  "train_sub_annotation_sha256": "5bea11d2d6c4f0e524455d7394492eff85991cb6140987573e8890806f9f026b",
+  "val_annotation_sha256": "31d67f94a62d3d9ecbbf825a9dca0a21b22b1a297645dfc34402c59cab50ab27",
+  "restrictions": [
+    "validation is for run/checkpoint/method selection only",
+    "never a submission or final-test surface",
+    "A3 official test material remains unmounted"
+  ],
+  "report_sha256": "44a2e30958ae261742c87b34dcfc260cd865d4cbdb6ea8b9e9bbbcd59418c97e"
+}

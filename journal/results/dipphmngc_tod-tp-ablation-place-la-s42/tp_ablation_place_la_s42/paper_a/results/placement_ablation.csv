@@ -1,0 +1,1 @@
+run_id,dataset,dataset_version,split_hash,detector,backbone,method,placement,seed,code_commit,config_hash,train_budget,checkpoint_rule,best_epoch,AP,AP50,AP75,APS,APM,APL,AR100,latency_ms,vram_mb,status,notes

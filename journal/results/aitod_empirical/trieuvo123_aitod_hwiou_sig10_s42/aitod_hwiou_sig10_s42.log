@@ -1,0 +1,1 @@
+ERROR: Cannot access kernel 'trieuvo123/tod-aitod-hwiou-sig10-s42-20260823' (Permission 'kernels.get' was denied). The most likely cause is a wrong kernel slug. Use the slug from the notebook URL (kaggle.com/code/owner/KERNEL-SLUG).

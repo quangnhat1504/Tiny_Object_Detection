@@ -1,0 +1,426 @@
+{
+  "H-WIoU Unified Proposed (sigma0=8.0px)": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 716719,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.1656877168658858,
+      "AP25": -1.0,
+      "AP50": 0.4130318951819534,
+      "AP75": 0.10295509851523713,
+      "AP_verytiny": 0.05719425383014022,
+      "AP_tiny": 0.160332560955321,
+      "AP_small": 0.21079286619855012,
+      "AP_medium": 0.31495900901555723,
+      "AR1": 0.05837927070515919,
+      "AR100": 0.25503875534941556,
+      "AR1500": 0.2658135005911993,
+      "AR_verytiny": 0.11266498023408075,
+      "AR_tiny": 0.26584572769598497,
+      "AR_small": 0.32493365728650564,
+      "AR_medium": 0.3877973744968868,
+      "oLRP": 0.8482377545791304,
+      "oLRP_localization": 0.29470024177253307,
+      "oLRP_false_positive": 0.37718885334954133,
+      "oLRP_false_negative": 0.5680010279604685
+    },
+    "summary": ""
+  },
+  "H-WIoU Proposed (sigma0=8.0px)": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 702060,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.16913049548487244,
+      "AP25": -1.0,
+      "AP50": 0.4125012702379097,
+      "AP75": 0.10824228764745726,
+      "AP_verytiny": 0.04359319715449339,
+      "AP_tiny": 0.16878539465927095,
+      "AP_small": 0.22022270244285133,
+      "AP_medium": 0.31752970152812904,
+      "AR1": 0.057011460720796506,
+      "AR100": 0.2512475225600091,
+      "AR1500": 0.2629394284941663,
+      "AR_verytiny": 0.09591500956641393,
+      "AR_tiny": 0.2671623068097655,
+      "AR_small": 0.3139154728026799,
+      "AR_medium": 0.3912345816960566,
+      "oLRP": 0.8486277292656006,
+      "oLRP_localization": 0.29147865015086716,
+      "oLRP_false_positive": 0.3670817688521601,
+      "oLRP_false_negative": 0.5878456604462234
+    },
+    "summary": ""
+  },
+  "H-WIoU Ablation (sigma0=6.0px)": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 703529,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.17038609489164128,
+      "AP25": -1.0,
+      "AP50": 0.4150270557338031,
+      "AP75": 0.10739507331279519,
+      "AP_verytiny": 0.05201407984948452,
+      "AP_tiny": 0.1704967299361724,
+      "AP_small": 0.22088596328785362,
+      "AP_medium": 0.3118299439465837,
+      "AR1": 0.05782524271761631,
+      "AR100": 0.2519506448987442,
+      "AR1500": 0.263421977774564,
+      "AR_verytiny": 0.09758776260138154,
+      "AR_tiny": 0.26696527560437366,
+      "AR_small": 0.3156128372290323,
+      "AR_medium": 0.3886972038720116,
+      "oLRP": 0.8474176513649481,
+      "oLRP_localization": 0.28986671638214934,
+      "oLRP_false_positive": 0.3397386081671896,
+      "oLRP_false_negative": 0.5945114195723629
+    },
+    "summary": ""
+  },
+  "H-WIoU Ablation (sigma0=10.0px)": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 707591,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.1671767732529806,
+      "AP25": -1.0,
+      "AP50": 0.4070888239727195,
+      "AP75": 0.10531922321847198,
+      "AP_verytiny": 0.04554773885109063,
+      "AP_tiny": 0.168096077282671,
+      "AP_small": 0.20973859772175785,
+      "AP_medium": 0.31318956451422747,
+      "AR1": 0.057126261975076906,
+      "AR100": 0.24642339282773298,
+      "AR1500": 0.2586628075812221,
+      "AR_verytiny": 0.09536930860215091,
+      "AR_tiny": 0.26405754789759045,
+      "AR_small": 0.3023637930470099,
+      "AR_medium": 0.39309487543072613,
+      "oLRP": 0.849612415582389,
+      "oLRP_localization": 0.29303017617193183,
+      "oLRP_false_positive": 0.3668703534036336,
+      "oLRP_false_negative": 0.5857489717682756
+    },
+    "summary": ""
+  },
+  "H-WIoU + Cascade R-CNN": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 702254,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.16771446721098723,
+      "AP25": -1.0,
+      "AP50": 0.40944630754278827,
+      "AP75": 0.10933433757438607,
+      "AP_verytiny": 0.04266663392647699,
+      "AP_tiny": 0.1694009627981233,
+      "AP_small": 0.21477065951909677,
+      "AP_medium": 0.31366417543716185,
+      "AR1": 0.056392387787346676,
+      "AR100": 0.24850896846351578,
+      "AR1500": 0.2602432236746415,
+      "AR_verytiny": 0.09960062068343904,
+      "AR_tiny": 0.2644971700196665,
+      "AR_small": 0.310833527027584,
+      "AR_medium": 0.39094449906362755,
+      "oLRP": 0.8493617221198098,
+      "oLRP_localization": 0.2934202244989826,
+      "oLRP_false_positive": 0.35846680597170155,
+      "oLRP_false_negative": 0.5878840852818616
+    },
+    "summary": ""
+  },
+  "Faster R-CNN Baseline (Standard IoU)": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 755274,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.16987944512691042,
+      "AP25": -1.0,
+      "AP50": 0.41385038616549674,
+      "AP75": 0.10923754549240144,
+      "AP_verytiny": 0.04190499712960516,
+      "AP_tiny": 0.16432858854956892,
+      "AP_small": 0.2228811492619228,
+      "AP_medium": 0.32734286567618337,
+      "AR1": 0.055589149680814964,
+      "AR100": 0.24550370435812865,
+      "AR1500": 0.2567493478855913,
+      "AR_verytiny": 0.10172932657604121,
+      "AR_tiny": 0.2602762886557521,
+      "AR_small": 0.3047589084843464,
+      "AR_medium": 0.3896034670417749,
+      "oLRP": 0.8469148192303457,
+      "oLRP_localization": 0.2914957296319389,
+      "oLRP_false_positive": 0.34002642055057586,
+      "oLRP_false_negative": 0.5912549246319979
+    },
+    "summary": ""
+  },
+  "NWD (NeurIPS 2021)": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 748450,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.1679158842769964,
+      "AP25": -1.0,
+      "AP50": 0.4061521860793001,
+      "AP75": 0.10908402969961443,
+      "AP_verytiny": 0.045426948745336614,
+      "AP_tiny": 0.16498948386789974,
+      "AP_small": 0.22188048445077016,
+      "AP_medium": 0.3243003085237623,
+      "AR1": 0.05524827594955954,
+      "AR100": 0.24506540844653663,
+      "AR1500": 0.256203185320571,
+      "AR_verytiny": 0.10754048908261973,
+      "AR_tiny": 0.26139333614564564,
+      "AR_small": 0.3051608769017703,
+      "AR_medium": 0.3861842396427117,
+      "oLRP": 0.8489447436948224,
+      "oLRP_localization": 0.28980968960936315,
+      "oLRP_false_positive": 0.35362108942715803,
+      "oLRP_false_negative": 0.5992988644412982
+    },
+    "summary": ""
+  },
+  "SAFit (AAAI 2024)": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 696808,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.1849326776608143,
+      "AP25": -1.0,
+      "AP50": 0.4444552402924284,
+      "AP75": 0.12326352593278715,
+      "AP_verytiny": 0.0552154497873208,
+      "AP_tiny": 0.18343226104324206,
+      "AP_small": 0.23601878810628635,
+      "AP_medium": 0.3323399320475285,
+      "AR1": 0.05840446171518647,
+      "AR100": 0.26274855930807595,
+      "AR1500": 0.27465542009623006,
+      "AR_verytiny": 0.11136949229656916,
+      "AR_tiny": 0.2821243246210433,
+      "AR_small": 0.3121646864450797,
+      "AR_medium": 0.38783123443559114,
+      "oLRP": 0.8313578976471377,
+      "oLRP_localization": 0.2853727403855257,
+      "oLRP_false_positive": 0.3133338613419506,
+      "oLRP_false_negative": 0.5572924780893548
+    },
+    "summary": ""
+  }
+}

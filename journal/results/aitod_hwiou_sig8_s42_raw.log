@@ -1,0 +1,74 @@
+[{"stream_name":"stdout","time":0.79396108,"data":"=== Starting Kernel: aitod_hwiou_sig8_s42 on qnhat1504 ===\n"}
+,{"stream_name":"stdout","time":0.795016169,"data":"Copying code from: /kaggle/input/datasets/qnhat1504/tod-program-b-b2-code-20260814\n"}
+,{"stream_name":"stdout","time":5.5507547630000005,"data":"Copied pretrained weight to torch cache: fasterrcnn_resnet50_fpn_coco-258fb6c6.pth\n"}
+,{"stream_name":"stdout","time":8.703004878,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric h_wiou --placement h_wiou --box-loss h_wiou --h-wiou-sigma-0 8.0 --seed 42 --epochs 12\n"}
+,{"stream_name":"stderr","time":32.755182619,"data":"/usr/local/lib/python3.12/dist-packages/torch/cuda/__init__.py:435: UserWarning: \n"}
+,{"stream_name":"stderr","time":32.755220822,"data":"    Found GPU0 Tesla P100-PCIE-16GB which is of cuda capability 6.0.\n"}
+,{"stream_name":"stderr","time":32.755229083,"data":"    Minimum and Maximum cuda capability supported by this version of PyTorch is\n"}
+,{"stream_name":"stderr","time":32.755232137,"data":"    (7.0) - (12.0)\n"}
+,{"stream_name":"stderr","time":32.755234468,"data":"    \n"}
+,{"stream_name":"stderr","time":32.755236884,"data":"  queued_call()\n"}
+,{"stream_name":"stderr","time":32.755239114,"data":"/usr/local/lib/python3.12/dist-packages/torch/cuda/__init__.py:435: UserWarning: \n"}
+,{"stream_name":"stderr","time":32.755241526,"data":"    Please install PyTorch with a following CUDA\n"}
+,{"stream_name":"stderr","time":32.75524389,"data":"    configurations:  12.6 following instructions at\n"}
+,{"stream_name":"stderr","time":32.755246157,"data":"    https://pytorch.org/get-started/locally/\n"}
+,{"stream_name":"stderr","time":32.755248552,"data":"    \n"}
+,{"stream_name":"stderr","time":32.75526438,"data":"  queued_call()\n"}
+,{"stream_name":"stderr","time":32.755333609,"data":"/usr/local/lib/python3.12/dist-packages/torch/cuda/__init__.py:435: UserWarning: \n"}
+,{"stream_name":"stderr","time":32.755341125,"data":"Tesla P100-PCIE-16GB with CUDA capability sm_60 is not compatible with the current PyTorch installation.\n"}
+,{"stream_name":"stderr","time":32.755346733,"data":"The current PyTorch install supports CUDA capabilities sm_70 sm_75 sm_80 sm_86 sm_90 sm_100 sm_120.\n"}
+,{"stream_name":"stderr","time":32.755353871,"data":"If you want to use the Tesla P100-PCIE-16GB GPU with PyTorch, please check the instructions at https://pytorch.org/get-started/locally/\n"}
+,{"stream_name":"stderr","time":32.755356644,"data":"\n"}
+,{"stream_name":"stderr","time":32.755358917,"data":"  queued_call()\n"}
+,{"stream_name":"stdout","time":32.955823619,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stdout","time":32.955850614,"data":"=== AI-TOD-v2 Training: Metric=h_wiou, Placement=h_wiou, Loss=h_wiou, Seed=42, Device=cuda ===\n"}
+,{"stream_name":"stdout","time":32.955856032,"data":"Data root: /kaggle/input/datasets/simplestzyp/tiny-object-detection-in-aerial-images/AI-TOD\n"}
+,{"stream_name":"stdout","time":32.955859848,"data":"Loading datasets...\n"}
+,{"stream_name":"stdout","time":32.955863894,"data":"Train samples: 14018, Val samples: 14018\n"}
+,{"stream_name":"stdout","time":32.955868025,"data":"Building Faster R-CNN with 9 classes (8 foreground + background)...\n"}
+,{"stream_name":"stdout","time":32.955872307,"data":"  [loss] fastrcnn_loss replaced, type=h_wiou, warmup_epochs=3\n"}
+,{"stream_name":"stdout","time":32.955876307,"data":"\n"}
+,{"stream_name":"stdout","time":32.955880144,"data":"=== Beginning Training ===\n"}
+,{"stream_name":"stderr","time":33.718345482,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":33.718392644,"data":"  File \"/kaggle/working/tod_workspace/scripts/train_frcnn_aitod.py\", line 287, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":33.718666482,"data":"    main()\n"}
+,{"stream_name":"stderr","time":33.718681344,"data":"  File \"/kaggle/working/tod_workspace/scripts/train_frcnn_aitod.py\", line 269, in main\n"}
+,{"stream_name":"stderr","time":33.718856279,"data":"    train_aitod(\n"}
+,{"stream_name":"stderr","time":33.718863154,"data":"  File \"/kaggle/working/tod_workspace/scripts/train_frcnn_aitod.py\", line 156, in train_aitod\n"}
+,{"stream_name":"stderr","time":33.719015494,"data":"    loss_dict = model(images, targets)\n"}
+,{"stream_name":"stderr","time":33.719021688,"data":"                ^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":33.719025308,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n"}
+,{"stream_name":"stderr","time":33.72115979,"data":"    return self._call_impl(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":33.721196739,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":33.721202431,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n"}
+,{"stream_name":"stderr","time":33.721609298,"data":"    return forward_call(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":33.721629965,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":33.721635227,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/generalized_rcnn.py\", line 96, in forward\n"}
+,{"stream_name":"stderr","time":33.721787551,"data":"    images, targets = self.transform(images, targets)\n"}
+,{"stream_name":"stderr","time":33.72179694,"data":"                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":33.721801385,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n"}
+,{"stream_name":"stderr","time":33.722193094,"data":"    return self._call_impl(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":33.722202631,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":33.722206692,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n"}
+,{"stream_name":"stderr","time":33.722664119,"data":"    return forward_call(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":33.722678544,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":33.722682803,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/transform.py\", line 141, in forward\n"}
+,{"stream_name":"stderr","time":33.722835432,"data":"    image = self.normalize(image)\n"}
+,{"stream_name":"stderr","time":33.722845596,"data":"            ^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":33.72284945,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/transform.py\", line 169, in normalize\n"}
+,{"stream_name":"stderr","time":33.723036598,"data":"    return (image - mean[:, None, None]) / std[:, None, None]\n"}
+,{"stream_name":"stderr","time":33.723047437,"data":"            ~~~~~~^~~~~~~~~~~~~~~~~~~~~\n"}
+,{"stream_name":"stderr","time":33.723051284,"data":"torch.AcceleratorError: CUDA error: no kernel image is available for execution on the device\n"}
+,{"stream_name":"stderr","time":33.723055292,"data":"Search for `cudaErrorNoKernelImageForDevice' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\n"}
+,{"stream_name":"stderr","time":33.723068875,"data":"CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\n"}
+,{"stream_name":"stderr","time":33.723072671,"data":"For debugging consider passing CUDA_LAUNCH_BLOCKING=1\n"}
+,{"stream_name":"stderr","time":33.723076012,"data":"Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n"}
+,{"stream_name":"stderr","time":33.723079482,"data":"\n"}
+,{"stream_name":"stdout","time":37.450077031,"data":"Command exited with code: 1\n"}
+,{"stream_name":"stderr","time":39.521159133,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":39.52119025,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":39.772941645,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":39.772970945,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":40.374286706,"data":"[NbConvertApp] Converting notebook __script__.ipynb to html\n"}
+,{"stream_name":"stderr","time":41.566757808,"data":"[NbConvertApp] Writing 283023 bytes to __results__.html\n"}
+]

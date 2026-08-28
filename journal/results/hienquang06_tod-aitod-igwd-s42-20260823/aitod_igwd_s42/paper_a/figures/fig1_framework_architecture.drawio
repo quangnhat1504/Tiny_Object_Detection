@@ -1,0 +1,86 @@
+<mxfile host="Electron" modified="2026-08-20T08:45:00.000Z" agent="Antigravity Masterpiece Synthesizer" version="22.1.18" type="device">
+  <diagram id="masterpiece_architecture" name="Masterpiece CVPR Joint Architecture">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="1" shadow="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Col 1: Input Stage -->
+        <mxCell id="col1" value="&lt;b style=&quot;font-size: 15px;&quot;&gt;Input Image Tile (b1-tiled)&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;color: #64748B;&quot;&gt;TinyPerson 800 × 800 px&lt;/span&gt;" style="swimlane;whiteSpace=wrap;html=1;rounded=1;arcSize=8;fillColor=#FFFFFF;strokeColor=#94A3B8;strokeWidth=2;fontColor=#0F172A;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="340" height="760" as="geometry" />
+        </mxCell>
+        <mxCell id="aerial_img" value="[Aerial Drone Maritime Tile Image]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2E8F0;strokeColor=#94A3B8;fontColor=#334155;fontStyle=1;" vertex="1" parent="col1">
+          <mxGeometry x="25" y="60" width="290" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="zoom_box" value="&lt;b style=&quot;font-size: 13px; color: #DC2626;&quot;&gt;Microscopic Target Callout&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;color: #7F1D1D; font-size: 11px;&quot;&gt;Spatial Discretization Noise Zone&lt;br&gt;&lt;b&gt;Target Scale: s ≤ 8 px&lt;/b&gt;&lt;br&gt;Severe IoU Step Collapse&lt;br&gt;∇IoU = 0 at d ≥ 6 px&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#FCA5A5;strokeWidth=1.8;arcSize=10;" vertex="1" parent="col1">
+          <mxGeometry x="25" y="380" width="290" height="340" as="geometry" />
+        </mxCell>
+
+        <!-- Col 2: ResNet-50 Backbone -->
+        <mxCell id="col2" value="&lt;b style=&quot;font-size: 15px;&quot;&gt;ResNet-50 Backbone&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;color: #1E3A8A;&quot;&gt;Bottom-Up Shared Feature Extractor&lt;/span&gt;" style="swimlane;whiteSpace=wrap;html=1;rounded=1;arcSize=8;fillColor=#F1F5F9;strokeColor=#CBD5E1;strokeWidth=2;fontColor=#1E293B;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="420" y="80" width="320" height="760" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" value="&lt;b style=&quot;font-size: 14px;&quot;&gt;C2 Stage&lt;/b&gt;&lt;br&gt;stride 4  |  H/4 × W/4 × 256" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#93C5FD;strokeWidth=1.5;fontColor=#1E3A8A;arcSize=10;" vertex="1" parent="col2">
+          <mxGeometry x="25" y="600" width="270" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="&lt;b style=&quot;font-size: 14px;&quot;&gt;C3 Stage&lt;/b&gt;&lt;br&gt;stride 8  |  H/8 × W/8 × 512" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#93C5FD;strokeWidth=1.5;fontColor=#1E3A8A;arcSize=10;" vertex="1" parent="col2">
+          <mxGeometry x="25" y="440" width="270" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" value="&lt;b style=&quot;font-size: 14px;&quot;&gt;C4 Stage&lt;/b&gt;&lt;br&gt;stride 16 |  H/16 × W/16 × 1024" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#93C5FD;strokeWidth=1.5;fontColor=#1E3A8A;arcSize=10;" vertex="1" parent="col2">
+          <mxGeometry x="25" y="280" width="270" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" value="&lt;b style=&quot;font-size: 14px;&quot;&gt;C5 Stage&lt;/b&gt;&lt;br&gt;stride 32 |  H/32 × W/32 × 2048" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#93C5FD;strokeWidth=1.5;fontColor=#1E3A8A;arcSize=10;" vertex="1" parent="col2">
+          <mxGeometry x="25" y="120" width="270" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Col 3: FPN Pyramids -->
+        <mxCell id="col3" value="&lt;b style=&quot;font-size: 15px;&quot;&gt;Feature Pyramid Network&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;color: #0369A1;&quot;&gt;Top-Down Multi-Scale Semantic Pyramids&lt;/span&gt;" style="swimlane;whiteSpace=wrap;html=1;rounded=1;arcSize=8;fillColor=#F0F9FF;strokeColor=#BAE6FD;strokeWidth=2;fontColor=#0369A1;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="780" y="80" width="320" height="760" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="&lt;b style=&quot;font-size: 14px;&quot;&gt;P2 Level&lt;/b&gt;&lt;br&gt;stride 4  |  256-d (Highest Res)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2FE;strokeColor=#7DD3FC;strokeWidth=1.5;fontColor=#0284C7;arcSize=10;" vertex="1" parent="col3">
+          <mxGeometry x="25" y="600" width="270" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="p3" value="&lt;b style=&quot;font-size: 14px;&quot;&gt;P3 Level&lt;/b&gt;&lt;br&gt;stride 8  |  256-d (Small Objects)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2FE;strokeColor=#7DD3FC;strokeWidth=1.5;fontColor=#0284C7;arcSize=10;" vertex="1" parent="col3">
+          <mxGeometry x="25" y="440" width="270" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="p4" value="&lt;b style=&quot;font-size: 14px;&quot;&gt;P4 Level&lt;/b&gt;&lt;br&gt;stride 16 |  256-d (Medium Objects)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2FE;strokeColor=#7DD3FC;strokeWidth=1.5;fontColor=#0284C7;arcSize=10;" vertex="1" parent="col3">
+          <mxGeometry x="25" y="280" width="270" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="p5" value="&lt;b style=&quot;font-size: 14px;&quot;&gt;P5 Level&lt;/b&gt;&lt;br&gt;stride 32 |  256-d (Large Objects)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2FE;strokeColor=#7DD3FC;strokeWidth=1.5;fontColor=#0284C7;arcSize=10;" vertex="1" parent="col3">
+          <mxGeometry x="25" y="120" width="270" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Col 4: Three Core Innovations -->
+        <mxCell id="pcmoc_card" value="&lt;b style=&quot;font-size: 15px; color: #065F46;&quot;&gt;PC-MOC Multi-Scale Cosine Feature Distillation&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;color: #059669; font-size: 12px;&quot;&gt;Prevents multi-scale representation drift during curriculum scale updates&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;span style=&quot;font-size: 16px; font-weight: bold; color: #047857;&quot;&gt;$$\mathcal{L}_{\mathrm{distill}} = \sum_{\ell=2}^{5} rac{1}{H_\ell W_\ell} \sum_{i,j} \left( 1 - rac{\langle f_{\mathrm{curr}}^{P_\ell}(i,j),\, f_{\mathrm{ref}}^{P_\ell}(i,j) angle}{\|f_{\mathrm{curr}}^{P_\ell}(i,j)\| \|f_{\mathrm{ref}}^{P_\ell}(i,j)\| + \epsilon} ight)$$&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color: #065F46; font-size: 11px;&quot;&gt;• f_curr: Student FPN Features  |  • f_ref: Teacher Reference Model&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#A7F3D0;strokeWidth=2.2;fontColor=#065F46;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="80" width="740" height="230" as="geometry" />
+        </mxCell>
+
+        <mxCell id="roi_card" value="&lt;b style=&quot;font-size: 15px; color: #6B21A8;&quot;&gt;RoI Head with SA-ALW &amp;amp; Iterative Curriculum Routing&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;color: #7E22CE; font-size: 12px;&quot;&gt;Scale-Adaptive Anisotropic Log-Wasserstein distance with scale-conditioned schedules&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;span style=&quot;font-size: 15px; font-weight: bold; color: #7E22CE;&quot;&gt;$$\mathcal{L}_{\mathrm{reg}}^{\mathrm{SA}} = \sqrt{w_{\mathrm{pos}}(s) D_{\mathrm{pos}}(p, t) + D_{\mathrm{shape}}(p, t)} \qquad K_{\mathrm{SA}} = \exp\left[ -eta(s)\sqrt{D_{\mathrm{SA}}(p, t)} ight]$$&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color: #6B21A8; font-size: 11px;&quot;&gt;• β(s) = β_min + Δβ · u(s)  |  • w_pos(s) = w_min + Δw · u(s)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#E9D5FF;strokeWidth=2.2;fontColor=#6B21A8;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="340" width="740" height="240" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pcmr_card" value="&lt;b style=&quot;font-size: 15px; color: #991B1B;&quot;&gt;PC-MR Proposal Micro-Rescue with Orthogonal Gradient Projection&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;color: #B91C1C; font-size: 12px;&quot;&gt;Eliminates gradient cancellation between dominant anchors and microscopic proposals&lt;/span&gt;&lt;br&gt;&lt;br&gt;&lt;span style=&quot;font-size: 16px; font-weight: bold; color: #B91C1C;&quot;&gt;$$\mathbf{g}_{\mathrm{proj}} = \mathbf{g}_{\mathrm{micro}} - rac{\mathbf{g}_{\mathrm{micro}} \cdot \mathbf{g}_{\mathrm{main}}}{\|\mathbf{g}_{\mathrm{main}}\|^2 + \epsilon} \mathbf{g}_{\mathrm{main}} \quad (\mathbf{g}_{\mathrm{proj}} \perp \mathbf{g}_{\mathrm{main}})$$&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;color: #991B1B; font-size: 11px;&quot;&gt;• g_total = g_main + λ_MR · g_proj guarantees zero gradient annihilation on microscopic targets&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#FECACA;strokeWidth=2.2;fontColor=#991B1B;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="610" width="740" height="230" as="geometry" />
+        </mxCell>
+
+        <!-- Connectors -->
+        <mxCell id="e_in" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#334155;strokeWidth=2.8;html=1;" edge="1" parent="1" source="col1" target="col2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fpn" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0284C7;strokeWidth=2.8;dashed=1;html=1;" edge="1" parent="1" source="col2" target="col3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_moc" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=3;html=1;" edge="1" parent="1" source="col3" target="pcmoc_card">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_roi" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9333EA;strokeWidth=3;html=1;" edge="1" parent="1" source="col3" target="roi_card">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#DC2626;strokeWidth=3;html=1;" edge="1" parent="1" source="col3" target="pcmr_card">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

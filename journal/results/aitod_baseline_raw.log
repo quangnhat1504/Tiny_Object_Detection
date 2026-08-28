@@ -1,0 +1,32 @@
+[{"stream_name":"stderr","time":7.465525702,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.466462408,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.466481228,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.466485882,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.071548492,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.071586512,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.071604181,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.071609182,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":21.583348216,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric standard --placement everywhere --box-loss smooth_l1 --seed 42 --epochs 12\n"}
+,{"stream_name":"stderr","time":29.326257423,"data":"usage: train_frcnn_aitod.py [-h]\n"}
+,{"stream_name":"stderr","time":29.326287415,"data":"                            [--metric {standard,nwd,rfla,alw_canonical,sa_alw_canonical,h_wiou}]\n"}
+,{"stream_name":"stderr","time":29.326292211,"data":"                            [--placement {iou_smooth_l1,la,loss,la_loss,h_wiou}]\n"}
+,{"stream_name":"stderr","time":29.326295764,"data":"                            [--box-loss {smooth_l1,metric,h_wiou}]\n"}
+,{"stream_name":"stderr","time":29.326299279,"data":"                            [--seed SEED] [--epochs EPOCHS]\n"}
+,{"stream_name":"stderr","time":29.3263028,"data":"                            [--batch-size BATCH_SIZE] [--lr LR]\n"}
+,{"stream_name":"stderr","time":29.326306404,"data":"                            [--h-wiou-sigma-0 H_WIOU_SIGMA_0]\n"}
+,{"stream_name":"stderr","time":29.326309951,"data":"                            [--h-wiou-form H_WIOU_FORM]\n"}
+,{"stream_name":"stderr","time":29.326313551,"data":"                            [--h-wiou-static-gamma H_WIOU_STATIC_GAMMA]\n"}
+,{"stream_name":"stderr","time":29.326317032,"data":"                            [--data-root DATA_ROOT] [--output-dir OUTPUT_DIR]\n"}
+,{"stream_name":"stderr","time":29.326320719,"data":"                            [--tag TAG]\n"}
+,{"stream_name":"stderr","time":29.326324478,"data":"train_frcnn_aitod.py: error: argument --placement: invalid choice: 'everywhere' (choose from iou_smooth_l1, la, loss, la_loss, h_wiou)\n"}
+,{"stream_name":"stdout","time":29.326336859,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stdout","time":31.473679048,"data":"Execution finished with exit code: 2\n"}
+,{"stream_name":"stderr","time":34.352853034,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":34.352901578,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":34.506720209,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":34.506749574,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":35.12289823,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":35.423214362,"data":"[NbConvertApp] Writing 3890 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":37.819701607,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":38.635695733,"data":"[NbConvertApp] Writing 281122 bytes to __results__.html\n"}
+]

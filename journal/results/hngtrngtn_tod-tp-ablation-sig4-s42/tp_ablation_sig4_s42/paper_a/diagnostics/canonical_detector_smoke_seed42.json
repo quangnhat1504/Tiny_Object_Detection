@@ -1,0 +1,57 @@
+{
+  "status": "PASS",
+  "seed": 42,
+  "device": "NVIDIA GeForce RTX 5070 Ti",
+  "schedule": {
+    "s_min": 5.0,
+    "s_max": 20.0,
+    "beta_min": 8.0,
+    "beta_max": 10.0,
+    "w_min": 1.0,
+    "w_max": 1.5
+  },
+  "schedule_use": "synthetic_technical_smoke_only_not_frozen_for_training",
+  "baseline_parameters": 41311996,
+  "placements": {
+    "la": {
+      "parameter_count": 41311996,
+      "metric_rpn": true,
+      "metric_roi_loss": false,
+      "losses": {
+        "loss_classifier": 0.866856575012207,
+        "loss_box_reg": 0.003293118439614773,
+        "loss_objectness": 0.6886231303215027,
+        "loss_rpn_box_reg": 0.010254794731736183
+      },
+      "peak_vram_bytes": 821894144
+    },
+    "loss": {
+      "parameter_count": 41311996,
+      "metric_rpn": false,
+      "metric_roi_loss": true,
+      "losses": {
+        "loss_classifier": 1.3387441635131836,
+        "loss_box_reg": 0.1415557861328125,
+        "loss_objectness": 0.6951044201850891,
+        "loss_rpn_box_reg": 0.05753868445754051
+      },
+      "peak_vram_bytes": 739056640
+    },
+    "la_loss": {
+      "parameter_count": 41311996,
+      "metric_rpn": true,
+      "metric_roi_loss": true,
+      "losses": {
+        "loss_classifier": 0.8399162292480469,
+        "loss_box_reg": 0.2229035645723343,
+        "loss_objectness": 0.6906882524490356,
+        "loss_rpn_box_reg": 0.011392442509531975
+      },
+      "peak_vram_bytes": 739056640
+    }
+  },
+  "strict_reload": {
+    "missing_keys": [],
+    "unexpected_keys": []
+  }
+}

@@ -1,0 +1,39 @@
+\section{Discussion, Limitations, and Conclusion}
+\label{sec:discussion}
+
+\subsection{Computational Overhead \& Inference Efficiency}
+A critical requirement for real-world deployment in aerial search-and-rescue and high-altitude surveillance is that architectural modifications must not impose prohibitive computational latency or memory overhead. 
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Inference and Training Efficiency Profile on Nvidia Tesla T4 GPU} (evaluated on $800\times 800$ image tiles with batch size 1 for inference and batch size 2 for training).}
+\label{tab:efficiency_profile}
+\small
+\setlength{\tabcolsep}{4.5pt}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lccc}
+\hline\hline
+\textbf{Model Framework} & \textbf{Inference} & \textbf{Throughput} & \textbf{Train Time} \\
+ & \textbf{Latency} & \textbf{(FPS)} & \textbf{(min/epoch)} \\
+\hline
+Standard Faster R-CNN & $32.0\text{ ms}$ & $31.25$ & $18.4$ \\
+NWD (Wasserstein SOTA) & $32.0\text{ ms}$ & $31.25$ & $18.9$ \\
+Standalone SA-ALW & $32.0\text{ ms}$ & $31.25$ & $18.6$ \\
+\textbf{Joint Model (Ours)} & $\mathbf{32.0\text{ ms}}$ & $\mathbf{31.25}$ & $\mathbf{20.8}$ \\
+\hline\hline
+\end{tabular}%
+}
+\end{table}
+
+Table~\ref{tab:efficiency_profile} details the computational profile of all evaluated models on a standard Nvidia Tesla T4 GPU. In our proposed framework, both Proposal Micro-Rescue (PC-MR) and Multi-Scale Feature Distillation (PC-MOC) operate strictly during the backward training pass as autograd modulators and auxiliary loss heads. At test time, all auxiliary modules are completely deactivated. Consequently, the forward inference graph is mathematically identical to a standard Faster R-CNN detector, achieving real-time throughput of \textbf{31.25 FPS} ($32.0\text{ ms}$ per $800\times 800$ image tile) with zero additional latency penalty. Training overhead is minimal ($+2.4$ minutes per epoch), requiring no extra GPU memory allocation.
+
+\subsection{Limitations \& Future Work}
+While our framework demonstrates significant empirical and theoretical advantages on microscopic targets, several challenges remain for future research:
+\begin{itemize}
+    \item \textbf{Dense Cluster Disambiguation}: When microscopic targets appear in ultra-dense spatial clusters (e.g., crowded maritime swimmers or dense parking formations), standard Non-Maximum Suppression (NMS) can occasionally suppress legitimate adjacent detections due to extreme spatial proximity. Integrating density-adaptive clustering or orientation-aware decoders represents a promising avenue.
+    \item \textbf{Single-Stage \& Transformer-Based Detectors}: While this work established the framework on the canonical two-stage Faster R-CNN architecture, extending the anisotropic scale-conditioned formulations and orthogonal gradient projections to end-to-end DETR-like architectures (e.g., Deformable DETR, DINO) and real-time single-stage models (e.g., YOLOv10) warrants further exploration.
+    \item \textbf{Cross-Dataset Generalization}: Future extensions will evaluate cross-domain transferability on satellite benchmarks such as AI-TOD-v2 and DOTA-v2.0 under zero-shot scale bounds.
+\end{itemize}
+
+\subsection{Conclusion}
+In this work, we presented a comprehensive, mathematically grounded framework for tiny object detection. We formulated the Scale-Adaptive Anisotropic Log-Wasserstein (SA-ALW) distance, which eliminates IoU gradient vanishing without inducing spatial boundary blurring. We introduced Proposal Micro-Rescue (PC-MR) with orthogonal gradient projection, strictly guaranteeing that microscopic proposal gradients are never annihilated by dominant anchors. Furthermore, we integrated Multi-Scale Feature Distillation (PC-MOC) to stabilize multi-scale representations. Across an extensive 21-model 20-epoch benchmark on TinyPerson, our proposed Joint Model achieved state-of-the-art microscopic localization ($\mathrm{AP}_{\mathrm{micro}} = \mathbf{41.16\%}$, $+5.06\%$ over baseline) and superior high-threshold precision ($\mathrm{coco\_AP}_{75} = \mathbf{7.19\%}$) with zero inference latency overhead.

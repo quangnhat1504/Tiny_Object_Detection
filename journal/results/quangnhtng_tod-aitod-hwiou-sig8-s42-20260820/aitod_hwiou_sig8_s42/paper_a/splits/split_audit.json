@@ -1,0 +1,161 @@
+{
+  "status": "NO_GO_CURRENT_DERIVATIVE",
+  "manifest_sha256": "a1ed88b4a6f588bae9f8e8fe0f514ff396d36b2181e11e22100f4daaab0008f9",
+  "counts": {
+    "train": {
+      "processed_images": 1374,
+      "independent_source_ids": 458,
+      "sequence_groups": 78,
+      "objects_in_processed_annotations": 63471,
+      "variants_per_source_histogram": {
+        "3": 458
+      }
+    },
+    "valid": {
+      "processed_images": 131,
+      "independent_source_ids": 131,
+      "sequence_groups": 43,
+      "objects_in_processed_annotations": 4382,
+      "variants_per_source_histogram": {
+        "1": 131
+      }
+    },
+    "test": {
+      "processed_images": 65,
+      "independent_source_ids": 65,
+      "sequence_groups": 34,
+      "objects_in_processed_annotations": 2849,
+      "variants_per_source_histogram": {
+        "1": 65
+      }
+    }
+  },
+  "total_processed_images": 1570,
+  "total_independent_source_ids": 654,
+  "source_id_overlap": {
+    "train_valid": {
+      "count": 0,
+      "values": []
+    },
+    "train_test": {
+      "count": 0,
+      "values": []
+    },
+    "valid_test": {
+      "count": 0,
+      "values": []
+    }
+  },
+  "sequence_id_overlap": {
+    "train_valid": {
+      "count": 30,
+      "values": [
+        "bb_V0003",
+        "bb_V0004",
+        "bb_V0005",
+        "bb_V0008",
+        "bb_V0010",
+        "bb_V0014",
+        "bb_V0016",
+        "bb_V0018",
+        "bb_V0019",
+        "bb_V0020",
+        "bb_V0022",
+        "bb_V0023",
+        "bb_V0024",
+        "bb_V0025",
+        "bb_V0028",
+        "bb_V0030",
+        "bb_V0031",
+        "bb_V0032",
+        "bb_V0033",
+        "bb_V0034",
+        "chitube_V0005",
+        "chitube_V0006",
+        "chitube_V0007",
+        "chitube_V0008",
+        "chitube_V0009",
+        "chitube_V0010",
+        "youtube_V0002",
+        "youtube_V0004",
+        "youtube_V0007",
+        "youtube_V0009"
+      ]
+    },
+    "train_test": {
+      "count": 23,
+      "values": [
+        "bb_V0005",
+        "bb_V0008",
+        "bb_V0010",
+        "bb_V0014",
+        "bb_V0016",
+        "bb_V0018",
+        "bb_V0019",
+        "bb_V0023",
+        "bb_V0026",
+        "bb_V0028",
+        "bb_V0030",
+        "bb_V0031",
+        "bb_V0032",
+        "bb_V0033",
+        "bb_V0034",
+        "bb_V0035",
+        "bb_V0036",
+        "chitube_V0006",
+        "chitube_V0008",
+        "chitube_V0010",
+        "youtube_V0002",
+        "youtube_V0004",
+        "youtube_V0007"
+      ]
+    },
+    "valid_test": {
+      "count": 20,
+      "values": [
+        "bb_V0005",
+        "bb_V0008",
+        "bb_V0010",
+        "bb_V0014",
+        "bb_V0016",
+        "bb_V0018",
+        "bb_V0019",
+        "bb_V0023",
+        "bb_V0028",
+        "bb_V0030",
+        "bb_V0031",
+        "bb_V0032",
+        "bb_V0033",
+        "bb_V0034",
+        "chitube_V0006",
+        "chitube_V0008",
+        "chitube_V0010",
+        "youtube_V0002",
+        "youtube_V0004",
+        "youtube_V0007"
+      ]
+    }
+  },
+  "exact_image_hash_overlap": {
+    "train_valid": {
+      "count": 0,
+      "values": []
+    },
+    "train_test": {
+      "count": 0,
+      "values": []
+    },
+    "valid_test": {
+      "count": 0,
+      "values": []
+    }
+  },
+  "missing_annotations": 0,
+  "submission_test_available": false,
+  "reasons": [
+    "video/sequence groups overlap across all legacy splits",
+    "all current splits have prior train/tuning/test exposure",
+    "legacy evaluation treats tiles as independent COCO images",
+    "upstream original paths and ignore/crowd provenance are unavailable"
+  ]
+}

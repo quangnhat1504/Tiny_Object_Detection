@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "status": "TRAIN_ONLY_SCHEDULE_AUDIT",
+  "annotation_file": "aitodv2_train.json",
+  "annotation_sha256": "ed7b37a1187b496b96943fa46c15aab39656d59eaf501192d85178354b637b2e",
+  "split": "train",
+  "image_count": 11214,
+  "valid_positive_count": 301494,
+  "coordinate_system": "post_torchvision_generalized_rcnn_transform_pixels",
+  "transform": {
+    "min_size": 640,
+    "max_size": 800
+  },
+  "resize_shape_counts": {
+    "800x788->649x640": 1,
+    "800x800->640x640": 11212,
+    "800x801->640x640": 1
+  },
+  "percentile_method": "numpy_linear",
+  "scale_summary_px": {
+    "min": 1.1313708498984762,
+    "p10": 6.19677335393185,
+    "median": 9.465727652959387,
+    "p90": 13.856406460551018,
+    "max": 72.97122720634484
+  },
+  "schedule_bounds": {
+    "lower_percentile": 10.0,
+    "upper_percentile": 90.0,
+    "s_min": 6.19677335393185,
+    "s_max": 13.856406460551018
+  },
+  "restrictions": [
+    "training annotations only",
+    "ignore uncertain and crowd excluded",
+    "no beta or position-weight range selected by this audit",
+    "dataset-specific bounds are not transferable without preregistration"
+  ],
+  "audit_sha256": "fa72825d9dd152631f7a46cc5b3be980c3217c0832a019c50602e3cd9537d38f"
+}

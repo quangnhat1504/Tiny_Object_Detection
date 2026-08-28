@@ -1,0 +1,62 @@
+[{"stream_name":"stderr","time":5.997859997,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":5.9979109,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":5.997915863,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":5.997918606,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":6.557213414,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":6.557246716,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":6.557250296,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":6.557253022,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":18.688780462,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric standard --placement everywhere --box-loss smooth_l1 --batch-size 2 --seed 42 --epochs 12\n"}
+,{"stream_name":"stdout","time":72.445976244,"data":"=== AI-TOD-v2 Training: Metric=standard, Placement=everywhere, Loss=smooth_l1, Seed=42, Device=cuda ===\n"}
+,{"stream_name":"stdout","time":72.446016229,"data":"Data root: /kaggle/input/datasets/simplestzyp/tiny-object-detection-in-aerial-images/AI-TOD\n"}
+,{"stream_name":"stdout","time":72.446038786,"data":"Loading datasets...\n"}
+,{"stream_name":"stdout","time":72.446046024,"data":"Train samples: 14018, Val samples: 14018\n"}
+,{"stream_name":"stdout","time":72.446051824,"data":"Building Faster R-CNN with 9 classes (8 foreground + background)...\n"}
+,{"stream_name":"stdout","time":72.44605808,"data":"\n"}
+,{"stream_name":"stdout","time":72.446063528,"data":"=== Beginning Training ===\n"}
+,{"stream_name":"stderr","time":249.170002253,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":249.170041693,"data":"  File \"/kaggle/working/aitod_baseline_s42/scripts/train_frcnn_aitod.py\", line 295, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":249.170248234,"data":"    main()\n"}
+,{"stream_name":"stderr","time":249.170264541,"data":"  File \"/kaggle/working/aitod_baseline_s42/scripts/train_frcnn_aitod.py\", line 277, in main\n"}
+,{"stream_name":"stderr","time":249.170434768,"data":"    train_aitod(\n"}
+,{"stream_name":"stderr","time":249.17044676,"data":"  File \"/kaggle/working/aitod_baseline_s42/scripts/train_frcnn_aitod.py\", line 162, in train_aitod\n"}
+,{"stream_name":"stderr","time":249.170562536,"data":"    loss_dict = model(images, targets)\n"}
+,{"stream_name":"stderr","time":249.170627998,"data":"                ^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.170642616,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n"}
+,{"stream_name":"stderr","time":249.172557956,"data":"    return self._call_impl(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":249.172586714,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.172594459,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n"}
+,{"stream_name":"stderr","time":249.1729658,"data":"    return forward_call(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":249.17297646,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.17302177,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/generalized_rcnn.py\", line 117, in forward\n"}
+,{"stream_name":"stderr","time":249.173172005,"data":"    proposals, proposal_losses = self.rpn(images, features, targets)\n"}
+,{"stream_name":"stderr","time":249.17318517,"data":"                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.173188916,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n"}
+,{"stream_name":"stderr","time":249.17362783,"data":"    return self._call_impl(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":249.173647723,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.17365265,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n"}
+,{"stream_name":"stderr","time":249.174043944,"data":"    return forward_call(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":249.17408116,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.174086057,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/rpn.py\", line 378, in forward\n"}
+,{"stream_name":"stderr","time":249.174254848,"data":"    labels, matched_gt_boxes = self.assign_targets_to_anchors(anchors, targets)\n"}
+,{"stream_name":"stderr","time":249.17427309,"data":"                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.174277508,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/rpn.py\", line 208, in assign_targets_to_anchors\n"}
+,{"stream_name":"stderr","time":249.17444221,"data":"    match_quality_matrix = self.box_similarity(gt_boxes, anchors_per_image)\n"}
+,{"stream_name":"stderr","time":249.174484088,"data":"                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.174491876,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/ops/boxes.py\", line 368, in box_iou\n"}
+,{"stream_name":"stderr","time":249.174733186,"data":"    inter, union = _box_inter_union(boxes1, boxes2, fmt=fmt)\n"}
+,{"stream_name":"stderr","time":249.174744873,"data":"                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.174755253,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/ops/boxes.py\", line 336, in _box_inter_union\n"}
+,{"stream_name":"stderr","time":249.174971656,"data":"    wh = _upcast(rb - lt).clamp(min=0)  # [N,M,2]\n"}
+,{"stream_name":"stderr","time":249.174993807,"data":"         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":249.174998945,"data":"torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.05 GiB. GPU 0 has a total capacity of 14.56 GiB of which 2.89 GiB is free. Including non-PyTorch memory, this process has 11.67 GiB memory in use. Of the allocated memory 10.25 GiB is allocated by PyTorch, and 1.27 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)\n"}
+,{"stream_name":"stdout","time":253.017882208,"data":"Execution finished with exit code: 1\n"}
+,{"stream_name":"stderr","time":255.820850794,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":255.820878113,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":255.961836804,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":255.961887497,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":256.569392529,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":256.863194569,"data":"[NbConvertApp] Writing 53205 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":259.190210045,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":259.975331904,"data":"[NbConvertApp] Writing 389776 bytes to __results__.html\n"}
+]

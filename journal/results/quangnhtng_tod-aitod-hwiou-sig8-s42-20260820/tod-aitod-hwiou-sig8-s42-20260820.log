@@ -1,0 +1,61 @@
+[{"stream_name":"stderr","time":12.071036221,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":12.071903386,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":12.071909016,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":12.071911726,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":12.707718761,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":12.707773003,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":12.707781069,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":12.70779131,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":360.529210979,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric h_wiou --placement h_wiou --box-loss h_wiou --h-wiou-sigma-0 8.0 --seed 42 --epochs 12\n"}
+,{"stream_name":"stdout","time":502.96724191,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stdout","time":502.967282365,"data":"=== AI-TOD-v2 Training: Metric=h_wiou, Placement=h_wiou, Loss=h_wiou, Seed=42, Device=cuda ===\n"}
+,{"stream_name":"stdout","time":502.967287127,"data":"Data root: /kaggle/input/datasets/simplestzyp/tiny-object-detection-in-aerial-images/AI-TOD\n"}
+,{"stream_name":"stdout","time":502.967291072,"data":"Loading datasets...\n"}
+,{"stream_name":"stdout","time":502.967294516,"data":"Train samples: 14018, Val samples: 14018\n"}
+,{"stream_name":"stdout","time":502.967297982,"data":"Building Faster R-CNN with 9 classes (8 foreground + background)...\n"}
+,{"stream_name":"stdout","time":502.967301485,"data":"  [loss] fastrcnn_loss replaced, type=h_wiou, warmup_epochs=3\n"}
+,{"stream_name":"stdout","time":502.967305258,"data":"\n"}
+,{"stream_name":"stdout","time":502.967308407,"data":"=== Beginning Training ===\n"}
+,{"stream_name":"stderr","time":511.694662083,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":511.694709901,"data":"  File \"/kaggle/working/aitod_hwiou_sig8_s42/scripts/train_frcnn_aitod.py\", line 287, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":511.694969037,"data":"    main()\n"}
+,{"stream_name":"stderr","time":511.69498451,"data":"  File \"/kaggle/working/aitod_hwiou_sig8_s42/scripts/train_frcnn_aitod.py\", line 269, in main\n"}
+,{"stream_name":"stderr","time":511.695183616,"data":"    train_aitod(\n"}
+,{"stream_name":"stderr","time":511.69519338,"data":"  File \"/kaggle/working/aitod_hwiou_sig8_s42/scripts/train_frcnn_aitod.py\", line 156, in train_aitod\n"}
+,{"stream_name":"stderr","time":511.695330317,"data":"    loss_dict = model(images, targets)\n"}
+,{"stream_name":"stderr","time":511.695339672,"data":"                ^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.6953454,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n"}
+,{"stream_name":"stderr","time":511.696928708,"data":"    return self._call_impl(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":511.697018849,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.697027549,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n"}
+,{"stream_name":"stderr","time":511.697473928,"data":"    return forward_call(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":511.697500232,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.697505409,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/generalized_rcnn.py\", line 118, in forward\n"}
+,{"stream_name":"stderr","time":511.697711023,"data":"    detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets)\n"}
+,{"stream_name":"stderr","time":511.697765225,"data":"                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.697779535,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n"}
+,{"stream_name":"stderr","time":511.698164789,"data":"    return self._call_impl(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":511.698187673,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.698192108,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n"}
+,{"stream_name":"stderr","time":511.698555565,"data":"    return forward_call(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":511.69857648,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.698579589,"data":"  File \"/kaggle/working/aitod_hwiou_sig8_s42/common/model.py\", line 3397, in patched_forward\n"}
+,{"stream_name":"stderr","time":511.699672176,"data":"    loss_classifier, loss_box_reg, loss_quality = _metric_box_loss(\n"}
+,{"stream_name":"stderr","time":511.699687845,"data":"                                                  ^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.699692253,"data":"  File \"/kaggle/working/aitod_hwiou_sig8_s42/common/model.py\", line 1667, in _metric_box_loss\n"}
+,{"stream_name":"stderr","time":511.700446132,"data":"    box_loss = _metric_aux_loss(\n"}
+,{"stream_name":"stderr","time":511.700466981,"data":"               ^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.700472605,"data":"  File \"/kaggle/working/aitod_hwiou_sig8_s42/common/model.py\", line 1108, in _metric_aux_loss\n"}
+,{"stream_name":"stderr","time":511.700959478,"data":"    distance = metric_distance_fn(xn, yn, wn, hn, xg, yg, wg, hg)\n"}
+,{"stream_name":"stderr","time":511.701169601,"data":"               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":511.701178271,"data":"TypeError: aligned_h_wiou_loss() takes 2 positional arguments but 8 positional arguments (and 4 keyword-only arguments) were given\n"}
+,{"stream_name":"stdout","time":515.819308364,"data":"Execution finished with exit code: 1\n"}
+,{"stream_name":"stderr","time":518.721818104,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":518.721857025,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":518.883133913,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":518.883181795,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":519.472524557,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":519.798420229,"data":"[NbConvertApp] Writing 4066 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":522.222958467,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":523.040834335,"data":"[NbConvertApp] Writing 281401 bytes to __results__.html\n"}
+]

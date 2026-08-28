@@ -1,0 +1,34 @@
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{url}
+
+\newcommand{\method}{SA-ALW}
+\newcommand{\baseMethod}{ALW}
+
+\title{\textbf{Scale-Adaptive Anisotropic Log-Wasserstein Distance and Gradient-Rescued Learning for Tiny Object Detection}}
+\author{Anonymous Conference Submission}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Detecting tiny objects (frequently spanning fewer than $8\times 8$ pixels) remains a fundamental challenge in aerial surveillance, maritime search-and-rescue, and remote sensing. Standard object detectors relying on Intersection-over-Union (IoU) metrics suffer from catastrophic gradient collapse under sub-pixel misalignments ($\nabla \mathrm{IoU} = \mathbf{0}$), while existing Gaussian Wasserstein formulations (e.g., NWD) induce spatial over-smoothing, causing severe regression degradation at stringent IoU thresholds ($\mathrm{AP}_{75}$). Furthermore, during backpropagation, gradient updates from dominant normal-scale anchors overwhelmingly annihilate the delicate learning signals from microscopic targets. 
+
+In this work, we propose a unified, mathematically grounded framework for tiny object detection comprising three key innovations: (1) \textbf{Scale-Adaptive Anisotropic Log-Wasserstein (SA-ALW)} similarity, which normalizes center displacements and aspect-ratio distortions independently while dynamically modulating temperature and spatial weighting according to target scale; (2) \textbf{Proposal Micro-Rescue with Orthogonal Gradient Projection (PC-MR)}, which isolates microscopic proposal gradients in the Region Proposal Network (RPN) and projects them onto the orthogonal subspace of dominant anchors ($\mathbf{g}_{\mathrm{proj}} \perp \mathbf{g}_{\mathrm{main}}$), completely preventing micro-gradient annihilation; and (3) \textbf{Multi-Scale Feature Distillation (PC-MOC)} coupled with \textbf{Iterative Curriculum-Based Learning (Iterative-CBL)} to stabilize multi-scale representations against semantic drift.
+
+Under a rigorous, strictly controlled 20-epoch benchmark evaluating \textbf{21 deep learning models} ($7\text{ methods} \times 3\text{ matched random seeds}$) on TinyPerson under identical hardware and training regimes, our proposed Joint Model establishes new state-of-the-art performance: elevating $\mathrm{AP}_{\mathrm{micro}}$ to $\mathbf{41.16\%}$ ($+5.06\%$ absolute gain, $14.0\%$ relative improvement over standard Faster R-CNN, and $+3.86\%$ over NWD) while simultaneously achieving $\mathbf{7.19\%}$ $\mathrm{coco\_AP}_{75}$ ($+1.40\%$ absolute gain over NWD, $p = 0.0091^{***}$) with zero additional test-time inference latency ($32.0$ ms on Nvidia Tesla T4).
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/method}
+\input{sections/experiments}
+\input{sections/limitations}
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}

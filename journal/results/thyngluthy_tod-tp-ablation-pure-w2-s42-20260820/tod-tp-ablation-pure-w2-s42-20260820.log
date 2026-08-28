@@ -1,0 +1,64 @@
+[{"stream_name":"stderr","time":7.545952272,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.546638328,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.546646713,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.546650721,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.154143089,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.154172344,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.154177546,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.154184034,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":21.002014261,"data":"Executing command: python scripts/train_frcnn_metric.py --metric h_wiou --placement h_wiou --box-loss h_wiou --h-wiou-form pure_w2 --seed 42 --tag ablation_pure_w2\n"}
+,{"stream_name":"stderr","time":45.767011123,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":45.767040966,"data":"  File \"/kaggle/working/tp_ablation_pure_w2_s42/scripts/train_frcnn_metric.py\", line 1834, in \u003cmodule\u003e\n"}
+,{"stream_name":"stdout","time":45.767063038,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stdout","time":45.767075715,"data":"\n"}
+,{"stream_name":"stdout","time":45.767086092,"data":"======================================================================\n"}
+,{"stream_name":"stdout","time":45.767089783,"data":"METRIC ABLATION — h_wiou @ h_wiou\n"}
+,{"stream_name":"stdout","time":45.767093443,"data":"  Seed: 42\n"}
+,{"stream_name":"stdout","time":45.767096388,"data":"  Box loss: h_wiou\n"}
+,{"stream_name":"stdout","time":45.767099458,"data":"  Checkpoint selector: map50\n"}
+,{"stream_name":"stdout","time":45.767102723,"data":"  Quality score: False (weight=0.5)\n"}
+,{"stream_name":"stdout","time":45.767105744,"data":"  Quality focal: False (beta=2)\n"}
+,{"stream_name":"stdout","time":45.767122965,"data":"  Rank \u0026 Sort: False (delta=0.5)\n"}
+,{"stream_name":"stdout","time":45.767128561,"data":"  Double-Head: False (scale=1.3, bottlenecks=4)\n"}
+,{"stream_name":"stdout","time":45.767133829,"data":"  CBL iterative train: weight=0; inference steps=0, blend=1, last step blend=None, last center blend=None, last size blend=None, score threshold=0, extra min size ratio=0\n"}
+,{"stream_name":"stdout","time":45.76713961,"data":"  CBL cross-scale distillation: teacher=None; weight=0.25, temperature=2, margin=0.02, teacher transform=960/1200, tiny reference/cap=16/2, head only=False, coordinate reliable=False, consensus filter=False, distance=kl, cross head=False, PCGrad=False, stage=first\n"}
+,{"stream_name":"stdout","time":45.767145977,"data":"  PC-MR-RPN: teacher=None; weight=0.005, teacher transform=960/1200, top_n=300, micro_cutoff=8px, teacher_iou_floor=0.5, margin=0.02\n"}
+,{"stream_name":"stdout","time":45.767151253,"data":"  FPN micro feature distillation: teacher=None; target=cosine, weight=0.15, teacher transform=960/1200, top_n=300, micro_cutoff=8px, teacher_iou_floor=0.5, margin=0.02\n"}
+,{"stream_name":"stdout","time":45.767156241,"data":"  RPN inference refinement steps: 0; min size ratio=0\n"}
+,{"stream_name":"stdout","time":45.767160641,"data":"  RPN quality objectness: False; beta=2; preserve below size ratio=0\n"}
+,{"stream_name":"stdout","time":45.767179718,"data":"  RPN cascade: False; stage-1 weight=1\n"}
+,{"stream_name":"stdout","time":45.767182487,"data":"  RPN IoU prediction: False; loss weight=0.5; fusion weight=1; detached tower=False\n"}
+,{"stream_name":"stdout","time":45.767184793,"data":"  Transform: train min=(640,), train max=800; eval=640/800\n"}
+,{"stream_name":"stdout","time":45.767187121,"data":"  Output: /kaggle/working/tp_ablation_pure_w2_s42/runs/h_wiou__h_wiou__pure_w2__h_wiou__seed42__ablation_pure_w2\n"}
+,{"stream_name":"stdout","time":45.767189437,"data":"  Resume: False\n"}
+,{"stream_name":"stdout","time":45.767191605,"data":"======================================================================\n"}
+,{"stream_name":"stdout","time":45.767193894,"data":"\n"}
+,{"stream_name":"stderr","time":45.767772094,"data":"    main()\n"}
+,{"stream_name":"stderr","time":45.767788645,"data":"  File \"/kaggle/working/tp_ablation_pure_w2_s42/scripts/train_frcnn_metric.py\", line 1688, in main\n"}
+,{"stream_name":"stderr","time":45.768322067,"data":"    train_metric(args.metric, args.placement, args.seed, args.resume,\n"}
+,{"stream_name":"stderr","time":45.768329208,"data":"  File \"/kaggle/working/tp_ablation_pure_w2_s42/scripts/train_frcnn_metric.py\", line 705, in train_metric\n"}
+,{"stream_name":"stderr","time":45.768705973,"data":"    train_ds = build_training_datasets(use_patches=False, is_train=True)\n"}
+,{"stream_name":"stderr","time":45.769205495,"data":"               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":45.769211698,"data":"  File \"/kaggle/working/tp_ablation_pure_w2_s42/common/dataset.py\", line 296, in build_training_datasets\n"}
+,{"stream_name":"stderr","time":45.769214299,"data":"    return YOLOTinyDataset(\n"}
+,{"stream_name":"stderr","time":45.7692166,"data":"           ^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":45.769218919,"data":"  File \"/kaggle/working/tp_ablation_pure_w2_s42/common/dataset.py\", line 46, in __init__\n"}
+,{"stream_name":"stderr","time":45.769221377,"data":"    self.img_files = sorted(\n"}
+,{"stream_name":"stderr","time":45.769223636,"data":"                     ^^^^^^^\n"}
+,{"stream_name":"stderr","time":45.769225778,"data":"  File \"/kaggle/working/tp_ablation_pure_w2_s42/common/dataset.py\", line 47, in \u003cgenexpr\u003e\n"}
+,{"stream_name":"stderr","time":45.769228406,"data":"    f for f in img_dir.iterdir()\n"}
+,{"stream_name":"stderr","time":45.769230563,"data":"               ^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":45.769232748,"data":"  File \"/usr/lib/python3.12/pathlib.py\", line 1056, in iterdir\n"}
+,{"stream_name":"stderr","time":45.771542558,"data":"    for name in os.listdir(self):\n"}
+,{"stream_name":"stderr","time":45.771561658,"data":"                ^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":45.771594951,"data":"FileNotFoundError: [Errno 2] No such file or directory: '/kaggle/input/datasets/kurt54/sod-tinypeopleinsea/train/images'\n"}
+,{"stream_name":"stdout","time":48.5056861,"data":"Execution finished with exit code: 1\n"}
+,{"stream_name":"stderr","time":51.46970154,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":51.469731346,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":51.627904193,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":51.627931024,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":52.564128422,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":52.863010305,"data":"[NbConvertApp] Writing 4117 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":55.198747079,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":55.970458273,"data":"[NbConvertApp] Writing 281453 bytes to __results__.html\n"}
+]

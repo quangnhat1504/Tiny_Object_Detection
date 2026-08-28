@@ -1,0 +1,69 @@
+[{"stream_name":"stderr","time":7.498506052,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.498578577,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.498583318,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.498586003,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.093439572,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.093470225,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.093475244,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.093478966,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":18.640156312,"data":"Applied latest hot-patch fixes to /kaggle/working/aitod_rfla_s42\n"}
+,{"stream_name":"stdout","time":23.146462225,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric rfla --placement la --box-loss smooth_l1 --seed 42 --epochs 12 --batch-size 4\n"}
+,{"stream_name":"stdout","time":77.068776109,"data":"=== AI-TOD-v2 Training: Metric=rfla, Placement=la, Loss=smooth_l1, Seed=42, Device=cuda ===\n"}
+,{"stream_name":"stdout","time":77.068813023,"data":"Data root: /kaggle/input/datasets/simplestzyp/tiny-object-detection-in-aerial-images/AI-TOD\n"}
+,{"stream_name":"stdout","time":77.06881934,"data":"Loading datasets...\n"}
+,{"stream_name":"stdout","time":77.068823762,"data":"Train samples: 14018, Val samples: 14018\n"}
+,{"stream_name":"stdout","time":77.068828299,"data":"Building Faster R-CNN with 9 classes (8 foreground + background)...\n"}
+,{"stream_name":"stdout","time":77.06883282,"data":"\n"}
+,{"stream_name":"stdout","time":77.068837245,"data":"=== Beginning Training ===\n"}
+,{"stream_name":"stderr","time":277.671545817,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":277.671585876,"data":"  File \"/kaggle/working/aitod_rfla_s42/scripts/train_frcnn_aitod.py\", line 299, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":277.671809616,"data":"    main()\n"}
+,{"stream_name":"stderr","time":277.671828208,"data":"  File \"/kaggle/working/aitod_rfla_s42/scripts/train_frcnn_aitod.py\", line 281, in main\n"}
+,{"stream_name":"stderr","time":277.672029173,"data":"    train_aitod(\n"}
+,{"stream_name":"stderr","time":277.672041086,"data":"  File \"/kaggle/working/aitod_rfla_s42/scripts/train_frcnn_aitod.py\", line 166, in train_aitod\n"}
+,{"stream_name":"stderr","time":277.672145136,"data":"    loss_dict = model(images, targets)\n"}
+,{"stream_name":"stderr","time":277.672181472,"data":"                ^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.672190011,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n"}
+,{"stream_name":"stderr","time":277.674345009,"data":"    return self._call_impl(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":277.674360647,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.674365648,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n"}
+,{"stream_name":"stderr","time":277.674903763,"data":"    return forward_call(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":277.67491429,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.674933582,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/generalized_rcnn.py\", line 117, in forward\n"}
+,{"stream_name":"stderr","time":277.675090553,"data":"    proposals, proposal_losses = self.rpn(images, features, targets)\n"}
+,{"stream_name":"stderr","time":277.675097504,"data":"                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.675101475,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1776, in _wrapped_call_impl\n"}
+,{"stream_name":"stderr","time":277.675491176,"data":"    return self._call_impl(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":277.675514628,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.675584345,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py\", line 1787, in _call_impl\n"}
+,{"stream_name":"stderr","time":277.675960236,"data":"    return forward_call(*args, **kwargs)\n"}
+,{"stream_name":"stderr","time":277.675971808,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.675974548,"data":"  File \"/kaggle/working/aitod_rfla_s42/common/model.py\", line 682, in forward\n"}
+,{"stream_name":"stderr","time":277.676468116,"data":"    return super().forward(images, features, targets)\n"}
+,{"stream_name":"stderr","time":277.676518455,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.676529497,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/models/detection/rpn.py\", line 378, in forward\n"}
+,{"stream_name":"stderr","time":277.676747596,"data":"    labels, matched_gt_boxes = self.assign_targets_to_anchors(anchors, targets)\n"}
+,{"stream_name":"stderr","time":277.676755768,"data":"                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.676841702,"data":"  File \"/kaggle/working/aitod_rfla_s42/common/model.py\", line 995, in assign_targets_to_anchors\n"}
+,{"stream_name":"stderr","time":277.677324047,"data":"    sim = self.metric_fn(\n"}
+,{"stream_name":"stderr","time":277.677343437,"data":"          ^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.677350275,"data":"  File \"/kaggle/working/aitod_rfla_s42/common/metrics/iou.py\", line 28, in compute_rfd\n"}
+,{"stream_name":"stderr","time":277.67746073,"data":"    return box_iou(boxes_n, boxes_g).clamp(min=EPS)\n"}
+,{"stream_name":"stderr","time":277.677467062,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.677470707,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/ops/boxes.py\", line 368, in box_iou\n"}
+,{"stream_name":"stderr","time":277.677714837,"data":"    inter, union = _box_inter_union(boxes1, boxes2, fmt=fmt)\n"}
+,{"stream_name":"stderr","time":277.677721614,"data":"                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":277.677725195,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torchvision/ops/boxes.py\", line 339, in _box_inter_union\n"}
+,{"stream_name":"stderr","time":277.67789723,"data":"    union = area1[..., None] + area2[..., None, :] - inter\n"}
+,{"stream_name":"stderr","time":277.678015958,"data":"            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~\n"}
+,{"stream_name":"stderr","time":277.678027383,"data":"torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.53 GiB. GPU 0 has a total capacity of 14.56 GiB of which 328.81 MiB is free. Including non-PyTorch memory, this process has 14.24 GiB memory in use. Of the allocated memory 13.94 GiB is allocated by PyTorch, and 157.57 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)\n"}
+,{"stream_name":"stdout","time":282.047368355,"data":"Execution finished with exit code: 1\n"}
+,{"stream_name":"stderr","time":284.777922044,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":284.777967262,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":284.931998914,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":284.932022992,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":285.522192416,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":285.81058111,"data":"[NbConvertApp] Writing 64041 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":288.091059428,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":288.869850528,"data":"[NbConvertApp] Writing 342748 bytes to __results__.html\n"}
+]

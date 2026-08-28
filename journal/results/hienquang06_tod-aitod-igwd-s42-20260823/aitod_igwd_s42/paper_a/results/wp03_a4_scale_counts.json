@@ -1,0 +1,7 @@
+{
+  "images": 2041,
+  "annotations_non_ignore": 4719,
+  "small_lt_32sq": 3951,
+  "medium_32sq_to_96sq": 739,
+  "large_ge_96sq": 29
+}

@@ -1,0 +1,4 @@
+tqdm
+Pillow
+pycocotools
+opencv-python-headless

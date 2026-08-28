@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "status": "TRAIN_ONLY_SCHEDULE_AUDIT",
+  "annotation_file": "tiny_set_train_sw640_sh512_all.json",
+  "annotation_sha256": "8474f1242a072a4a6cfb55ef97c1b3661f2ab2ce2069670c8801a97aad5428bd",
+  "split": "train",
+  "image_count": 8256,
+  "valid_positive_count": 32430,
+  "coordinate_system": "post_torchvision_generalized_rcnn_transform_pixels",
+  "transform": {
+    "min_size": 640,
+    "max_size": 800
+  },
+  "resize_shape_counts": {
+    "512x540->640x675": 4,
+    "512x640->640x800": 5700,
+    "640x497->800x621": 2,
+    "640x512->800x640": 2550
+  },
+  "percentile_method": "numpy_linear",
+  "scale_summary_px": {
+    "min": 3.0894745735246256,
+    "p10": 7.43283998617652,
+    "median": 15.716732563468963,
+    "p90": 44.846834283710336,
+    "max": 335.2194842710497
+  },
+  "schedule_bounds": {
+    "lower_percentile": 10,
+    "upper_percentile": 90,
+    "s_min": 7.43283998617652,
+    "s_max": 44.846834283710336
+  },
+  "restrictions": [
+    "training annotations only",
+    "ignore uncertain and crowd excluded",
+    "no beta or position-weight range selected by this audit",
+    "dataset-specific bounds are not transferable without preregistration"
+  ],
+  "audit_sha256": "2ae4fb56295b9c3ad292ced030bd4472cfbc2a3eb63199e08cdfdf9099093ff9"
+}

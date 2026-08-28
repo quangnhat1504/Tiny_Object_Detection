@@ -1,0 +1,385 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.6.20)  20 AUG 2026 22:45
+entering extended mode
+ restricted \write18 enabled.
+ %&-line parsing enabled.
+**./main.tex
+(main.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2025-12-24>
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/base\article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/base\size10.clo
+File: size10.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
+)
+\c@part=\count275
+\c@section=\count276
+\c@subsection=\count277
+\c@subsubsection=\count278
+\c@paragraph=\count279
+\c@subparagraph=\count280
+\c@figure=\count281
+\c@table=\count282
+\abovecaptionskip=\skip49
+\belowcaptionskip=\skip50
+\bibindent=\dimen148
+)
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/base\inputenc.sty
+Package: inputenc 2024/02/08 v1.3d Input encoding file
+\inpenc@prehook=\toks17
+\inpenc@posthook=\toks18
+)
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsmath.sty
+Package: amsmath 2025/07/09 v2.17z AMS math features
+\@mathmargin=\skip51
+
+For additional information on amsmath, use the `?' option.
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amstext.sty
+Package: amstext 2024/11/17 v2.01 AMS text
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsgen.sty
+File: amsgen.sty 1999/11/30 v2.0 generic functions
+\@emptytoks=\toks19
+\ex@=\dimen149
+))
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsbsy.sty
+Package: amsbsy 1999/11/29 v1.2d Bold Symbols
+\pmbraise@=\dimen150
+)
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsmath\amsopn.sty
+Package: amsopn 2022/04/08 v2.04 operator names
+)
+\inf@bad=\count283
+LaTeX Info: Redefining \frac on input line 233.
+\uproot@=\count284
+\leftroot@=\count285
+LaTeX Info: Redefining \overline on input line 398.
+LaTeX Info: Redefining \colon on input line 409.
+\classnum@=\count286
+\DOTSCASE@=\count287
+LaTeX Info: Redefining \ldots on input line 495.
+LaTeX Info: Redefining \dots on input line 498.
+LaTeX Info: Redefining \cdots on input line 619.
+\Mathstrutbox@=\box53
+\strutbox@=\box54
+LaTeX Info: Redefining \big on input line 721.
+LaTeX Info: Redefining \Big on input line 722.
+LaTeX Info: Redefining \bigg on input line 723.
+LaTeX Info: Redefining \Bigg on input line 724.
+\big@size=\dimen151
+LaTeX Font Info:    Redeclaring font encoding OML on input line 742.
+LaTeX Font Info:    Redeclaring font encoding OMS on input line 743.
+\macc@depth=\count288
+LaTeX Info: Redefining \bmod on input line 904.
+LaTeX Info: Redefining \pmod on input line 909.
+LaTeX Info: Redefining \smash on input line 939.
+LaTeX Info: Redefining \relbar on input line 969.
+LaTeX Info: Redefining \Relbar on input line 970.
+\c@MaxMatrixCols=\count289
+\dotsspace@=\muskip17
+\c@parentequation=\count290
+\dspbrk@lvl=\count291
+\tag@help=\toks20
+\row@=\count292
+\column@=\count293
+\maxfields@=\count294
+\andhelp@=\toks21
+\eqnshift@=\dimen152
+\alignsep@=\dimen153
+\tagshift@=\dimen154
+\tagwidth@=\dimen155
+\totwidth@=\dimen156
+\lineht@=\dimen157
+\@envbody=\toks22
+\multlinegap=\skip52
+\multlinetaggap=\skip53
+\mathdisplay@stack=\toks23
+LaTeX Info: Redefining \[ on input line 2950.
+LaTeX Info: Redefining \] on input line 2951.
+)
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\amssymb.sty
+Package: amssymb 2013/01/14 v3.01 AMS font symbols
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\amsfonts.sty
+Package: amsfonts 2013/01/14 v3.01 Basic AMSFonts support
+\symAMSa=\mathgroup4
+\symAMSb=\mathgroup5
+LaTeX Font Info:    Redeclaring math symbol \hbar on input line 98.
+LaTeX Font Info:    Overwriting math alphabet `\mathfrak' in version `bold'
+(Font)                  U/euf/m/n --> U/euf/b/n on input line 106.
+)) (C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphicx.st
+y
+Package: graphicx 2024/12/31 v1.2e Enhanced LaTeX Graphics (DPC,SPQR)
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/graphics\keyval.sty
+Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
+\KV@toks@=\toks24
+)
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphics.sty
+Package: graphics 2024/08/06 v1.4g Standard LaTeX Graphics (DPC,SPQR)
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/graphics\trig.sty
+Package: trig 2023/12/02 v1.11 sin cos tan (DPC)
+)
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/graphics-cfg\graphics.c
+fg
+File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
+)
+Package graphics Info: Driver file: pdftex.def on input line 106.
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/graphics-def\pdftex.def
+File: pdftex.def 2025/09/29 v1.2d Graphics/color driver for pdftex
+))
+\Gin@req@height=\dimen158
+\Gin@req@width=\dimen159
+) (C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/url\url.sty
+\Urlmuskip=\muskip18
+Package: url 2013/09/16  ver 3.4  Verb mode for urls, etc.
+)
+\c@theorem=\count295
+\c@lemma=\count296
+\c@proposition=\count297
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/l3backend\l3backend-pdf
+tex.def
+File: l3backend-pdftex.def 2025-10-09 L3 backend support: PDF output (pdfTeX)
+\l__color_backend_stack_int=\count298
+) (main.aux)
+\openout1 = `main.aux'.
+
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 29.
+LaTeX Font Info:    ... okay on input line 29.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 29.
+LaTeX Font Info:    ... okay on input line 29.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 29.
+LaTeX Font Info:    ... okay on input line 29.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 29.
+LaTeX Font Info:    ... okay on input line 29.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 29.
+LaTeX Font Info:    ... okay on input line 29.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 29.
+LaTeX Font Info:    ... okay on input line 29.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 29.
+LaTeX Font Info:    ... okay on input line 29.
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/context/base/mkii\supp-pdf.mk
+ii
+[Loading MPS to PDF converter (version 2006.09.02).]
+\scratchcounter=\count299
+\scratchdimen=\dimen160
+\scratchbox=\box55
+\nofMPsegments=\count300
+\nofMParguments=\count301
+\everyMPshowfont=\toks25
+\MPscratchCnt=\count302
+\MPscratchDim=\dimen161
+\MPnumerator=\count303
+\makeMPintoPDFobject=\count304
+\everyMPtoPDFconversion=\toks26
+)
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/epstopdf-pkg\epstopdf-b
+ase.sty
+Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
+Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
+85.
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/00miktex\epstopdf-sys.c
+fg
+File: epstopdf-sys.cfg 2021/03/18 v2.0 Configuration of epstopdf for MiKTeX
+))
+LaTeX Font Info:    Trying to load font information for U+msa on input line 31.
+
+ (C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\umsa.fd
+File: umsa.fd 2013/01/14 v3.01 AMS symbols A
+)
+LaTeX Font Info:    Trying to load font information for U+msb on input line 31.
+
+
+(C:\Users\ADMIN\AppData\Local\Programs\MiKTeX\tex/latex/amsfonts\umsb.fd
+File: umsb.fd 2013/01/14 v3.01 AMS symbols B
+)
+Overfull \hbox (28.77208pt too wide) detected at line 37
+\OMS/cmsy/m/n/10 S[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 A; B\OT1/cmr/m/n/10 ) = [
+[](\OML/cmm/m/it/10 A; B\OT1/cmr/m/n/10 )][] \OMS/cmsy/m/n/10 ^^A [] []
+ []
+
+
+Underfull \vbox (badness 5245) has occurred while \output is active []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 44--45
+[]\OT1/cmr/m/n/10 Under such mi-cro-scopic scales, stan-dard
+ []
+
+
+Underfull \hbox (badness 7012) in paragraph at lines 44--45
+\OT1/cmr/m/n/10 Intersection-over-Union (IoU) and its geometry-
+ []
+
+
+Underfull \hbox (badness 4120) in paragraph at lines 50--51
+[]\OT1/cmr/m/n/10 To cir-cum-vent IoU sen-si-tiv-ity, op-ti-mal trans-
+ []
+
+<figures/fig1_homotopy_theory.pdf, id=1, 722.7pt x 303.534pt>
+File: figures/fig1_homotopy_theory.pdf Graphic file (type pdf)
+<use figures/fig1_homotopy_theory.pdf>
+Package pdftex.def Info: figures/fig1_homotopy_theory.pdf  used on input line 5
+4.
+(pdftex.def)             Requested size: 485.1468pt x 203.76039pt.
+[1{C:/Users/ADMIN/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}
+
+
+]
+
+LaTeX Warning: Citation `xu2022rfla' on page 2 undefined on input line 75.
+
+[2 <./figures/fig1_homotopy_theory.pdf>]
+Overfull \hbox (48.10408pt too wide) detected at line 86
+[]
+ []
+
+
+Overfull \hbox (22.34386pt too wide) detected at line 91
+[]\OMS/cmsy/m/n/10 D[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 A; B\OT1/cmr/m/n/10 ) =
+ [] + [] + [][] [] + [][] []
+ []
+
+
+Overfull \hbox (43.4357pt too wide) in paragraph at lines 103--104
+[]
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--112
+\OT1/cmr/m/n/10 The Ho-mo-topy Wasserstein-IoU sim-i-lar-ity
+ []
+
+
+Underfull \hbox (badness 1466) in paragraph at lines 111--112
+\OMS/cmsy/m/n/10 S[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 A; B\OT1/cmr/m/n/10 )$ is
+ for-mu-lated as the mul-ti-plica-tive
+ []
+
+
+Overfull \hbox (41.57353pt too wide) detected at line 114
+[]\OMS/cmsy/m/n/10 S[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 A; B\OT1/cmr/m/n/10 ) =
+ [[](\OML/cmm/m/it/10 A; B\OT1/cmr/m/n/10 )][] \OMS/cmsy/m/n/10 ^^A [] []
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 122--123
+[]
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 125--127
+\OT1/cmr/m/it/10 whereas the stan-dard IoU gra-di-ent sat-is-fies
+ []
+
+<figures/fig2_multimetric_radar.pdf, id=151, 503.37584pt x 407.75453pt>
+File: figures/fig2_multimetric_radar.pdf Graphic file (type pdf)
+<use figures/fig2_multimetric_radar.pdf>
+Package pdftex.def Info: figures/fig2_multimetric_radar.pdf  used on input line
+ 131.
+(pdftex.def)             Requested size: 237.62184pt x 192.4846pt.
+
+Underfull \hbox (badness 1248) in paragraph at lines 132--132
+\OT1/cmr/bx/n/10 TinyPer-son. \OT1/cmr/m/n/10 H-WIoU (blue) en-velopes base-lin
+e
+ []
+
+
+Underfull \hbox (badness 3449) in paragraph at lines 144--145
+\OT1/cmr/m/n/10 All mod-els use Faster R-CNN with ResNet-50-
+ []
+
+[3 <./figures/fig2_multimetric_radar.pdf>]
+Overfull \hbox (184.51906pt too wide) in paragraph at lines 154--169
+ [][] 
+ []
+
+<figures/fig3_ablation_landscape.pdf, id=224, 939.51pt x 274.626pt>
+File: figures/fig3_ablation_landscape.pdf Graphic file (type pdf)
+<use figures/fig3_ablation_landscape.pdf>
+Package pdftex.def Info: figures/fig3_ablation_landscape.pdf  used on input lin
+e 173.
+(pdftex.def)             Requested size: 485.1468pt x 141.8132pt.
+
+Underfull \hbox (badness 4378) in paragraph at lines 182--183
+[]\OT1/cmr/bx/n/10 Overcoming NWD Degra-da-tion\OT1/cmr/m/n/10 : NWD
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 196--197
+[]\OT1/cmr/bx/n/10 Exponential $\OML/cmm/m/it/10 ^^M[]\OT1/cmr/m/n/10 (\OML/cmm
+/m/it/10 s\OT1/cmr/m/n/10 ) = 1 \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 e[]$\OT1/
+cmr/m/n/10 :
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 197--198
+[]\OT1/cmr/bx/n/10 Rational $\OML/cmm/m/it/10 ^^M[]\OT1/cmr/m/n/10 (\OML/cmm/m/
+it/10 s\OT1/cmr/m/n/10 )$ \OT1/cmr/bx/n/10 (Pro-posed)\OT1/cmr/m/n/10 :
+ []
+
+
+Underfull \hbox (badness 7907) in paragraph at lines 199--200
+\OT1/cmr/m/n/10 The ra-tio-nal quadratic tran-si-tion pro-vides the
+ []
+
+
+Underfull \hbox (badness 2245) in paragraph at lines 207--208
+[]\OT1/cmr/bx/n/10 Dual In-te-gra-tion (RPN + RoI Head)\OT1/cmr/m/n/10 :
+ []
+
+[4] [5 <./figures/fig3_ablation_landscape.pdf>] (main.aux)
+ ***********
+LaTeX2e <2025-11-01>
+L3 programming layer <2025-12-24>
+ ***********
+
+
+LaTeX Warning: There were undefined references.
+
+ ) 
+Here is how much of TeX's memory you used:
+ 2772 strings out of 467871
+ 41380 string characters out of 5418376
+ 463879 words of memory out of 5000000
+ 31632 multiletter control sequences out of 15000+600000
+ 640363 words of font info for 87 fonts, out of 8000000 for 9000
+ 1141 hyphenation exceptions out of 8191
+ 57i,13n,65p,1129b,297s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ <C:\Users\ADMIN\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec/dpi600\tcrm
+1000.pk><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfon
+ts/cm/cmbx10.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/publ
+ic/amsfonts/cm/cmbx12.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/t
+ype1/public/amsfonts/cm/cmbx6.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX
+/fonts/type1/public/amsfonts/cm/cmbx7.pfb><C:/Users/ADMIN/AppData/Local/Program
+s/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx9.pfb><C:/Users/ADMIN/AppData/Local
+/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><C:/Users/ADMIN/AppD
+ata/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi10.pfb><C:/Users/A
+DMIN/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi12.pfb><C
+:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi
+5.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts
+/cm/cmmi7.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/public/
+amsfonts/cm/cmmi9.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1
+/public/amsfonts/cm/cmr10.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fon
+ts/type1/public/amsfonts/cm/cmr12.pfb><C:/Users/ADMIN/AppData/Local/Programs/Mi
+KTeX/fonts/type1/public/amsfonts/cm/cmr5.pfb><C:/Users/ADMIN/AppData/Local/Prog
+rams/MiKTeX/fonts/type1/public/amsfonts/cm/cmr6.pfb><C:/Users/ADMIN/AppData/Loc
+al/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr7.pfb><C:/Users/ADMIN/AppD
+ata/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/ADM
+IN/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr9.pfb><C:/Us
+ers/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.p
+fb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm
+/cmsy7.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/public/ams
+fonts/cm/cmti10.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts/type1/p
+ublic/amsfonts/cm/cmti7.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTeX/fonts
+/type1/public/amsfonts/symbols/msbm10.pfb>
+Output written on main.pdf (5 pages, 418962 bytes).
+PDF statistics:
+ 422 PDF objects out of 1000 (max. 8388607)
+ 0 named destinations out of 1000 (max. 500000)
+ 16 words of extra memory for PDF output out of 10000 (max. 10000000)
+

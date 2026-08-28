@@ -1,0 +1,66 @@
+[{"stream_name":"stderr","time":6.43300746,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":6.43306205,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":6.433067003,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":6.433069468,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":7.01183471,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.011879828,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.011885748,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.011890201,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":16.796809912,"data":"Applied latest hot-patch fixes to /kaggle/working/aitod_baseline_s42\n"}
+,{"stream_name":"stdout","time":20.949732664,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric standard --placement iou_smooth_l1 --box-loss smooth_l1 --seed 42 --epochs 12 --batch-size 2\n"}
+,{"stream_name":"stdout","time":116.787925954,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stdout","time":116.787970686,"data":"=== AI-TOD-v2 Training: Metric=standard, Placement=everywhere, Loss=smooth_l1, Seed=42, Device=cuda ===\n"}
+,{"stream_name":"stdout","time":116.787983419,"data":"Data root: /kaggle/input/tiny-object-detection-in-aerial-images/AI-TOD\n"}
+,{"stream_name":"stdout","time":116.78798737299999,"data":"Loading datasets...\n"}
+,{"stream_name":"stdout","time":116.787991091,"data":"Train samples: 14018, Val samples: 14018\n"}
+,{"stream_name":"stdout","time":116.788011771,"data":"Building Faster R-CNN with 9 classes (8 foreground + background)...\n"}
+,{"stream_name":"stdout","time":116.788018129,"data":"\n"}
+,{"stream_name":"stdout","time":116.78802318,"data":"=== Beginning Training ===\n"}
+,{"stream_name":"stdout","time":2378.058007897,"data":"\n"}
+,{"stream_name":"stdout","time":2378.058060185,"data":"Evaluating Epoch 1/12 (Train loss: 0.5439, time: 2261.2s)...\n"}
+,{"stream_name":"stdout","time":3428.528983639,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":5651.51946779,"data":"\n"}
+,{"stream_name":"stdout","time":5651.519520326,"data":"Evaluating Epoch 2/12 (Train loss: 0.4815, time: 2222.4s)...\n"}
+,{"stream_name":"stdout","time":6694.088646413,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":8913.968196944,"data":"\n"}
+,{"stream_name":"stdout","time":8913.968410044,"data":"Evaluating Epoch 3/12 (Train loss: 0.4505, time: 2219.3s)...\n"}
+,{"stream_name":"stdout","time":9955.45203909,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":12177.004342708,"data":"\n"}
+,{"stream_name":"stdout","time":12177.004514571,"data":"Evaluating Epoch 4/12 (Train loss: 0.4299, time: 2221.0s)...\n"}
+,{"stream_name":"stdout","time":13212.69764791,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":15437.13401752,"data":"\n"}
+,{"stream_name":"stdout","time":15437.134077057,"data":"Evaluating Epoch 5/12 (Train loss: 0.4109, time: 2224.1s)...\n"}
+,{"stream_name":"stdout","time":16471.34317606,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":18700.891830769,"data":"\n"}
+,{"stream_name":"stdout","time":18700.891985515,"data":"Evaluating Epoch 6/12 (Train loss: 0.3929, time: 2229.2s)...\n"}
+,{"stream_name":"stdout","time":19737.932012669,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":21969.764446653,"data":"\n"}
+,{"stream_name":"stdout","time":21969.764486144,"data":"Evaluating Epoch 7/12 (Train loss: 0.3768, time: 2231.5s)...\n"}
+,{"stream_name":"stdout","time":23007.159954483,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":25240.990477134,"data":"\n"}
+,{"stream_name":"stdout","time":25240.990544626,"data":"Evaluating Epoch 8/12 (Train loss: 0.3599, time: 2233.5s)...\n"}
+,{"stream_name":"stdout","time":26276.654305559,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":28522.633455772,"data":"\n"}
+,{"stream_name":"stdout","time":28522.633505002,"data":"Evaluating Epoch 9/12 (Train loss: 0.3449, time: 2245.6s)...\n"}
+,{"stream_name":"stdout","time":29560.609965161,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":31804.603838499,"data":"\n"}
+,{"stream_name":"stdout","time":31804.603878559,"data":"Evaluating Epoch 10/12 (Train loss: 0.3304, time: 2243.6s)...\n"}
+,{"stream_name":"stdout","time":32842.097137026,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":35088.395942782,"data":"\n"}
+,{"stream_name":"stdout","time":35088.395985028,"data":"Evaluating Epoch 11/12 (Train loss: 0.3186, time: 2246.0s)...\n"}
+,{"stream_name":"stdout","time":36123.815077427,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":38374.273312354,"data":"\n"}
+,{"stream_name":"stdout","time":38374.273353033,"data":"Evaluating Epoch 12/12 (Train loss: 0.3107, time: 2250.1s)...\n"}
+,{"stream_name":"stdout","time":39406.348948811,"data":"[Error evaluating AI-TOD]: No module named 'aitodpycocotools'\n"}
+,{"stream_name":"stdout","time":39406.348994561,"data":"\n"}
+,{"stream_name":"stdout","time":39406.349000768,"data":"=== Training Complete! Best AP50 = 0.0000 ===\n"}
+,{"stream_name":"stdout","time":39409.434235155,"data":"Execution finished with exit code: 0\n"}
+,{"stream_name":"stderr","time":39412.974320841,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":39412.974356508,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":39413.22424732,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":39413.224273935,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":39414.072573471,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":39414.375869786,"data":"[NbConvertApp] Writing 88320 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":39416.816741716,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":39417.912660908,"data":"[NbConvertApp] Writing 367041 bytes to __results__.html\n"}
+]

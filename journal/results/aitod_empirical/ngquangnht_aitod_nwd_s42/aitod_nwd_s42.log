@@ -1,0 +1,1 @@
+ERROR: Cannot access kernel 'ngquangnht/tod-aitod-nwd-s42-20260823' (Permission 'kernels.get' was denied). The most likely cause is a wrong kernel slug. Use the slug from the notebook URL (kaggle.com/code/owner/KERNEL-SLUG).

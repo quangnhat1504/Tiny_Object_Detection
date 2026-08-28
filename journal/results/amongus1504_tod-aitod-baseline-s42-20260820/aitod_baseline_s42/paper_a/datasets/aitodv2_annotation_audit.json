@@ -1,0 +1,400 @@
+{
+  "status": "ANNOTATIONS_ACQUIRED_IMAGES_PENDING",
+  "source_url": "https://drive.google.com/drive/folders/1Er14atDO1cBraBD4DSFODZV1x7NHO_PY",
+  "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+  "annotation_root": "D:\\paper_a_data\\AI-TOD-v2\\annotations",
+  "splits": {
+    "train": {
+      "file": "aitodv2_train.json",
+      "bytes": 72148249,
+      "sha256": "ed7b37a1187b496b96943fa46c15aab39656d59eaf501192d85178354b637b2e",
+      "images": 11214,
+      "annotations": 301534,
+      "categories": [
+        {
+          "id": 0,
+          "name": "airplane",
+          "supercategory": "mark"
+        },
+        {
+          "id": 1,
+          "name": "bridge",
+          "supercategory": "mark"
+        },
+        {
+          "id": 2,
+          "name": "storage-tank",
+          "supercategory": "mark"
+        },
+        {
+          "id": 3,
+          "name": "ship",
+          "supercategory": "mark"
+        },
+        {
+          "id": 4,
+          "name": "swimming-pool",
+          "supercategory": "mark"
+        },
+        {
+          "id": 5,
+          "name": "vehicle",
+          "supercategory": "mark"
+        },
+        {
+          "id": 6,
+          "name": "person",
+          "supercategory": "mark"
+        },
+        {
+          "id": 7,
+          "name": "wind-mill",
+          "supercategory": "mark"
+        }
+      ],
+      "category_counts": {
+        "0": 666,
+        "1": 603,
+        "2": 5584,
+        "3": 14074,
+        "4": 787,
+        "5": 265194,
+        "6": 14446,
+        "7": 180
+      },
+      "valid_category_counts": {
+        "0": 666,
+        "1": 603,
+        "2": 5576,
+        "3": 14072,
+        "4": 787,
+        "5": 265164,
+        "6": 14446,
+        "7": 180
+      },
+      "valid_annotations_under_official_loader_contract": 301494,
+      "images_with_valid_gt": 11204,
+      "empty_images_after_filter": 10,
+      "filtered_reason_counts": {
+        "no_image_intersection": 40
+      },
+      "image_size_histogram": {
+        "800x788": 1,
+        "800x800": 11212,
+        "800x801": 1
+      },
+      "sqrt_bbox_area_px_quantiles_after_filter": {
+        "p05": 6.708203932499407,
+        "p10": 7.745966692414813,
+        "p20": 8.944271909999163,
+        "p50": 11.832159566199232,
+        "p80": 14.96662954709575,
+        "p90": 17.320508075688775,
+        "p95": 22.22611077089285
+      }
+    },
+    "val": {
+      "file": "aitodv2_val.json",
+      "bytes": 17859473,
+      "sha256": "d0439ba687db66bb38584a3398a906f15c47e055cdd84bb9060496a91f30d7cf",
+      "images": 2804,
+      "annotations": 75091,
+      "categories": [
+        {
+          "id": 0,
+          "name": "airplane",
+          "supercategory": "mark"
+        },
+        {
+          "id": 1,
+          "name": "bridge",
+          "supercategory": "mark"
+        },
+        {
+          "id": 2,
+          "name": "storage-tank",
+          "supercategory": "mark"
+        },
+        {
+          "id": 3,
+          "name": "ship",
+          "supercategory": "mark"
+        },
+        {
+          "id": 4,
+          "name": "swimming-pool",
+          "supercategory": "mark"
+        },
+        {
+          "id": 5,
+          "name": "vehicle",
+          "supercategory": "mark"
+        },
+        {
+          "id": 6,
+          "name": "person",
+          "supercategory": "mark"
+        },
+        {
+          "id": 7,
+          "name": "wind-mill",
+          "supercategory": "mark"
+        }
+      ],
+      "category_counts": {
+        "0": 177,
+        "1": 152,
+        "2": 2635,
+        "3": 3839,
+        "4": 112,
+        "5": 64247,
+        "6": 3860,
+        "7": 69
+      },
+      "valid_category_counts": {
+        "0": 177,
+        "1": 152,
+        "2": 2633,
+        "3": 3838,
+        "4": 112,
+        "5": 64240,
+        "6": 3860,
+        "7": 69
+      },
+      "valid_annotations_under_official_loader_contract": 75081,
+      "images_with_valid_gt": 2804,
+      "empty_images_after_filter": 0,
+      "filtered_reason_counts": {
+        "no_image_intersection": 9,
+        "width_or_height_below_one": 1
+      },
+      "image_size_histogram": {
+        "800x799": 1,
+        "800x800": 2803
+      },
+      "sqrt_bbox_area_px_quantiles_after_filter": {
+        "p05": 6.324555320336651,
+        "p10": 7.348469228349563,
+        "p20": 8.944271909999141,
+        "p50": 11.832159566199211,
+        "p80": 14.832396974191306,
+        "p90": 16.970562748477153,
+        "p95": 21.633307652783937
+      }
+    },
+    "trainval": {
+      "file": "aitodv2_trainval.json",
+      "bytes": 90199069,
+      "sha256": "5d18a108b1e440d236a47669fd0a2ecf2cb5c57f588684c11975a03e28ecd262",
+      "images": 14018,
+      "annotations": 376625,
+      "categories": [
+        {
+          "id": 0,
+          "name": "airplane",
+          "supercategory": "mark"
+        },
+        {
+          "id": 1,
+          "name": "bridge",
+          "supercategory": "mark"
+        },
+        {
+          "id": 2,
+          "name": "storage-tank",
+          "supercategory": "mark"
+        },
+        {
+          "id": 3,
+          "name": "ship",
+          "supercategory": "mark"
+        },
+        {
+          "id": 4,
+          "name": "swimming-pool",
+          "supercategory": "mark"
+        },
+        {
+          "id": 5,
+          "name": "vehicle",
+          "supercategory": "mark"
+        },
+        {
+          "id": 6,
+          "name": "person",
+          "supercategory": "mark"
+        },
+        {
+          "id": 7,
+          "name": "wind-mill",
+          "supercategory": "mark"
+        }
+      ],
+      "category_counts": {
+        "0": 843,
+        "1": 755,
+        "2": 8219,
+        "3": 17913,
+        "4": 899,
+        "5": 329441,
+        "6": 18306,
+        "7": 249
+      },
+      "valid_category_counts": {
+        "0": 843,
+        "1": 755,
+        "2": 8209,
+        "3": 17910,
+        "4": 899,
+        "5": 329404,
+        "6": 18306,
+        "7": 249
+      },
+      "valid_annotations_under_official_loader_contract": 376575,
+      "images_with_valid_gt": 14008,
+      "empty_images_after_filter": 10,
+      "filtered_reason_counts": {
+        "no_image_intersection": 49,
+        "width_or_height_below_one": 1
+      },
+      "image_size_histogram": {
+        "800x788": 1,
+        "800x799": 1,
+        "800x800": 14015,
+        "800x801": 1
+      },
+      "sqrt_bbox_area_px_quantiles_after_filter": {
+        "p05": 6.708203932499331,
+        "p10": 7.74596669241479,
+        "p20": 8.94427190999916,
+        "p50": 11.832159566199232,
+        "p80": 14.966629547095735,
+        "p90": 17.291616465790657,
+        "p95": 21.999999999999993
+      }
+    },
+    "test": {
+      "file": "aitodv2_test.json",
+      "bytes": 90194322,
+      "sha256": "9817a75f9bc4a84015881f2ddbf39bcc29635654a0266b210fd382743c927d98",
+      "images": 14018,
+      "annotations": 376121,
+      "categories": [
+        {
+          "id": 0,
+          "name": "airplane",
+          "supercategory": "mark"
+        },
+        {
+          "id": 1,
+          "name": "bridge",
+          "supercategory": "mark"
+        },
+        {
+          "id": 2,
+          "name": "storage-tank",
+          "supercategory": "mark"
+        },
+        {
+          "id": 3,
+          "name": "ship",
+          "supercategory": "mark"
+        },
+        {
+          "id": 4,
+          "name": "swimming-pool",
+          "supercategory": "mark"
+        },
+        {
+          "id": 5,
+          "name": "vehicle",
+          "supercategory": "mark"
+        },
+        {
+          "id": 6,
+          "name": "person",
+          "supercategory": "mark"
+        },
+        {
+          "id": 7,
+          "name": "wind-mill",
+          "supercategory": "mark"
+        }
+      ],
+      "category_counts": {
+        "0": 854,
+        "1": 802,
+        "2": 6089,
+        "3": 18945,
+        "4": 465,
+        "5": 332603,
+        "6": 16029,
+        "7": 334
+      },
+      "valid_category_counts": {
+        "0": 854,
+        "1": 802,
+        "2": 6089,
+        "3": 18943,
+        "4": 465,
+        "5": 332602,
+        "6": 16027,
+        "7": 334
+      },
+      "valid_annotations_under_official_loader_contract": 376116,
+      "images_with_valid_gt": 14000,
+      "empty_images_after_filter": 18,
+      "filtered_reason_counts": {
+        "no_image_intersection": 2,
+        "width_or_height_below_one": 3
+      },
+      "image_size_histogram": {
+        "800x782": 1,
+        "800x787": 2,
+        "800x797": 1,
+        "800x800": 14014
+      },
+      "sqrt_bbox_area_px_quantiles_after_filter": {
+        "p05": 6.70820393249935,
+        "p10": 7.745966692414812,
+        "p20": 8.94427190999916,
+        "p50": 11.83215956619923,
+        "p80": 14.966629547095765,
+        "p90": 17.32050807568879,
+        "p95": 21.908902300206645
+      }
+    }
+  },
+  "filename_contract": {
+    "train_val_overlap": 0,
+    "trainval_test_overlap": 0,
+    "trainval_is_exact_train_val_union": true
+  },
+  "torchvision_label_mapping": {
+    "annotation_category_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "training_labels": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "rule": "training_label = annotation_category_id + 1"
+  },
+  "manifest": "C:\\Users\\ADMIN\\OneDrive\\Documents\\_Project\\tiny-object-detection\\paper_a\\splits\\aitodv2_annotation_manifest.csv",
+  "manifest_sha256": "595b04e0d89e036cd8522ca01b6bd6e29b4a1e24779b3e9c2b4e7bdc5413a457",
+  "images_acquired": false,
+  "g2_ready": false
+}

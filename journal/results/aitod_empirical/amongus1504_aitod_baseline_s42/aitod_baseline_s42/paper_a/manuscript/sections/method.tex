@@ -1,0 +1,111 @@
+\section{Method}
+\label{sec:method}
+
+In this section, we present the mathematical formulation and architectural design of our unified tiny object detection framework. We first formulate the geometric principles of the Anisotropic Log-Wasserstein (ALW) metric, followed by the Scale-Adaptive schedule (SA-ALW), the Proposal Micro-Rescue (PC-MR) gradient projection mechanism, and Multi-Scale Feature Distillation (PC-MOC).
+
+\subsection{Problem Formulation \& Box Geometry}
+Let a predicted bounding box be parameterized by its 4D center and dimension tuple $p = (x_p, y_p, w_p, h_p) \in \mathbb{R}^2 \times \mathbb{R}_{>0}^2$, and let a ground-truth target bounding box be denoted as $t = (x_t, y_t, w_t, h_t) \in \mathbb{R}^2 \times \mathbb{R}_{>0}^2$, where $(x, y)$ represent spatial center coordinates and $(w, h)$ denote positive box width and height respectively. The geometric scale of a target box is defined as the geometric mean of its dimensions: $s = \sqrt{w_t h_t}$.
+
+\subsection{Anisotropic Log-Wasserstein (ALW) Metric}
+\label{subsec:alw_metric}
+A fundamental limitation of standard Gaussian Wasserstein metrics (such as NWD~\cite{xu2022nwd}) is their isotropic coupling of horizontal and vertical dimensions, which enforces identical spatial dispersion across both axes. To establish true coordinate scale invariance, consider the 2-Wasserstein distance between two uniform 2D rectangular densities with variances $\sigma_{x}^2 = w^2/12$ and $\sigma_{y}^2 = h^2/12$. The joint spatial dispersion along each orthogonal axis is proportional to the quadratic per-axis scale normalizers:
+\begin{equation}
+S_x = \frac{w_p^2 + w_t^2}{2} + \epsilon, \qquad S_y = \frac{h_p^2 + h_t^2}{2} + \epsilon,
+\label{eq:scale_normalizers}
+\end{equation}
+where $\epsilon = 10^{-6}$ guarantees numerical stability. Using these normalizers, the dimensionless center translation distance $D_{\mathrm{pos}}$ and the scale-invariant shape distortion distance $D_{\mathrm{shape}}$ are defined as:
+\begin{align}
+D_{\mathrm{pos}}(p, t) &= \frac{(x_p - x_t)^2}{S_x} + \frac{(y_p - y_t)^2}{S_y}, \label{eq:d_pos} \\
+D_{\mathrm{shape}}(p, t) &= \log^2\!\left(\frac{w_p}{w_t}\right) + \log^2\!\left(\frac{h_p}{h_t}\right). \label{eq:d_shape}
+\end{align}
+The base Anisotropic Log-Wasserstein (ALW) distance is formulated as the composite sum:
+\begin{equation}
+D_{\mathrm{ALW}}(p, t) = D_{\mathrm{pos}}(p, t) + D_{\mathrm{shape}}(p, t).
+\label{eq:d_alw}
+\end{equation}
+To convert distance into a normalized similarity metric for soft label assignment, we define the exponential kernel:
+\begin{equation}
+K_{\mathrm{ALW}}(p, t) = \exp\left[ -\beta \sqrt{D_{\mathrm{ALW}}(p, t)} \right],
+\label{eq:k_alw}
+\end{equation}
+where $\beta > 0$ controls the exponential decay rate.
+
+\textbf{Theoretical Properties}: The ALW distance satisfies the following rigorous mathematical properties:
+\begin{enumerate}
+    \item \emph{Non-Negativity \& Identity}: $D_{\mathrm{ALW}}(p, t) \ge 0$, and $D_{\mathrm{ALW}}(p, t) = 0 \iff p = t$.
+    \item \emph{Symmetry}: $D_{\mathrm{ALW}}(p, t) = D_{\mathrm{ALW}}(t, p)$.
+    \item \emph{Dimensionless \& Scale Invariance}: For any positive scalar factor $\alpha > 0$, scaling both boxes uniformly $(\alpha p, \alpha t)$ yields $D_{\mathrm{ALW}}(\alpha p, \alpha t) = D_{\mathrm{ALW}}(p, t)$.
+    \item \emph{Smooth, Non-Vanishing Gradients}: $\lim_{\|p-t\| \to \infty} \nabla_p D_{\mathrm{ALW}} \neq \mathbf{0}$, ensuring continuous optimization signals even under zero spatial overlap.
+\end{enumerate}
+
+\subsection{Scale-Adaptive Schedules (SA-ALW)}
+\label{subsec:sa_alw}
+For microscopic objects ($s < 8\text{ px}$), empirical localization errors are overwhelmingly dominated by minute center translation jitter rather than aspect-ratio deformation. Conversely, for larger objects ($s > 16\text{ px}$), shape aspect-ratio constraints become increasingly prominent. To dynamically balance position and shape regression across scales, we introduce scale-conditioned schedules for both the similarity temperature $\beta$ and the position weight $w_{\mathrm{pos}}$.
+
+Let $[s_{\min}, s_{\max}] = [4.0, 32.0]\text{ px}$ denote empirical scale bounds on TinyPerson. We compute the normalized scale factor $u(s) \in [0, 1]$ as:
+\begin{equation}
+u(s) = \operatorname{clip}\left( \frac{s_{\max} - s}{s_{\max} - s_{\min}},\, 0,\, 1 \right).
+\label{eq:scale_factor}
+\end{equation}
+The dynamic temperature schedule $\beta(s)$ and position emphasis schedule $w_{\mathrm{pos}}(s)$ are formulated as linear interpolations:
+\begin{align}
+\beta(s) &= \beta_{\min} + (\beta_{\max} - \beta_{\min}) \cdot u(s), \label{eq:beta_schedule} \\
+w_{\mathrm{pos}}(s) &= w_{\min} + (w_{\max} - w_{\min}) \cdot u(s). \label{eq:w_pos_schedule}
+\end{align}
+Under these schedules, microscopic instances ($s \to s_{\min}$, $u(s) \to 1$) automatically receive higher position weighting ($w_{\mathrm{pos}} \to w_{\max} = 2.5$) and sharp similarity discrimination ($\beta \to \beta_{\max} = 3.0$), whereas larger instances receive balanced geometry weighting ($w_{\mathrm{pos}} \to 1.0, \beta \to 1.0$).
+
+The Scale-Adaptive Log-Wasserstein (SA-ALW) distance and kernel are defined as:
+\begin{align}
+D_{\mathrm{SA}}(p, t) &= w_{\mathrm{pos}}(s) D_{\mathrm{pos}}(p, t) + D_{\mathrm{shape}}(p, t), \label{eq:d_sa} \\
+K_{\mathrm{SA}}(p, t) &= \exp\left[ -\beta(s) \sqrt{D_{\mathrm{SA}}(p, t)} \right]. \label{eq:k_sa}
+\end{align}
+During label assignment, pairwise similarities $K_{\mathrm{SA}}(p, t)$ replace discrete IoU thresholds to assign positive anchors adaptively. During bounding box regression, the loss is directly computed as:
+\begin{equation}
+\mathcal{L}_{\mathrm{reg}}^{\mathrm{SA}}(p, t) = \sqrt{D_{\mathrm{SA}}(p, t)}.
+\label{eq:l_reg_sa}
+\end{equation}
+
+\subsection{Proposal Micro-Rescue (PC-MR)}
+\label{subsec:pc_mr}
+In standard Region Proposal Networks (RPN), anchors are generated uniformly across multiple pyramid levels. Within any image tile, normal-scale anchors vastly outnumber microscopic anchors and produce significantly larger gradient norms. Let $\mathbf{g}_{\mathrm{main}} = \nabla_{\boldsymbol{\theta}} \mathcal{L}_{\mathrm{rpn}}(\mathcal{P}_{\mathrm{main}})$ denote the gradient vector computed from standard proposals, and let $\mathbf{g}_{\mathrm{micro}} = \nabla_{\boldsymbol{\theta}} \mathcal{L}_{\mathrm{rpn}}(\mathcal{P}_{\mathrm{micro}})$ denote the gradient vector computed exclusively from identified sub-$8\times 8$ pixel microscopic proposals.
+
+When $\mathbf{g}_{\mathrm{micro}} \cdot \mathbf{g}_{\mathrm{main}} < 0$, the gradient update direction dictated by normal-scale anchors acts as adversarial noise to the microscopic objective, causing catastrophic \emph{gradient annihilation}. To mathematically eliminate this conflict, PC-MR computes the orthogonal projection of $\mathbf{g}_{\mathrm{micro}}$ onto the normal hyperplane of $\mathbf{g}_{\mathrm{main}}$:
+\begin{equation}
+\mathbf{g}_{\mathrm{proj}} = \mathbf{g}_{\mathrm{micro}} - \frac{\mathbf{g}_{\mathrm{micro}} \cdot \mathbf{g}_{\mathrm{main}}}{\|\mathbf{g}_{\mathrm{main}}\|^2 + \epsilon} \mathbf{g}_{\mathrm{main}}.
+\label{eq:g_proj}
+\end{equation}
+
+\textbf{Orthogonality \& Zero-Interference Proof}: Taking the inner product of $\mathbf{g}_{\mathrm{proj}}$ and $\mathbf{g}_{\mathrm{main}}$:
+\begin{align}
+\langle \mathbf{g}_{\mathrm{proj}},\, \mathbf{g}_{\mathrm{main}} \rangle &= \langle \mathbf{g}_{\mathrm{micro}},\, \mathbf{g}_{\mathrm{main}} \rangle \nonumber \\
+&\quad - \frac{\langle \mathbf{g}_{\mathrm{micro}},\, \mathbf{g}_{\mathrm{main}} \rangle}{\|\mathbf{g}_{\mathrm{main}}\|^2} \|\mathbf{g}_{\mathrm{main}}\|^2 = 0.
+\label{eq:orthogonality_proof}
+\end{align}
+Furthermore, by first-order Taylor expansion on the main loss surface under parameter update $\Delta \boldsymbol{\theta} = -\eta \lambda_{\mathrm{MR}} \mathbf{g}_{\mathrm{proj}}$:
+\begin{align}
+\mathcal{L}_{\mathrm{main}}(\boldsymbol{\theta} + \Delta \boldsymbol{\theta}) &= \mathcal{L}_{\mathrm{main}}(\boldsymbol{\theta}) - \eta \lambda_{\mathrm{MR}} \langle \mathbf{g}_{\mathrm{main}},\, \mathbf{g}_{\mathrm{proj}} \rangle + \mathcal{O}(\eta^2) \nonumber \\
+&= \mathcal{L}_{\mathrm{main}}(\boldsymbol{\theta}) + \mathcal{O}(\eta^2).
+\label{eq:taylor_proof}
+\end{align}
+Equation~\eqref{eq:taylor_proof} rigorously proves that micro-instance gradient rescue introduces \emph{zero first-order interference} to dominant proposals. The total backward gradient propagated through the shared backbone is assembled as:
+\begin{equation}
+\mathbf{g}_{\mathrm{total}} = \mathbf{g}_{\mathrm{main}} + \lambda_{\mathrm{MR}} \mathbf{g}_{\mathrm{proj}},
+\label{eq:g_total}
+\end{equation}
+where $\lambda_{\mathrm{MR}} = 0.5$.
+
+\subsection{Multi-Scale Feature Distillation (PC-MOC)}
+\label{subsec:pc_moc}
+During dynamic curriculum-based scale routing, sudden shifts in active scale distributions can destabilize the feature representations in the top-down Feature Pyramid Network. To prevent semantic feature drift, PC-MOC introduces a multi-scale cosine feature alignment objective between the active student feature maps $f_{\mathrm{curr}}^{P_\ell}$ and reference teacher representations $f_{\mathrm{ref}}^{P_\ell}$ across FPN levels $\ell \in \{2, 3, 4, 5\}$:
+\begin{equation}
+\mathcal{L}_{\mathrm{distill}} = \sum_{\ell=2}^{5} \frac{1}{H_\ell W_\ell} \sum_{i,j} \Big( 1 - \cos\big( f_{\mathrm{curr}}^{P_\ell}(i,j),\, f_{\mathrm{ref}}^{P_\ell}(i,j) \big) \Big),
+\label{eq:l_distill}
+\end{equation}
+where $\cos(u, v) = \frac{\langle u, v \rangle}{\|u\| \|v\| + \epsilon}$. The reference teacher features $f_{\mathrm{ref}}^{P_\ell}$ are extracted from a pre-trained frozen teacher backbone to anchor spatial representations.
+
+The overall multi-task objective optimized end-to-end is:
+\begin{equation}
+\mathcal{L}_{\mathrm{total}} = \mathcal{L}_{\mathrm{cls}} + \lambda_{\mathrm{reg}} \mathcal{L}_{\mathrm{reg}}^{\mathrm{SA}} + \lambda_{\mathrm{MR}} \mathcal{L}_{\mathrm{MR}} + \lambda_{\mathrm{distill}} \mathcal{L}_{\mathrm{distill}}.
+\label{eq:l_total}
+\end{equation}
+At test time, both PC-MR and PC-MOC are deactivated, leaving forward inference identical to standard Faster R-CNN with zero additional computational overhead.

@@ -1,0 +1,68 @@
+[{"stream_name":"stderr","time":7.572279455,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.572338917,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.57234382,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.572346592,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.189693742,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.189727554,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.189732976,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.189737267,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":18.428001119,"data":"Applied latest hot-patch fixes to /kaggle/working/aitod_hwiou_sig10_s42\n"}
+,{"stream_name":"stdout","time":22.979955786,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric h_wiou --placement h_wiou --box-loss h_wiou --h-wiou-sigma-0 10.0 --seed 42 --epochs 12 --batch-size 4\n"}
+,{"stream_name":"stdout","time":44.671346838,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stdout","time":44.671385327,"data":"=== AI-TOD-v2 Training: Metric=h_wiou, Placement=h_wiou, Loss=h_wiou, Seed=42, Device=cuda ===\n"}
+,{"stream_name":"stdout","time":44.671392402,"data":"Data root: /kaggle/input/datasets/simplestzyp/tiny-object-detection-in-aerial-images/AI-TOD\n"}
+,{"stream_name":"stdout","time":44.671398126,"data":"Loading datasets...\n"}
+,{"stream_name":"stdout","time":44.671406122,"data":"Train samples: 14018, Val samples: 14018\n"}
+,{"stream_name":"stdout","time":44.67141113,"data":"Building Faster R-CNN with 9 classes (8 foreground + background)...\n"}
+,{"stream_name":"stdout","time":44.671415957,"data":"  [loss] fastrcnn_loss replaced, type=h_wiou, warmup_epochs=3\n"}
+,{"stream_name":"stdout","time":44.671420875,"data":"\n"}
+,{"stream_name":"stdout","time":44.671426177,"data":"=== Beginning Training ===\n"}
+,{"stream_name":"stdout","time":2999.159907262,"data":"\n"}
+,{"stream_name":"stdout","time":2999.159961277,"data":"Evaluating Epoch 1/12 (Train loss: 0.5466, time: 2954.5s)...\n"}
+,{"stream_name":"stderr","time":2999.224741943,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":2999.225143414,"data":"  File \"/kaggle/working/aitod_hwiou_sig10_s42/scripts/train_frcnn_aitod.py\", line 299, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":2999.225482731,"data":"    main()\n"}
+,{"stream_name":"stderr","time":2999.225782853,"data":"  File \"/kaggle/working/aitod_hwiou_sig10_s42/scripts/train_frcnn_aitod.py\", line 281, in main\n"}
+,{"stream_name":"stderr","time":2999.22608467,"data":"    train_aitod(\n"}
+,{"stream_name":"stderr","time":2999.22610548,"data":"  File \"/kaggle/working/aitod_hwiou_sig10_s42/scripts/train_frcnn_aitod.py\", line 193, in train_aitod\n"}
+,{"stream_name":"stderr","time":2999.22616575,"data":"    for images, targets in val_loader:\n"}
+,{"stream_name":"stderr","time":2999.226967367,"data":"                           ^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2999.226984313,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/dataloader.py\", line 741, in __next__\n"}
+,{"stream_name":"stderr","time":2999.226989885,"data":"    data = self._next_data()\n"}
+,{"stream_name":"stderr","time":2999.227014246,"data":"           ^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2999.227018287,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/dataloader.py\", line 1548, in _next_data\n"}
+,{"stream_name":"stderr","time":2999.227022145,"data":"    return self._process_data(data, worker_id)\n"}
+,{"stream_name":"stderr","time":2999.227025613,"data":"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2999.22702911,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/dataloader.py\", line 1586, in _process_data\n"}
+,{"stream_name":"stderr","time":2999.227269089,"data":"    data.reraise()\n"}
+,{"stream_name":"stderr","time":2999.227279462,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/_utils.py\", line 775, in reraise\n"}
+,{"stream_name":"stderr","time":2999.231241492,"data":"    raise exception\n"}
+,{"stream_name":"stderr","time":2999.231258006,"data":"FileNotFoundError: Caught FileNotFoundError in DataLoader worker process 0.\n"}
+,{"stream_name":"stderr","time":2999.231262784,"data":"Original Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":2999.231266615,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/_utils/worker.py\", line 358, in _worker_loop\n"}
+,{"stream_name":"stderr","time":2999.231271514,"data":"    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]\n"}
+,{"stream_name":"stderr","time":2999.231275171,"data":"           ^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2999.231278772,"data":"  File \"/usr/local/lib/python3.12/dist-packages/torch/utils/data/_utils/fetch.py\", line 54, in fetch\n"}
+,{"stream_name":"stderr","time":2999.231283634,"data":"    data = [self.dataset[idx] for idx in possibly_batched_index]\n"}
+,{"stream_name":"stderr","time":2999.231287601,"data":"            ~~~~~~~~~~~~^^^^^\n"}
+,{"stream_name":"stderr","time":2999.231291305,"data":"  File \"/kaggle/working/aitod_hwiou_sig10_s42/paper_a/datasets/coco_original.py\", line 105, in __getitem__\n"}
+,{"stream_name":"stderr","time":2999.231296039,"data":"    image = self._load_image(image_info)\n"}
+,{"stream_name":"stderr","time":2999.231300002,"data":"            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2999.231304189,"data":"  File \"/kaggle/working/aitod_hwiou_sig10_s42/paper_a/datasets/coco_original.py\", line 99, in _load_image\n"}
+,{"stream_name":"stderr","time":2999.231308214,"data":"    with Image.open(image_path) as source:\n"}
+,{"stream_name":"stderr","time":2999.231312147,"data":"         ^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2999.23131608,"data":"  File \"/usr/local/lib/python3.12/dist-packages/PIL/Image.py\", line 3513, in open\n"}
+,{"stream_name":"stderr","time":2999.231320322,"data":"    fp = builtins.open(filename, \"rb\")\n"}
+,{"stream_name":"stderr","time":2999.231324127,"data":"         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"}
+,{"stream_name":"stderr","time":2999.231328583,"data":"FileNotFoundError: [Errno 2] No such file or directory: '/kaggle/input/datasets/simplestzyp/tiny-object-detection-in-aerial-images/AI-TOD/images/val/6a6abd9bd.png'\n"}
+,{"stream_name":"stderr","time":2999.231333505,"data":"\n"}
+,{"stream_name":"stdout","time":3005.948188536,"data":"Execution finished with exit code: 1\n"}
+,{"stream_name":"stderr","time":3008.744009263,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":3008.744036282,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":3008.912197046,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":3008.91223196,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":3009.524280554,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":3009.829095826,"data":"[NbConvertApp] Writing 64163 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":3012.157808889,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":3012.953507773,"data":"[NbConvertApp] Writing 342999 bytes to __results__.html\n"}
+]

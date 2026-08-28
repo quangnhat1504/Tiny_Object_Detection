@@ -1,0 +1,32 @@
+[{"stream_name":"stderr","time":7.22215187,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.222219462,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.222226424,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.222253394,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":7.828075237,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.828107338,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.828113128,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.82811699,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":20.751273007,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric standard --placement everywhere --box-loss smooth_l1 --seed 42 --epochs 12\n"}
+,{"stream_name":"stderr","time":28.47597348,"data":"usage: train_frcnn_aitod.py [-h]\n"}
+,{"stream_name":"stderr","time":28.47600979,"data":"                            [--metric {standard,nwd,rfla,alw_canonical,sa_alw_canonical,h_wiou}]\n"}
+,{"stream_name":"stderr","time":28.476016994,"data":"                            [--placement {iou_smooth_l1,la,loss,la_loss,h_wiou}]\n"}
+,{"stream_name":"stdout","time":28.476014996,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stderr","time":28.476021654,"data":"                            [--box-loss {smooth_l1,metric,h_wiou}]\n"}
+,{"stream_name":"stderr","time":28.476053082,"data":"                            [--seed SEED] [--epochs EPOCHS]\n"}
+,{"stream_name":"stderr","time":28.476059209,"data":"                            [--batch-size BATCH_SIZE] [--lr LR]\n"}
+,{"stream_name":"stderr","time":28.47606394,"data":"                            [--h-wiou-sigma-0 H_WIOU_SIGMA_0]\n"}
+,{"stream_name":"stderr","time":28.476072413,"data":"                            [--h-wiou-form H_WIOU_FORM]\n"}
+,{"stream_name":"stderr","time":28.476076427,"data":"                            [--h-wiou-static-gamma H_WIOU_STATIC_GAMMA]\n"}
+,{"stream_name":"stderr","time":28.476079715,"data":"                            [--data-root DATA_ROOT] [--output-dir OUTPUT_DIR]\n"}
+,{"stream_name":"stderr","time":28.47608275,"data":"                            [--tag TAG]\n"}
+,{"stream_name":"stderr","time":28.47608577,"data":"train_frcnn_aitod.py: error: argument --placement: invalid choice: 'everywhere' (choose from iou_smooth_l1, la, loss, la_loss, h_wiou)\n"}
+,{"stream_name":"stdout","time":30.49710921,"data":"Execution finished with exit code: 2\n"}
+,{"stream_name":"stderr","time":33.301529529,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":33.301559411,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":33.45779987,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":33.457826565,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":34.064925796,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":34.364624696,"data":"[NbConvertApp] Writing 3890 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":36.759135523,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":37.545557384,"data":"[NbConvertApp] Writing 281122 bytes to __results__.html\n"}
+]

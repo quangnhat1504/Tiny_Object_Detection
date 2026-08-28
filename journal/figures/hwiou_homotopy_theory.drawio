@@ -1,0 +1,102 @@
+<mxfile host="Electron" modified="2026-08-28T23:00:00.000Z" agent="Antigravity" version="21.6.8" type="device">
+  <diagram id="hwiou_theory_master" name="Theoretical Foundations of H-WIoU (Tufte / Okabe-Ito Standard)">
+    <mxGraphModel dx="1200" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="500" math="1" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============================================================================== -->
+        <!-- PANEL (a): DISCRETE LEBESGUE MEASURE (IOU COLLAPSE) [x: 40, y: 50, w: 340, h: 380] -->
+        <!-- ============================================================================== -->
+        <mxCell id="card_a" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;strokeWidth=1.2;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="50" width="340" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="card_a_h" value="&lt;b&gt;&lt;font color=&quot;#0F172A&quot; style=&quot;font-size: 13px;&quot;&gt;(a) Discrete Lebesgue Measure (IoU)&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="50" y="60" width="320" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Graphic Boxes A and G -->
+        <mxCell id="vis_a_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E2E8F0;strokeWidth=0.8;" vertex="1" parent="1">
+          <mxGeometry x="55" y="95" width="310" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="box_a" value="&lt;b&gt;Anchor A&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 9px;&quot;&gt;(8 × 8 px)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#2563EB;fontColor=#1E40AF;strokeWidth=1.2;" vertex="1" parent="1">
+          <mxGeometry x="75" y="125" width="80" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="box_g" value="&lt;b&gt;GT G&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size: 9px;&quot;&gt;(6 × 6 px)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#059669;fontColor=#064E3B;strokeWidth=1.2;" vertex="1" parent="1">
+          <mxGeometry x="235" y="130" width="75" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Disjoint Label -->
+        <mxCell id="disjoint_lbl" value="&lt;font color=&quot;#DC2626&quot; style=&quot;font-size: 10px;&quot;&gt;&lt;b&gt;Disjoint (Offset &amp;gt; 2 px)&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="155" y="150" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Mathematical Box (a) -->
+        <mxCell id="math_a" value="&lt;b&gt;Discontinuous Gradient Collapse:&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#DC2626&quot; style=&quot;font-size: 12px;&quot;&gt;$$\mathrm{IoU}(A, G) \equiv 0$$&lt;br&gt;$$\|\nabla_\theta \mathcal{L}_{\mathrm{IoU}}\| \equiv \mathbf{0}\quad (\mathrm{Vanishing\ Gradient})$$&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot; style=&quot;font-size: 10px;&quot;&gt;• Indicator function has zero derivative under disjoint sets.&lt;br&gt;• Severe anchor starvation during proposal assignment.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#FECACA;strokeWidth=0.8;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="55" y="240" width="310" height="175" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================================== -->
+        <!-- PANEL (b): WASSERSTEIN OPTIMAL TRANSPORT SPACE [x: 410, y: 50, w: 340, h: 380] -->
+        <!-- ============================================================================== -->
+        <mxCell id="card_b" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;strokeWidth=1.2;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="410" y="50" width="340" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="card_b_h" value="&lt;b&gt;&lt;font color=&quot;#0F172A&quot; style=&quot;font-size: 13px;&quot;&gt;(b) Optimal Transport Riemannian Space&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="420" y="60" width="320" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Graphic Gaussians -->
+        <mxCell id="vis_b_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E2E8F0;strokeWidth=0.8;" vertex="1" parent="1">
+          <mxGeometry x="425" y="95" width="310" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="gauss_a" value="&lt;b&gt;&amp;Nu;&lt;sub&gt;A&lt;/sub&gt;&lt;/b&gt;(&amp;mu;&lt;sub&gt;A&lt;/sub&gt;, &amp;Sigma;&lt;sub&gt;A&lt;/sub&gt;)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#2563EB;fontColor=#1E40AF;strokeWidth=1.2;" vertex="1" parent="1">
+          <mxGeometry x="445" y="120" width="90" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="gauss_g" value="&lt;b&gt;&amp;Nu;&lt;sub&gt;G&lt;/sub&gt;&lt;/b&gt;(&amp;mu;&lt;sub&gt;G&lt;/sub&gt;, &amp;Sigma;&lt;sub&gt;G&lt;/sub&gt;)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#059669;fontColor=#064E3B;strokeWidth=1.2;" vertex="1" parent="1">
+          <mxGeometry x="615" y="125" width="85" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_arr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#059669;strokeWidth=1.6;dashed=1;entryX=0;entryY=0.5;exitX=1;exitY=0.5;" edge="1" parent="1" source="gauss_a" target="gauss_g">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_lbl" value="&lt;font color=&quot;#059669&quot; style=&quot;font-size: 9px;&quot;&gt;&lt;b&gt;W&lt;sub&gt;2&lt;/sub&gt; Geodesic Flow&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="530" y="140" width="90" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Mathematical Box (b) -->
+        <mxCell id="math_b" value="&lt;b&gt;Scale-Normalized 2-Wasserstein Transport:&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#047857&quot; style=&quot;font-size: 11px;&quot;&gt;$$\mathcal{D}_{\mathcal{W}}^2(A, G) = \frac{\|\mu_A - \mu_G\|^2}{\bar{w}^2} + \ln^2\frac{w_A}{w_G} + \ln^2\frac{h_A}{h_G}$$&lt;br&gt;$$\|\nabla_\theta \mathcal{L}_{\mathcal{W}}\| = \mathcal{O}(1) &gt; 0\quad (\mathrm{Everywhere\ on\ }\mathbb{R}^4)$$&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#64748B&quot; style=&quot;font-size: 10px;&quot;&gt;• Provides smooth, non-vanishing gradient flow.&lt;br&gt;• Spatial over-smoothing degrades strict AP75 fidelity.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#A7F3D0;strokeWidth=0.8;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="425" y="240" width="310" height="175" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================================== -->
+        <!-- PANEL (c): CONTINUOUS SCALE HOMOTOPY (H-WIOU) [x: 780, y: 50, w: 380, h: 380] -->
+        <!-- ============================================================================== -->
+        <mxCell id="card_c" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#8B5CF6;strokeWidth=1.4;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="780" y="50" width="380" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="card_c_h" value="&lt;b&gt;&lt;font color=&quot;#4C1D95&quot; style=&quot;font-size: 13px;&quot;&gt;(c) Continuous Scale-Homotopy Space (Proposed H-WIoU)&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="790" y="60" width="360" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Homotopy Convex Formula -->
+        <mxCell id="homo_form" value="&lt;font color=&quot;#6D28D9&quot; style=&quot;font-size: 12px;&quot;&gt;$$\mathcal{S}_{\mathrm{H\text{-}WIoU}} = \gamma(s_G)\,\mathrm{IoU}(A, G) + (1-\gamma(s_G))\,\exp\left(-\mathcal{D}_{\mathcal{W}}^2(A, G)\right)$$&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#7C3AED&quot; style=&quot;font-size: 10.5px;&quot;&gt;$$\mathrm{where}\quad \gamma(s) = \frac{s^2}{s^2 + \sigma_0^2}\in(0, 1)\quad (\sigma_0 \approx 8.0\mathrm{px})$$&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#DDD6FE;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="795" y="95" width="350" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- Asymptotic Properties -->
+        <mxCell id="homo_props" value="&lt;b&gt;Asymptotic Boundary Convergence (Proposition 1):&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#4C1D95&quot; style=&quot;font-size: 11px;&quot;&gt;• &lt;b&gt;Microscopic Limit ($$s \to 0$$):&lt;/b&gt; $$\gamma(s) \to 0 \implies \mathcal{S} \to \exp(-\mathcal{D}_{\mathcal{W}}^2)$$&lt;br&gt;  Eliminates gradient collapse; ensures $$\|\nabla_\theta \mathcal{L}\| = \mathcal{O}(1) &gt; 0$$.&lt;br&gt;&lt;br&gt;• &lt;b&gt;Macroscopic Limit ($$s \gg \sigma_0$$):&lt;/b&gt; $$\gamma(s) \to 1 \implies \mathcal{S} \to \mathrm{IoU}$$&lt;br&gt;  Recovers exact discrete Lebesgue metric; preserves peak AP75.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAF5FF;strokeColor=#DDD6FE;strokeWidth=0.8;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="795" y="190" width="350" height="225" as="geometry" />
+        </mxCell>
+
+        <!-- Pipeline Connectors -->
+        <mxCell id="conn_ab" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#475569;strokeWidth=1.6;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="card_a" target="card_b">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="conn_bc" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#7C3AED;strokeWidth=1.6;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="card_b" target="card_c">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

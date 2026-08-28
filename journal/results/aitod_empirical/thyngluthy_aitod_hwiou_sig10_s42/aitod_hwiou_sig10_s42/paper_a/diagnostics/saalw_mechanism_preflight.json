@@ -1,0 +1,95 @@
+{
+  "status": "PASS_TECHNICAL_PREFLIGHT",
+  "evidence_class": "validation_evidence_not_submission_evidence",
+  "schedule_use": "controlled_synthetic_probe_only_not_frozen_for_training",
+  "schedule": {
+    "s_min": 5.0,
+    "s_max": 20.0,
+    "beta_min": 8.0,
+    "beta_max": 10.0,
+    "w_min": 1.0,
+    "w_max": 1.5,
+    "schedule_form": "linear"
+  },
+  "quality_ratio": 0.6,
+  "within_target_ranking": [
+    {
+      "target_scale": 4.0,
+      "target_beta": 10.0,
+      "rank_changes": 0,
+      "top3_equal": true
+    },
+    {
+      "target_scale": 8.0,
+      "target_beta": 9.6,
+      "rank_changes": 0,
+      "top3_equal": true
+    },
+    {
+      "target_scale": 12.0,
+      "target_beta": 9.066666666666666,
+      "rank_changes": 0,
+      "top3_equal": true
+    },
+    {
+      "target_scale": 20.0,
+      "target_beta": 8.0,
+      "rank_changes": 0,
+      "top3_equal": true
+    },
+    {
+      "target_scale": 32.0,
+      "target_beta": 8.0,
+      "rank_changes": 0,
+      "top3_equal": true
+    }
+  ],
+  "quality_threshold": {
+    "fixed_beta_distance_margin": 0.06385320297074884,
+    "small_target_beta_distance_margin": 0.05108256237659907,
+    "relative_margin_change": -0.20000000000000007,
+    "fixed_assigned_count": 4,
+    "adaptive_assigned_count": 3,
+    "changed_candidate_offset": 0.22
+  },
+  "cross_target_ownership": {
+    "fixed_similarity": [
+      0.0002433110639685765,
+      3.119818211416714e-05
+    ],
+    "adaptive_similarity": [
+      3.0388006052817218e-05,
+      3.119818211416714e-05
+    ],
+    "fixed_owner": 0,
+    "adaptive_owner": 1
+  },
+  "position_ranking": {
+    "candidate_order": [
+      "center_error",
+      "shape_error"
+    ],
+    "alw_squared": [
+      0.03,
+      0.03999999999999998
+    ],
+    "adaptive_position_squared": [
+      0.045,
+      0.03999999999999998
+    ],
+    "alw_winner": 0,
+    "adaptive_position_winner": 1
+  },
+  "regression": {
+    "alw_distance": 0.2968188357866624,
+    "beta_only_distance": 0.2968188357866624
+  },
+  "checks": {
+    "beta_preserves_every_within_target_ranking": true,
+    "beta_changes_quality_threshold_eligibility": true,
+    "beta_can_change_cross_target_owner": true,
+    "position_weight_can_reverse_center_shape_ranking": true,
+    "beta_only_regression_is_exact_alw": true
+  },
+  "decision": "Do not credit beta with within-target ranking or regression effects. Retain beta-only and position-only controls in a preregistered validation pilot before selecting the full conference matrix."
+}

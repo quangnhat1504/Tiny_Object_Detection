@@ -1,0 +1,40 @@
+[{"stream_name":"stderr","time":8.050778548,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.050846888,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.050853694,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.050858372,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.69385684,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.693888117,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.693894017,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.693898321,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":19.658811469,"data":"Applied latest hot-patch fixes to /kaggle/working/aitod_igwd_s42\n"}
+,{"stream_name":"stderr","time":22.004697418,"data":"ERROR: Could not find a version that satisfies the requirement aitodpycocotools (from versions: none)\n"}
+,{"stream_name":"stderr","time":22.004723956,"data":"ERROR: No matching distribution found for aitodpycocotools\n"}
+,{"stream_name":"stderr","time":22.207164217,"data":"ERROR: Could not find a version that satisfies the requirement aitodpycocotools (from versions: none)\n"}
+,{"stream_name":"stderr","time":22.207205213,"data":"ERROR: No matching distribution found for aitodpycocotools\n"}
+,{"stream_name":"stderr","time":22.207210045,"data":"\n"}
+,{"stream_name":"stderr","time":22.207213393,"data":"ERROR: Could not find a version that satisfies the requirement aitodpycocotools (from versions: none)\n"}
+,{"stream_name":"stderr","time":22.207216909,"data":"ERROR: No matching distribution found for aitodpycocotools\n"}
+,{"stream_name":"stdout","time":22.277584341,"data":"Executing command: python scripts/train_frcnn_aitod.py --metric igwd --placement igwd --box-loss igwd --seed 42 --epochs 12 --batch-size 4\n"}
+,{"stream_name":"stdout","time":30.562027031,"data":"[Config] Using local data root: /kaggle/input/datasets/kurt54/sod-tinypeopleinsea\n"}
+,{"stream_name":"stderr","time":30.562027033,"data":"usage: train_frcnn_aitod.py [-h]\n"}
+,{"stream_name":"stderr","time":30.562111203,"data":"                            [--metric {standard,nwd,igwd,rfla,alw_canonical,sa_alw_canonical,h_wiou}]\n"}
+,{"stream_name":"stderr","time":30.562118446,"data":"                            [--placement {iou_smooth_l1,everywhere,la,loss,la_loss,h_wiou}]\n"}
+,{"stream_name":"stderr","time":30.562125619,"data":"                            [--box-loss {smooth_l1,metric,h_wiou}]\n"}
+,{"stream_name":"stderr","time":30.562134587,"data":"                            [--seed SEED] [--epochs EPOCHS]\n"}
+,{"stream_name":"stderr","time":30.56213821,"data":"                            [--batch-size BATCH_SIZE] [--lr LR]\n"}
+,{"stream_name":"stderr","time":30.562141631,"data":"                            [--h-wiou-sigma-0 H_WIOU_SIGMA_0]\n"}
+,{"stream_name":"stderr","time":30.562145383,"data":"                            [--h-wiou-form H_WIOU_FORM]\n"}
+,{"stream_name":"stderr","time":30.56214952,"data":"                            [--h-wiou-static-gamma H_WIOU_STATIC_GAMMA]\n"}
+,{"stream_name":"stderr","time":30.562152957,"data":"                            [--data-root DATA_ROOT] [--output-dir OUTPUT_DIR]\n"}
+,{"stream_name":"stderr","time":30.562157197,"data":"                            [--tag TAG]\n"}
+,{"stream_name":"stderr","time":30.562193415,"data":"train_frcnn_aitod.py: error: argument --placement: invalid choice: 'igwd' (choose from iou_smooth_l1, everywhere, la, loss, la_loss, h_wiou)\n"}
+,{"stream_name":"stdout","time":33.107863156,"data":"Execution finished with exit code: 2\n"}
+,{"stream_name":"stderr","time":36.249220184,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":36.249258621,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":36.41461922,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":36.414649631,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":37.061285295,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":37.378714348,"data":"[NbConvertApp] Writing 64349 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":39.859115098,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":40.692243305,"data":"[NbConvertApp] Writing 343230 bytes to __results__.html\n"}
+]

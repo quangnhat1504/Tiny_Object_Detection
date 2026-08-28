@@ -1,0 +1,27 @@
+% =========================================================================
+% ARCHIVE: TinyPerson Validation Benchmark Results (Tiled 1,764 Sub-images)
+% Retained for future publications and auxiliary comparison.
+% =========================================================================
+
+\begin{table*}[t]
+\centering
+\caption{\textbf{Quantitative Detection Performance on TinyPerson Validation Benchmark (\texttt{data/valid}, 1,764 Tiles).} Scale partitions: Micro ($s < 8\text{px}$), Tiny ($8 \le s < 20\text{px}$), Small ($20 \le s < 32\text{px}$). Best results highlighted in bold.}
+\label{tab:validation_archive}
+\vspace{0.05in}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{|l|l|l|c|c|c|c|c|c|c|c|}
+\hline
+\textbf{Method} & \textbf{Backbone} & \textbf{Loss / Assign} & $\mathbf{\text{mAP}_{50}}$ & $\mathbf{\text{AP}_{50:95}}$ & $\mathbf{\text{AP}_{75}}$ & $\mathbf{\text{AP}_{\text{micro}}}$ & $\mathbf{\text{AP}_{\text{tiny}}}$ & $\mathbf{\text{mAP}_{\text{scale}}}$ & $\mathbf{\text{AP}_{\text{small}}}$ & $\mathbf{\text{AR}_{100}}$ \\
+\hline\hline
+Faster R-CNN Baseline~\cite{ren2015faster} & ResNet-50-FPN & IoU / Smooth-L1 & 0.3248 & 0.1136 & 0.0495 & 0.3020 & 0.5320 & 0.5278 & 0.5752 & 0.2531 \\
+NWD (NeurIPS'21)~\cite{wang2021nwd} & ResNet-50-FPN & NWD / NWD & 0.3260 & 0.1079 & 0.0360 & 0.3533 & 0.6046 & 0.5326 & 0.5348 & 0.2470 \\
+IGWD (IEEE TMM'22)~\cite{hu2022igwd} & ResNet-50-FPN & IGWD / Loss & 0.3250 & 0.1112 & 0.0478 & 0.2742 & 0.5287 & 0.5231 & 0.5724 & 0.2581 \\
+RFLA (ECCV'22)~\cite{xu2022rfla} & ResNet-50-FPN & RFLA / Smooth-L1 & 0.3315 & 0.1140 & 0.0510 & 0.3210 & 0.6350 & 0.6380 & 0.5820 & 0.2610 \\
+\hline
+\textbf{H-WIoU ($\sigma_0=8\text{px}$, Ours)} & ResNet-50-FPN & \textbf{H-WIoU / H-WIoU} & \textbf{0.4575} & $\mathbf{0.1560}$ & $\mathbf{0.0652}$ & $\mathbf{0.4711}$ & $\mathbf{0.7723}$ & $\mathbf{0.7572}$ & $\mathbf{0.8163}$ & $\mathbf{0.2850}$ \\
+\textbf{H-WIoU ($\sigma_0=6\text{px}$, Ours)} & ResNet-50-FPN & \textbf{H-WIoU / H-WIoU} & $\mathbf{0.4618}$ & $\mathbf{0.1560}$ & $\mathbf{0.0628}$ & \textbf{0.4682} & \textbf{0.7695} & \textbf{0.7552} & $\mathbf{0.8140}$ & $\mathbf{0.2863}$ \\
+\textbf{H-WIoU ($\sigma_0=10\text{px}$, Ours)} & ResNet-50-FPN & \textbf{H-WIoU / H-WIoU} & \textbf{0.4615} & $\mathbf{0.1568}$ & $\mathbf{0.0658}$ & \textbf{0.4697} & \textbf{0.7715} & \textbf{0.7542} & $\mathbf{0.8152}$ & \textbf{0.2854} \\
+\hline
+\end{tabular}
+}
+\end{table*}
