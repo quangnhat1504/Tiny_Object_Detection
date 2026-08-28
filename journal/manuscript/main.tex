@@ -131,13 +131,17 @@ We construct the continuous Homotopy parameter $\gamma: \mathbb{R}_{>0} \to (0, 
 \subsection{The H-WIoU Metric and Regression Loss}
 The Homotopy Wasserstein-IoU similarity $\mathcal{S}_{\text{H-WIoU}}(A, B)$ is formulated as a continuous convex homotopy map:
 \begin{equation}
-\mathcal{S}_{\text{H-WIoU}}(A, B) = \gamma(s_B)\,\mathrm{IoU}(A, B) + (1 - \gamma(s_B))\,\exp\left(-\mathcal{D}_{\mathcal{W}}^2(A, B)\right)
+\begin{split}
+\mathcal{S}_{\text{H-WIoU}}(A, B) &= \gamma(s_B)\,\mathrm{IoU}(A, B) \\
+&\quad + (1 - \gamma(s_B))\,\exp\left(-\mathcal{D}_{\mathcal{W}}^2(A, B)\right)
+\end{split}
 \end{equation}
 
 The corresponding bounded regression loss $\mathcal{L}_{\text{H-WIoU}}$ is defined as:
 \begin{align}
 \mathcal{L}_{\text{H-WIoU}}(A, B) &= 1 - \mathcal{S}_{\text{H-WIoU}}(A, B) \nonumber \\
-&= \gamma(s_B)\,\mathcal{L}_{\text{IoU}}(A, B) + (1 - \gamma(s_B))\,\mathcal{L}_{\mathcal{W}}(A, B)
+&= \gamma(s_B)\,\mathcal{L}_{\text{IoU}}(A, B) \nonumber \\
+&\quad + (1 - \gamma(s_B))\,\mathcal{L}_{\mathcal{W}}(A, B)
 \end{align}
 where $\mathcal{L}_{\text{IoU}} = 1 - \text{IoU}$ and $\mathcal{L}_{\mathcal{W}} = 1 - \exp(-\mathcal{D}_{\mathcal{W}}^2)$.
 
@@ -152,7 +156,10 @@ whereas the standard IoU gradient vanishes identically ($\|\nabla_\theta \mathca
 \textbf{Proof:}
 By linearity of the homotopy decomposition in Eq.~(7), the gradient with respect to $\theta$ is:
 \begin{equation}
-\nabla_\theta \mathcal{L}_{\text{H-WIoU}} = \gamma(s_B)\,\nabla_\theta \mathcal{L}_{\text{IoU}}(A, B) + (1 - \gamma(s_B))\,\nabla_\theta \mathcal{L}_{\mathcal{W}}(A, B)
+\begin{split}
+\nabla_\theta \mathcal{L}_{\text{H-WIoU}} &= \gamma(s_B)\,\nabla_\theta \mathcal{L}_{\text{IoU}}(A, B) \\
+&\quad + (1 - \gamma(s_B))\,\nabla_\theta \mathcal{L}_{\mathcal{W}}(A, B)
+\end{split}
 \end{equation}
 When $\text{IoU}(A, B) = 0$, the indicator function of box intersection vanishes locally, giving $\nabla_\theta \mathcal{L}_{\text{IoU}} \equiv \mathbf{0}$. Hence:
 \begin{equation}
@@ -184,7 +191,7 @@ In the second stage, pooled RoI features are supervised via the bounded loss $\m
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=0.95\textwidth]{figures/fig5_pipeline_architecture.png}
+    \includegraphics[width=0.95\textwidth]{figures/fig5_pipeline_architecture.pdf}
     \vspace{-0.05in}
     \caption{\textbf{End-to-End Pipeline and Architecture of the Proposed Homotopy Wasserstein-IoU (H-WIoU) Detector.} Multi-scale feature pyramids ($P_2$--$P_5$) extract spatial representations. In Stage 1, the Region Proposal Network (RPN) employs \textbf{Homotopy Label Assignment (HLA)} to compute continuous scale-adaptive similarity scores $\mathcal{S}_{\text{H-WIoU}}$. In Stage 2, candidate RoIs are pooled via RoIAlign and supervised using the bounded \textbf{Homotopy Regression Loss} $\mathcal{L}_{\text{H-WIoU}}$. The continuous scale homotopy parameter $\gamma(s) = \frac{s^2}{s^2+\sigma_0^2}$ smoothly deforms between pure optimal transport ($\mathcal{W}_2$) under microscopic scales and discrete Lebesgue measure ($\text{IoU}$) for larger targets.}
     \label{fig:pipeline}

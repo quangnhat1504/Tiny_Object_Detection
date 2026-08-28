@@ -14,39 +14,36 @@ import torch
 # =============================================================================
 # PATHS
 # =============================================================================
-# User can override by setting env var CPV_DATA_ROOT
-DATA_ROOT = Path(os.environ.get(
-    "CPV_DATA_ROOT",
-    "/kaggle/input/datasets/kurt54/sod-tinypeopleinsea"
-))
+def _resolve_data_root() -> Path:
+    if "CPV_DATA_ROOT" in os.environ:
+        return Path(os.environ["CPV_DATA_ROOT"])
+    kaggle_input = Path("/kaggle/input")
+    if kaggle_input.exists():
+        for candidate in list(kaggle_input.glob("**/train")):
+            if (candidate / "images").is_dir():
+                return candidate.parent
+        for candidate in list(kaggle_input.glob("*tinyperson*")) + list(kaggle_input.glob("*sod*")):
+            if (candidate / "train/images").is_dir():
+                return candidate
+    for local_root in [
+        Path(r"C:\Users\ADMIN\_Project\tiny-object-detection\data"),
+        Path(r"C:\Users\ADMIN\OneDrive\Documents\_Project\tiny-object-detection\data"),
+        Path("/home/ttung05/Desktop/CPV/Tiny_Object_Detection/data/TOD"),
+    ]:
+        if local_root.exists():
+            return local_root
+    return Path("/kaggle/input/datasets/kurt54/sod-tinypeopleinsea")
+
+DATA_ROOT = _resolve_data_root()
 TRAIN_DIR = DATA_ROOT / "train"
-VALID_DIR = DATA_ROOT / "valid"
+VALID_DIR = DATA_ROOT / "valid" if (DATA_ROOT / "valid").exists() else DATA_ROOT / "validation"
 TEST_DIR  = DATA_ROOT / "test"
 
-# When running locally, fallback to local TOD data
-# --- Linux ---
-LOCAL_TOD_ROOT = Path("/home/ttung05/Desktop/CPV/Tiny_Object_Detection/data/TOD")
-# --- Windows ---
-WIN_TOD_ROOT = Path(r"C:\Users\ADMIN\OneDrive\Documents\_Project\tiny-object-detection\data")
-
-_has_kaggle_data = TRAIN_DIR.exists()
-if not _has_kaggle_data:
-    if LOCAL_TOD_ROOT.exists():
-        DATA_ROOT = LOCAL_TOD_ROOT
-    elif WIN_TOD_ROOT.exists():
-        DATA_ROOT = WIN_TOD_ROOT
-    TRAIN_DIR = DATA_ROOT / "train"
-    VALID_DIR = DATA_ROOT / "valid"
-    TEST_DIR  = DATA_ROOT / "test"
-    print(f"[Config] Using local data root: {DATA_ROOT}")
-
-# Patch data path (Phase 0 output)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PATCH_ROOT = PROJECT_ROOT / "data" / "patches"
 
 NUM_CLASSES = 2
 CLASS_NAMES = {0: "dry", 1: "wet"}  # NOTE: TOD uses dry-person, wet-swimmer
-# Map for compatibility
 CLASS_DISPLAY = {0: "dry-person", 1: "wet-swimmer"}
 
 # =============================================================================
@@ -111,7 +108,6 @@ ALW_SHAPE_LAMBDA_MIN    = 0.15
 ALW_SHAPE_LAMBDA_POWER  = 1.5
 ALW_CHARBONNIER_EPS_MIN = 1e-3
 ALW_CHARBONNIER_EPS_MAX = 0.35
-# ALW_SHAPE_RELIABILITY_THR sẽ được compute từ dataset (adaptive P25)
 
 # SA-ALW: Scale-Adaptive parameters (Phase 2.7-2.8)
 SA_ALW_BETA_MIN    = 8.0   # β cho object lớn nhất
@@ -125,11 +121,6 @@ SA_ALW_LOG_CLAMP      = 3.0   # clamp cho log-ratio, cần ablation H2.4
 # =============================================================================
 # BOX REGRESSION LOSS (decoupled assignment–regression breakthrough)
 # =============================================================================
-# "metric"   — Gaussian/Wasserstein similarity (current, PLATEAUED at AP75=0.03)
-# "smooth_l1" — standard Smooth-L1 on delta space (mirrors vanilla RFLA AP75=18.8)
-# "ciou"     — CompleteIoU on decoded boxes (overlap+center+aspect)
-# "diou"     — DistanceIoU on decoded boxes (overlap+center, no aspect)
-# "cbl"      — confidence-driven distributional localization for tiny boxes
 BOX_LOSS_TYPE = "metric"
 BOX_LOSS_METRIC_WEIGHT = 0.25   # auxiliary weight for (1-sim) when using ciou/diou/smooth_l1
 BOX_LOSS_WARMUP_EPOCHS = 3      # pure metric loss for first N epochs, then ramp new loss
@@ -167,14 +158,8 @@ EMPTY_CACHE_EVERY = int(os.environ.get("TOD_EMPTY_CACHE_EVERY", "0"))
 # =============================================================================
 # SPEED OPTIMIZATIONS (opt-in; default off for reproducibility)
 # =============================================================================
-# Enable on PyTorch 2.0+ with Triton for ~1.3-1.8x speedup.
-# NOTE: First epoch will be slow due to compilation; subsequent epochs benefit.
 USE_TORCH_COMPILE = False
-# Convert backbone to channels_last memory format for ~5-10% backbone speedup.
-# Caller must still pass image tensors in channels_last format.
 USE_CHANNELS_LAST = False
-# DataLoader prefetch_factor (number of batches each worker preloads).
-# Higher = more GPU saturation but more RAM. Default PyTorch = 2.
 PREFETCH_FACTOR = 4
 
 # =============================================================================

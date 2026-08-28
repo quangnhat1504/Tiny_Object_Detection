@@ -301,6 +301,19 @@ def build_training_datasets(use_patches: bool = False,
     )
 
 
+def build_tiled_datasets(
+    train_images: Path,
+    train_labels: Path,
+    validation_images: Path,
+    validation_labels: Path,
+) -> tuple[YOLOTinyDataset, YOLOTinyDataset]:
+    """Build an explicit frozen tiled train/validation pair for a new program."""
+    return (
+        YOLOTinyDataset(train_images, train_labels, is_train=True),
+        YOLOTinyDataset(validation_images, validation_labels, is_train=False),
+    )
+
+
 def compute_reliability_threshold(train_ds: YOLOTinyDataset,
                                    percentile: int = 25,
                                    lo: float = 4.0,

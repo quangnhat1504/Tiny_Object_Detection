@@ -17,15 +17,18 @@ from torchvision.ops import box_iou
 EPS = 1e-6
 
 
-def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg, **kwargs) -> torch.Tensor:
-    """Treat anchors + GT as boxes, return IoU matrix as 'similarity'.
-
-    boxes_n = [xn-wn/2, yn-hn/2, xn+wn/2, yn+hn/2]
-    boxes_g = [xg-wg/2, yg-hg/2, xg+wg/2, yg+hg/2]
-    """
+def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg, chunk_size: int = 16384, **kwargs) -> torch.Tensor:
+    """Treat anchors + GT as boxes, return chunked IoU matrix as 'similarity'."""
     boxes_n = torch.stack([xn - wn/2, yn - hn/2, xn + wn/2, yn + hn/2], dim=1)
     boxes_g = torch.stack([xg - wg/2, yg - hg/2, xg + wg/2, yg + hg/2], dim=1)
-    return box_iou(boxes_n, boxes_g).clamp(min=EPS)
+    N = boxes_n.shape[0]
+    if N <= chunk_size:
+        return box_iou(boxes_n, boxes_g).clamp(min=EPS)
+    sims = []
+    for i in range(0, N, chunk_size):
+        end_i = min(i + chunk_size, N)
+        sims.append(box_iou(boxes_n[i:end_i], boxes_g).clamp(min=EPS))
+    return torch.cat(sims, dim=0)
 
 
 name = "ciou"

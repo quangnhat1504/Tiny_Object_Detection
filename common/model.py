@@ -1,8 +1,9 @@
 """Model builder — metric-aware Faster R-CNN.
 
-Supports 5 placements:
+Supports metric placements needed by the legacy and Paper A harnesses:
   - "everywhere"        : baseline, standard torchvision, no metric
   - "la"                : metric in RPN label assignment only
+  - "loss"              : metric in RoIHeads box loss only
   - "la_loss"           : metric in RPN LA + RoIHeads box loss
   - "la_loss_nms"       : metric in RPN LA + RoIHeads box loss + NMS
   - "saalw_assigner"    : SAALWAssigner (threshold-based) in RPN + box loss
@@ -11,7 +12,9 @@ Metric loss implementation: we override torchvision's RoIHeads.compute_loss
 to replace Smooth-L1 with metric-distance loss.
 """
 from __future__ import annotations
+from collections import OrderedDict
 import math
+import types
 from typing import Callable, Optional
 
 import torch
@@ -47,6 +50,20 @@ from .config import (
 )
 
 EPS = 1e-6
+
+
+def chunked_box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor, chunk_size: int = 16384) -> torch.Tensor:
+    """Memory-safe pairwise box_iou with anchor chunking to prevent CUDA OOM on massive anchor sets."""
+    M = boxes2.shape[0]
+    if M <= chunk_size or boxes1.shape[0] == 0:
+        return box_ops.box_iou(boxes1, boxes2)
+    
+    ious = []
+    for i in range(0, M, chunk_size):
+        end_i = min(i + chunk_size, M)
+        ious.append(box_ops.box_iou(boxes1, boxes2[i:end_i]))
+    return torch.cat(ious, dim=1)
+
 
 
 class QualityFastRCNNPredictor(nn.Module):
@@ -1096,10 +1113,19 @@ def _box_geometry_terms(pred_boxes: torch.Tensor, gt_boxes: torch.Tensor):
 
 
 def _metric_aux_loss(pred_boxes: torch.Tensor, gt_boxes: torch.Tensor,
-                     metric_fn, reliability_thr: float) -> torch.Tensor:
+                     metric_fn, reliability_thr: float,
+                     metric_distance_fn=None) -> torch.Tensor:
     if metric_fn is None:
         return torch.zeros(1, device=pred_boxes.device).sum()
     xn, yn, wn, hn, xg, yg, wg, hg = _box_geometry_terms(pred_boxes, gt_boxes)
+    if metric_distance_fn is not None:
+        distance = metric_distance_fn(xn, yn, wn, hn, xg, yg, wg, hg)
+        if distance.shape != xn.shape:
+            raise ValueError(
+                "Canonical metric regression must return one aligned distance "
+                "per positive RoI"
+            )
+        return distance.mean()
     sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
                     reliability_thr=reliability_thr)
     return (1.0 - sim).mean()
@@ -1165,6 +1191,251 @@ def _cbl_localization_loss(
         prediction_entropy - target_entropy
     ).abs().mean()
     return confidence_loss + uncertainty_weight * uncertainty_loss
+
+
+def _cbl_cross_scale_distillation_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    *,
+    temperature: float = 2.0,
+    roi_weights: Optional[torch.Tensor] = None,
+    roi_mask: Optional[torch.Tensor] = None,
+    coordinate_weights: Optional[torch.Tensor] = None,
+    grid: Optional[torch.Tensor] = None,
+    distance: str = "kl",
+    target_deltas: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Distill four CBL coordinate distributions from a frozen teacher."""
+    if student_logits.ndim != 3 or student_logits.shape[1] != 4:
+        raise ValueError("CBL distillation expects student logits [rois, 4, bins]")
+    if teacher_logits.shape != student_logits.shape:
+        raise ValueError("Student and teacher CBL logits must have the same shape")
+    if temperature <= 0:
+        raise ValueError("CBL distillation temperature must be positive")
+    if distance not in {"kl", "ordered_w1", "teacher_bounded_gt"}:
+        raise ValueError(f"Unsupported CBL distillation distance: {distance}")
+
+    roi_count = student_logits.shape[0]
+    if roi_mask is None:
+        roi_mask = torch.ones(
+            roi_count, dtype=torch.bool, device=student_logits.device)
+    else:
+        if roi_mask.ndim != 1 or roi_mask.numel() != roi_count:
+            raise ValueError("CBL distillation mask must have one value per RoI")
+        roi_mask = roi_mask.to(device=student_logits.device, dtype=torch.bool)
+
+    if roi_weights is None:
+        roi_weights = torch.ones(
+            roi_count, dtype=torch.float32, device=student_logits.device)
+    else:
+        if roi_weights.ndim != 1 or roi_weights.numel() != roi_count:
+            raise ValueError("CBL distillation weights must have one value per RoI")
+        roi_weights = roi_weights.to(
+            device=student_logits.device, dtype=torch.float32)
+        if (roi_weights < 0).any():
+            raise ValueError("CBL distillation weights must be non-negative")
+
+    if coordinate_weights is None:
+        coordinate_weights = torch.ones(
+            (roi_count, 4),
+            dtype=torch.float32,
+            device=student_logits.device,
+        )
+    else:
+        if coordinate_weights.shape != (roi_count, 4):
+            raise ValueError(
+                "CBL coordinate weights must have shape [RoIs, 4]")
+        coordinate_weights = coordinate_weights.to(
+            device=student_logits.device, dtype=torch.float32)
+        if (coordinate_weights < 0).any():
+            raise ValueError(
+                "CBL coordinate weights must be non-negative")
+
+    effective_weights = (
+        coordinate_weights
+        * roi_weights.unsqueeze(-1)
+        * roi_mask.unsqueeze(-1)
+    )
+    normalizer = effective_weights.sum()
+    if normalizer <= 0:
+        return student_logits.sum() * 0.0
+
+    if distance == "kl":
+        scaled_student = student_logits.float() / temperature
+        scaled_teacher = teacher_logits.detach().float() / temperature
+        per_coordinate = F.kl_div(
+            F.log_softmax(scaled_student, dim=-1),
+            F.softmax(scaled_teacher, dim=-1),
+            reduction="none",
+        ).sum(dim=-1)
+        temperature_scale = temperature**2
+    elif distance == "ordered_w1":
+        if grid is None or grid.ndim != 1 or grid.numel() != student_logits.shape[-1]:
+            raise ValueError(
+                "Ordered CBL distillation requires one grid value per bin")
+        grid = grid.to(device=student_logits.device, dtype=torch.float32)
+        widths = torch.diff(grid)
+        if not torch.isfinite(grid).all() or (widths <= 0).any():
+            raise ValueError(
+                "Ordered CBL distillation requires a finite increasing grid")
+        scaled_student = student_logits.float() / temperature
+        scaled_teacher = teacher_logits.detach().float() / temperature
+        student_probabilities = F.softmax(scaled_student, dim=-1)
+        teacher_probabilities = F.softmax(scaled_teacher, dim=-1)
+        cdf_gap = torch.cumsum(
+            student_probabilities - teacher_probabilities, dim=-1
+        )[..., :-1]
+        support_span = widths.sum().clamp(min=EPS)
+        per_coordinate = (
+            cdf_gap.abs() * widths.view(1, 1, -1)
+        ).sum(dim=-1) / support_span
+        temperature_scale = temperature
+    else:
+        if grid is None or grid.ndim != 1 or grid.numel() != student_logits.shape[-1]:
+            raise ValueError(
+                "Teacher-bounded CBL requires one grid value per bin")
+        if target_deltas is None or target_deltas.shape != student_logits.shape[:2]:
+            raise ValueError(
+                "Teacher-bounded CBL targets must have shape [RoIs, 4]")
+        grid = grid.to(device=student_logits.device, dtype=torch.float32)
+        widths = torch.diff(grid)
+        if not torch.isfinite(grid).all() or (widths <= 0).any():
+            raise ValueError(
+                "Teacher-bounded CBL requires a finite increasing grid")
+        targets = target_deltas.float().clamp(
+            min=float(grid[0]), max=float(grid[-1]))
+        right_idx = torch.searchsorted(
+            grid, targets.contiguous(), right=True
+        ).clamp(1, grid.numel() - 1)
+        left_idx = right_idx - 1
+        left_grid = grid[left_idx]
+        right_grid = grid[right_idx]
+        right_weight = (
+            (targets - left_grid)
+            / (right_grid - left_grid).clamp(min=EPS)
+        ).clamp(0.0, 1.0)
+        left_weight = 1.0 - right_weight
+        log_probabilities = F.log_softmax(student_logits.float(), dim=-1)
+        left_log_probability = log_probabilities.gather(
+            -1, left_idx.unsqueeze(-1)).squeeze(-1)
+        right_log_probability = log_probabilities.gather(
+            -1, right_idx.unsqueeze(-1)).squeeze(-1)
+        per_coordinate = -(
+            left_weight * left_log_probability
+            + right_weight * right_log_probability
+        )
+        temperature_scale = 1.0
+    return (
+        per_coordinate * effective_weights
+    ).sum() * temperature_scale / normalizer
+
+
+def _coordinate_reliable_cbl_weights(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    target_deltas: torch.Tensor,
+    grid: torch.Tensor,
+) -> torch.Tensor:
+    """Weight CBL coordinates by teacher advantage and certainty."""
+    if student_logits.shape != teacher_logits.shape:
+        raise ValueError("Student and teacher CBL logits must have the same shape")
+    if student_logits.ndim != 3 or student_logits.shape[1] != 4:
+        raise ValueError("Coordinate reliability expects logits [RoIs, 4, bins]")
+    if target_deltas.shape != student_logits.shape[:2]:
+        raise ValueError("Coordinate targets must have shape [RoIs, 4]")
+    if grid.ndim != 1 or grid.numel() != student_logits.shape[-1]:
+        raise ValueError("Coordinate reliability grid is incompatible with logits")
+
+    with torch.no_grad():
+        student_probabilities = F.softmax(student_logits.float(), dim=-1)
+        teacher_probabilities = F.softmax(teacher_logits.float(), dim=-1)
+        grid = grid.to(
+            device=student_logits.device, dtype=torch.float32).view(1, 1, -1)
+        student_deltas = (student_probabilities * grid).sum(dim=-1)
+        teacher_deltas = (teacher_probabilities * grid).sum(dim=-1)
+        targets = target_deltas.float()
+        student_error = (student_deltas - targets).abs()
+        teacher_error = (teacher_deltas - targets).abs()
+        relative_advantage = (
+            (student_error - teacher_error)
+            / (student_error + teacher_error).clamp(min=EPS)
+        ).clamp(min=0.0, max=1.0)
+        teacher_entropy = -(
+            teacher_probabilities
+            * teacher_probabilities.clamp(min=EPS).log()
+        ).sum(dim=-1)
+        max_entropy = math.log(student_logits.shape[-1])
+        teacher_certainty = (
+            1.0 - teacher_entropy / max_entropy
+        ).clamp(min=0.0, max=1.0)
+    return (relative_advantage * teacher_certainty).detach()
+
+
+def _align_horizontal_flip_cbl_logits(
+    flipped_logits: torch.Tensor,
+    grid: torch.Tensor,
+) -> torch.Tensor:
+    """Map horizontally flipped `(dx, dy, dw, dh)` logits to original space."""
+    if flipped_logits.ndim != 3 or flipped_logits.shape[1] != 4:
+        raise ValueError("Flip alignment expects CBL logits [RoIs, 4, bins]")
+    if grid.ndim != 1 or grid.numel() != flipped_logits.shape[-1]:
+        raise ValueError("Flip alignment grid is incompatible with logits")
+    grid = grid.to(device=flipped_logits.device, dtype=torch.float32)
+    if not torch.allclose(grid, -grid.flip(0), atol=1e-6, rtol=0):
+        raise ValueError("Horizontal CBL flip alignment requires a symmetric grid")
+    aligned = flipped_logits.clone()
+    aligned[:, 0] = flipped_logits[:, 0].flip(-1)
+    return aligned
+
+
+def _teacher_flip_consensus_weights(
+    teacher_logits: torch.Tensor,
+    aligned_flip_logits: torch.Tensor,
+) -> torch.Tensor:
+    """Return detached per-coordinate agreement from normalized JS divergence."""
+    if teacher_logits.shape != aligned_flip_logits.shape:
+        raise ValueError("Teacher views must have identical CBL logit shapes")
+    if teacher_logits.ndim != 3 or teacher_logits.shape[1] != 4:
+        raise ValueError("Teacher consensus expects logits [RoIs, 4, bins]")
+    with torch.no_grad():
+        original = F.softmax(teacher_logits.float(), dim=-1)
+        flipped = F.softmax(aligned_flip_logits.float(), dim=-1)
+        mixture = 0.5 * (original + flipped)
+        log_mixture = mixture.clamp(min=EPS).log()
+        js_divergence = 0.5 * (
+            (
+                original
+                * (original.clamp(min=EPS).log() - log_mixture)
+            ).sum(dim=-1)
+            + (
+                flipped
+                * (flipped.clamp(min=EPS).log() - log_mixture)
+            ).sum(dim=-1)
+        )
+        agreement = (
+            1.0 - js_divergence / math.log(2.0)
+        ).clamp(min=0.0, max=1.0)
+    return agreement.detach()
+
+
+def _teacher_localization_advantage_mask(
+    student_boxes: torch.Tensor,
+    teacher_boxes: torch.Tensor,
+    target_boxes: torch.Tensor,
+    *,
+    margin: float = 0.02,
+) -> torch.Tensor:
+    """Select RoIs whose teacher localization beats the student by a margin."""
+    if margin < 0:
+        raise ValueError("Teacher advantage margin must be non-negative")
+    if (student_boxes.shape != teacher_boxes.shape
+            or student_boxes.shape != target_boxes.shape
+            or student_boxes.ndim != 2
+            or student_boxes.shape[1] != 4):
+        raise ValueError("Student, teacher, and target boxes must have shape [rois, 4]")
+    teacher_iou = _paired_iou(teacher_boxes, target_boxes)
+    student_iou = _paired_iou(student_boxes, target_boxes)
+    return teacher_iou >= student_iou + margin
 
 
 def _quality_focal_loss(
@@ -1338,7 +1609,8 @@ def _rank_sort_loss(
 
 
 def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
-                     box_coder, metric_fn, reliability_thr, metric_loss_weight,
+                     box_coder, metric_fn, metric_distance_fn,
+                     reliability_thr, metric_loss_weight,
                      proposals, current_epoch=1, box_loss_type=None,
                      box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
                      quality_logits=None, quality_loss_weight=0.0,
@@ -1407,7 +1679,8 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
         pred_boxes_for_quality = pred_boxes
 
         box_loss = _metric_aux_loss(
-            pred_boxes, gt_boxes, metric_fn, reliability_thr) * metric_loss_weight
+            pred_boxes, gt_boxes, metric_fn, reliability_thr,
+            metric_distance_fn=metric_distance_fn) * metric_loss_weight
 
     elif loss_type in ("smooth_l1", "side_smooth_l1"):
         # Standard Smooth-L1 on delta space (mirrors RFLA's AP75=18.8)
@@ -1422,7 +1695,8 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
         gt_boxes = gt_boxes_for_quality
         pred_boxes_for_quality = pred_boxes
         metric_aux = _metric_aux_loss(
-            pred_boxes, gt_boxes, metric_fn, reliability_thr)
+            pred_boxes, gt_boxes, metric_fn, reliability_thr,
+            metric_distance_fn=metric_distance_fn)
         if loss_type == "side_smooth_l1":
             side_loss = _side_aware_smooth_l1_loss(
                 box_reg_pos_per_class, targets_deltas, gt_boxes)
@@ -1475,6 +1749,54 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
             pred_area = pred_w * pred_h
             gt_area = gt_w * gt_h
             valid = (pred_area >= 4.0) & (gt_area >= 4.0)
+        if loss_type == "side_smooth_l1":
+            side_loss = _side_aware_smooth_l1_loss(
+                box_reg_pos_per_class, targets_deltas, gt_boxes)
+            box_loss = side_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+        else:
+            # Add auxiliary metric loss (small weight) to preserve micro stability
+            box_loss = delta_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+
+    elif loss_type == "cbl":
+        if distribution_logits is None or cbl_grid is None:
+            raise ValueError("CBL loss requires distribution logits and a grid")
+        dist_pos = distribution_logits[
+            sampled_pos_inds, labels_pos]  # [K, 4, bins]
+        box_loss = _cbl_localization_loss(
+            dist_pos, targets_deltas, cbl_grid, cbl_um_weight)
+        box_reg_flat = box_regression_pos.reshape(K, num_classes * 4)
+        decoded = box_coder.decode(box_reg_flat, [proposals_pos])
+        pred_boxes_for_quality = decoded[
+            torch.arange(K, device=decoded.device), labels_pos]
+
+    elif loss_type in ("ciou", "diou"):
+        with torch.amp.autocast("cuda", enabled=False):
+            box_reg_flat = box_regression_pos.float().reshape(K, num_classes * 4)
+            decoded = box_coder.decode(box_reg_flat, [proposals_pos.float()])  
+            pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
+            decoded_gt = box_coder.decode(targets_deltas.float(), [proposals_pos.float()])
+            gt_boxes = decoded_gt[:, 0, :]
+            pred_boxes_for_quality = pred_boxes.to(dtype=box_regression.dtype)
+            gt_boxes_for_quality = gt_boxes.to(dtype=box_regression.dtype)
+
+            # Clamp degenerate boxes
+            pred_w = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=2.0)
+            pred_h = (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=2.0)
+            pred_boxes = torch.stack([
+                pred_boxes[:, 0], pred_boxes[:, 1],
+                pred_boxes[:, 0] + pred_w, pred_boxes[:, 1] + pred_h,
+            ], dim=1)
+            gt_w = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=2.0)
+            gt_h = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=2.0)
+            gt_boxes = torch.stack([
+                gt_boxes[:, 0], gt_boxes[:, 1],
+                gt_boxes[:, 0] + gt_w, gt_boxes[:, 1] + gt_h,
+            ], dim=1)
+
+            # Filter: remove boxes with near-zero area
+            pred_area = pred_w * pred_h
+            gt_area = gt_w * gt_h
+            valid = (pred_area >= 4.0) & (gt_area >= 4.0)
             if valid.sum() < 1:
                 iou_loss = torch.tensor(0.0, device=pred_boxes.device)
                 metric_aux_val = torch.tensor(0.0, device=pred_boxes.device)
@@ -1493,23 +1815,37 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
                     iou_loss = torch.tensor(0.0, device=iou_loss.device)
                 iou_loss = iou_loss.clamp(max=5.0)
 
-                # Auxiliary metric loss
-                xn = (pred_boxes_f[:, 0] + pred_boxes_f[:, 2]) / 2.0
-                yn = (pred_boxes_f[:, 1] + pred_boxes_f[:, 3]) / 2.0
-                wn = (pred_boxes_f[:, 2] - pred_boxes_f[:, 0]).clamp(min=1.0)
-                hn = (pred_boxes_f[:, 3] - pred_boxes_f[:, 1]).clamp(min=1.0)
-                xg = (gt_boxes_f[:, 0] + gt_boxes_f[:, 2]) / 2.0
-                yg = (gt_boxes_f[:, 1] + gt_boxes_f[:, 3]) / 2.0
-                wg = (gt_boxes_f[:, 2] - gt_boxes_f[:, 0]).clamp(min=1.0)
-                hg = (gt_boxes_f[:, 3] - gt_boxes_f[:, 1]).clamp(min=1.0)
-                sim = metric_fn(xn, yn, wn, hn, xg, yg, wg, hg,
-                                 reliability_thr=reliability_thr)
-                metric_aux_val = (1.0 - sim).mean()
+                metric_aux_val = _metric_aux_loss(
+                    pred_boxes_f,
+                    gt_boxes_f,
+                    metric_fn,
+                    reliability_thr,
+                    metric_distance_fn=metric_distance_fn,
+                )
 
-        # Cast back to autocast dtype for box_loss
         iou_loss = iou_loss.to(dtype=pred_boxes.dtype)
         metric_aux = metric_aux_val.to(dtype=pred_boxes.dtype)
         box_loss = iou_loss + BOX_LOSS_METRIC_WEIGHT * metric_aux
+
+    elif loss_type == "h_wiou":
+        with torch.amp.autocast("cuda", enabled=False):
+            box_reg_flat = box_regression_pos.float().reshape(K, num_classes * 4)
+            decoded = box_coder.decode(box_reg_flat, [proposals_pos.float()])
+            pred_boxes = decoded[torch.arange(K, device=decoded.device), labels_pos]
+            decoded_gt = box_coder.decode(targets_deltas.float(), [proposals_pos.float()])
+            gt_boxes = decoded_gt[:, 0, :]
+            pred_boxes_for_quality = pred_boxes.to(dtype=box_regression.dtype)
+            gt_boxes_for_quality = gt_boxes.to(dtype=box_regression.dtype)
+
+            if metric_distance_fn is not None:
+                h_wiou_losses = metric_distance_fn(pred_boxes, gt_boxes)
+            else:
+                from .metrics.h_wiou import aligned_h_wiou_loss
+                h_wiou_losses = aligned_h_wiou_loss(pred_boxes, gt_boxes)
+            box_loss_raw = h_wiou_losses.mean()
+            if not torch.isfinite(box_loss_raw):
+                box_loss_raw = torch.tensor(0.0, device=box_loss_raw.device)
+            box_loss = box_loss_raw.to(dtype=box_regression.dtype)
 
     else:
         raise ValueError(f"Unknown BOX_LOSS_TYPE: {loss_type}")
@@ -1527,11 +1863,6 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
             pred_boxes_for_quality.detach().float(),
             gt_boxes_for_quality.detach().float(),
         ).clamp(0, 1)
-
-    if use_quality_focal:
-        quality_targets = class_logits.new_zeros(labels.shape)
-        quality_targets[sampled_pos_inds] = paired_quality_targets.to(
-            dtype=class_logits.dtype)
         classification_loss = _quality_focal_loss(
             class_logits, labels, quality_targets, quality_focal_beta)
 
@@ -1779,10 +2110,12 @@ def _iterative_cbl_training_loss(
     image_shapes,
     uncertainty_weight,
     loss_weight,
+    return_context: bool = False,
 ):
     """Train the shared CBL head on its detached first-pass box proposals."""
     if loss_weight <= 0:
-        return box_regression.sum() * 0.0
+        zero = box_regression.sum() * 0.0
+        return (zero, None) if return_context else zero
 
     counts = [len(proposals_per_image) for proposals_per_image in proposals]
     num_classes = box_regression.shape[1] // 4
@@ -1836,35 +2169,1144 @@ def _iterative_cbl_training_loss(
         refined_labels.append(positive_labels[valid])
 
     if not any(len(boxes) for boxes in refined_proposals):
-        return box_regression.sum() * 0.0
+        zero = box_regression.sum() * 0.0
+        return (zero, None) if return_context else zero
 
-    refined_features = roi_heads.box_roi_pool(
+    refined_pooled_features = roi_heads.box_roi_pool(
         features, refined_proposals, image_shapes)
-    refined_features = roi_heads.box_head(refined_features)
+    refined_features = roi_heads.box_head(refined_pooled_features)
     predictor_out = roi_heads.box_predictor(refined_features)
     if (not getattr(roi_heads.box_predictor, "is_distributional", False)
             or len(predictor_out) != 3):
         raise RuntimeError(
             "Iterative CBL training requires a distributional predictor")
 
-    _, _, refined_distribution_logits = predictor_out
+    _, refined_box_regression, refined_distribution_logits = predictor_out
     labels_flat = torch.cat(refined_labels, dim=0)
     rows = torch.arange(
         len(labels_flat), device=refined_distribution_logits.device)
     selected_logits = refined_distribution_logits[rows, labels_flat]
-    refined_targets = torch.cat(
-        roi_heads.box_coder.encode(refined_gt_boxes, refined_proposals),
-        dim=0,
-    )
-    return loss_weight * _cbl_localization_loss(
+    refined_targets_per_image = list(
+        roi_heads.box_coder.encode(refined_gt_boxes, refined_proposals))
+    refined_targets = torch.cat(refined_targets_per_image, dim=0)
+    loss = loss_weight * _cbl_localization_loss(
         selected_logits,
         refined_targets,
         roi_heads.box_predictor.cbl_grid,
         uncertainty_weight,
     )
+    if not return_context:
+        return loss
+    return loss, {
+        "proposals": refined_proposals,
+        "labels": refined_labels,
+        "regression_targets": refined_targets_per_image,
+        "distribution_logits": refined_distribution_logits,
+        "box_regression": refined_box_regression,
+        "student_box_features": refined_features,
+        "student_pooled_features": refined_pooled_features,
+    }
+
+
+def _scale_boxes_between_images(
+    boxes: torch.Tensor,
+    source_shape: tuple[int, int],
+    destination_shape: tuple[int, int],
+) -> torch.Tensor:
+    source_h, source_w = source_shape
+    destination_h, destination_w = destination_shape
+    scale = boxes.new_tensor(
+        [
+            destination_w / source_w,
+            destination_h / source_h,
+            destination_w / source_w,
+            destination_h / source_h,
+        ]
+    )
+    return boxes * scale
+
+
+def _flip_boxes_horizontally(
+    boxes: torch.Tensor,
+    image_width: int,
+) -> torch.Tensor:
+    if boxes.ndim != 2 or boxes.shape[1] != 4:
+        raise ValueError("Horizontal box flip expects boxes [N, 4]")
+    if image_width <= 0:
+        raise ValueError("Horizontal box flip requires a positive image width")
+    flipped = boxes.clone()
+    flipped[:, 0] = image_width - boxes[:, 2]
+    flipped[:, 2] = image_width - boxes[:, 0]
+    return flipped
+
+
+def _teacher_cbl_roi_predictions(
+    teacher,
+    transformed_images,
+    proposals: torch.Tensor,
+    image_shape: tuple[int, int],
+    labels: torch.Tensor,
+    num_classes: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    features = teacher.backbone(transformed_images.tensors)
+    if isinstance(features, torch.Tensor):
+        features = {"0": features}
+    pooled = teacher.roi_heads.box_roi_pool(
+        features, [proposals], [image_shape])
+    box_features = teacher.roi_heads.box_head(pooled)
+    output = teacher.roi_heads.box_predictor(box_features)
+    if (
+        not getattr(teacher.roi_heads.box_predictor, "is_distributional", False)
+        or len(output) != 3
+    ):
+        raise RuntimeError("Cross-scale CBL distillation requires a CBL teacher")
+    _, regression, distribution = output
+    rows = torch.arange(len(labels), device=labels.device)
+    regression = regression.reshape(-1, num_classes, 4)[rows, labels]
+    return regression, distribution[rows, labels]
+
+
+def _cbl_cross_scale_training_loss(
+    roi_heads,
+    proposals,
+    labels,
+    regression_targets,
+    distribution_logits,
+    box_regression,
+    student_box_features,
+    student_pooled_features,
+    image_shapes,
+) -> torch.Tensor:
+    """Distill high-resolution teacher localization on sampled positive RoIs."""
+    collect_audit = getattr(roi_heads, "_cbl_scale_collect_audit", False)
+    if collect_audit:
+        roi_heads._cbl_scale_audit = None
+    teacher = getattr(roi_heads, "_cbl_scale_teacher", None)
+    source_images = getattr(roi_heads, "_cbl_scale_source_images", None)
+    loss_weight = getattr(roi_heads, "_cbl_scale_distill_weight", 0.0)
+    if teacher is None or source_images is None or loss_weight <= 0:
+        return box_regression.sum() * 0.0
+
+    counts = [len(proposals_per_image) for proposals_per_image in proposals]
+    num_classes = distribution_logits.shape[1]
+    if getattr(roi_heads, "_cbl_scale_distill_head_only", False):
+        predictor = roi_heads.box_predictor
+        distribution_logits = predictor.bbox_dist(
+            student_box_features.detach()).reshape(
+                -1, predictor.num_classes, 4, predictor.num_bins)
+    logits_per_image = distribution_logits.split(counts, dim=0)
+    regression_per_image = box_regression.reshape(
+        -1, num_classes, 4).split(counts, dim=0)
+    temperature = getattr(roi_heads, "_cbl_scale_distill_temperature", 2.0)
+    margin = getattr(roi_heads, "_cbl_scale_distill_margin", 0.02)
+    tiny_reference = getattr(
+        roi_heads, "_cbl_scale_distill_tiny_reference", 16.0)
+    tiny_weight_cap = getattr(
+        roi_heads, "_cbl_scale_distill_tiny_weight_cap", 2.0)
+    coordinate_reliable = getattr(
+        roi_heads, "_cbl_scale_distill_coordinate_reliable", False)
+    consensus_filter = getattr(
+        roi_heads, "_cbl_scale_distill_consensus_filter", False)
+    distill_distance = getattr(
+        roi_heads, "_cbl_scale_distill_distance", "kl")
+    cross_head = getattr(
+        roi_heads, "_cbl_scale_distill_cross_head", False)
+    pcgrad = getattr(
+        roi_heads, "_cbl_scale_distill_pcgrad", False)
+    features_per_image = student_box_features.split(counts, dim=0)
+    pooled_features_per_image = student_pooled_features.split(counts, dim=0)
+
+    student_logits_all = []
+    teacher_logits_all = []
+    advantage_masks = []
+    roi_weights = []
+    target_sizes_all = []
+    target_deltas_all = []
+    coordinate_weights_all = []
+    base_coordinate_weights_all = []
+    consensus_agreements_all = []
+    teacher_coordinate_errors_all = []
+    flip_coordinate_errors_all = []
+    flip_alignment_errors = []
+    for (
+        source_image,
+        proposals_per_image,
+        labels_per_image,
+        targets_per_image,
+        logits_per_image_item,
+        regression_per_image_item,
+        features_per_image_item,
+        pooled_features_per_image_item,
+        student_shape,
+    ) in zip(
+        source_images,
+        proposals,
+        labels,
+        regression_targets,
+        logits_per_image,
+        regression_per_image,
+        features_per_image,
+        pooled_features_per_image,
+        image_shapes,
+    ):
+        positive = torch.where(labels_per_image > 0)[0]
+        if positive.numel() == 0:
+            continue
+        positive_labels = labels_per_image[positive]
+        positive_proposals = proposals_per_image[positive]
+        student_logits = logits_per_image_item[
+            positive, positive_labels]
+        distill_student_logits = student_logits
+        if cross_head:
+            teacher_predictor = teacher.roi_heads.box_predictor
+            cross_features = features_per_image_item[positive]
+            if pcgrad:
+                cross_features = roi_heads.box_head(
+                    pooled_features_per_image_item[positive].detach())
+            cross_distribution = teacher_predictor.bbox_dist(
+                cross_features
+            ).reshape(
+                -1,
+                teacher_predictor.num_classes,
+                4,
+                teacher_predictor.num_bins,
+            )
+            cross_rows = torch.arange(
+                len(positive), device=positive.device)
+            distill_student_logits = cross_distribution[
+                cross_rows, positive_labels]
+        positive_targets = targets_per_image[positive]
+        student_deltas = regression_per_image_item[
+            positive, positive_labels]
+        student_boxes = roi_heads.box_coder.decode(
+            student_deltas, [positive_proposals])[:, 0]
+        target_boxes = roi_heads.box_coder.decode(
+            positive_targets, [positive_proposals])[:, 0]
+
+        with torch.no_grad():
+            teacher_images, _ = teacher.transform([source_image], None)
+            teacher_shape = teacher_images.image_sizes[0]
+            teacher_proposals = _scale_boxes_between_images(
+                positive_proposals, student_shape, teacher_shape)
+            teacher_deltas, teacher_logits = _teacher_cbl_roi_predictions(
+                teacher,
+                teacher_images,
+                teacher_proposals,
+                teacher_shape,
+                positive_labels,
+                num_classes,
+            )
+            teacher_boxes = teacher.roi_heads.box_coder.decode(
+                teacher_deltas, [teacher_proposals])[:, 0]
+            teacher_boxes = _scale_boxes_between_images(
+                teacher_boxes, teacher_shape, student_shape)
+            aligned_flip_logits = None
+            if consensus_filter:
+                flipped_images, _ = teacher.transform(
+                    [source_image.flip(-1)], None)
+                flipped_shape = flipped_images.image_sizes[0]
+                if flipped_shape != teacher_shape:
+                    raise RuntimeError(
+                        "Original and flipped teacher transforms disagree")
+                flipped_proposals = _flip_boxes_horizontally(
+                    teacher_proposals, teacher_shape[1])
+                _, flipped_logits = _teacher_cbl_roi_predictions(
+                    teacher,
+                    flipped_images,
+                    flipped_proposals,
+                    flipped_shape,
+                    positive_labels,
+                    num_classes,
+                )
+                aligned_flip_logits = _align_horizontal_flip_cbl_logits(
+                    flipped_logits,
+                    teacher.roi_heads.box_predictor.cbl_grid,
+                )
+                grid = teacher.roi_heads.box_predictor.cbl_grid.to(
+                    device=teacher_logits.device, dtype=torch.float32
+                ).view(1, 1, -1)
+                flipped_expected = (
+                    F.softmax(flipped_logits.float(), dim=-1) * grid
+                ).sum(dim=-1)
+                aligned_expected = (
+                    F.softmax(aligned_flip_logits.float(), dim=-1) * grid
+                ).sum(dim=-1)
+                flipped_boxes = teacher.roi_heads.box_coder.decode(
+                    flipped_expected, [flipped_proposals])[:, 0]
+                flipped_boxes = _flip_boxes_horizontally(
+                    flipped_boxes, teacher_shape[1])
+                aligned_boxes = teacher.roi_heads.box_coder.decode(
+                    aligned_expected, [teacher_proposals])[:, 0]
+                flip_alignment_errors.append(
+                    float((flipped_boxes - aligned_boxes).abs().max().item())
+                )
+
+        target_boxes = box_ops.clip_boxes_to_image(target_boxes, student_shape)
+        student_boxes = box_ops.clip_boxes_to_image(student_boxes, student_shape)
+        teacher_boxes = box_ops.clip_boxes_to_image(teacher_boxes, student_shape)
+        if coordinate_reliable:
+            base_coordinate_weights = _coordinate_reliable_cbl_weights(
+                student_logits,
+                teacher_logits,
+                positive_targets,
+                roi_heads.box_predictor.cbl_grid,
+            )
+            coordinate_weights = base_coordinate_weights
+            if consensus_filter:
+                if aligned_flip_logits is None:
+                    raise RuntimeError("Consensus teacher logits were not collected")
+                agreement = _teacher_flip_consensus_weights(
+                    teacher_logits, aligned_flip_logits)
+                coordinate_weights = base_coordinate_weights * agreement
+                with torch.no_grad():
+                    grid = roi_heads.box_predictor.cbl_grid.to(
+                        device=student_logits.device, dtype=torch.float32
+                    ).view(1, 1, -1)
+                    teacher_expected = (
+                        F.softmax(teacher_logits.float(), dim=-1) * grid
+                    ).sum(dim=-1)
+                    flip_expected = (
+                        F.softmax(aligned_flip_logits.float(), dim=-1) * grid
+                    ).sum(dim=-1)
+                    teacher_coordinate_errors_all.append(
+                        (teacher_expected - positive_targets.float()).abs())
+                    flip_coordinate_errors_all.append(
+                        (flip_expected - positive_targets.float()).abs())
+                base_coordinate_weights_all.append(base_coordinate_weights)
+                consensus_agreements_all.append(agreement)
+            advantage = coordinate_weights.sum(dim=-1) > 0
+            coordinate_weights_all.append(coordinate_weights)
+        else:
+            advantage = _teacher_localization_advantage_mask(
+                student_boxes,
+                teacher_boxes,
+                target_boxes,
+                margin=margin,
+            )
+        original_shape = tuple(source_image.shape[-2:])
+        original_targets = _scale_boxes_between_images(
+            target_boxes, student_shape, original_shape)
+        target_sizes = (
+            (original_targets[:, 2] - original_targets[:, 0]).clamp(min=1e-2)
+            * (original_targets[:, 3] - original_targets[:, 1]).clamp(min=1e-2)
+        ).sqrt()
+        weights = (tiny_reference / target_sizes).clamp(
+            min=1.0, max=tiny_weight_cap)
+
+        student_logits_all.append(distill_student_logits)
+        teacher_logits_all.append(teacher_logits)
+        advantage_masks.append(advantage)
+        roi_weights.append(weights)
+        target_sizes_all.append(target_sizes)
+        target_deltas_all.append(positive_targets)
+
+    if not student_logits_all:
+        return box_regression.sum() * 0.0
+    student_logits_cat = torch.cat(student_logits_all, dim=0)
+    teacher_logits_cat = torch.cat(teacher_logits_all, dim=0)
+    advantage_mask = torch.cat(advantage_masks, dim=0)
+    weights_cat = torch.cat(roi_weights, dim=0)
+    target_sizes = torch.cat(target_sizes_all, dim=0)
+    target_deltas = torch.cat(target_deltas_all, dim=0)
+    coordinate_weights = (
+        torch.cat(coordinate_weights_all, dim=0)
+        if coordinate_reliable
+        else None
+    )
+    loss = loss_weight * _cbl_cross_scale_distillation_loss(
+        student_logits_cat,
+        teacher_logits_cat,
+        temperature=temperature,
+        roi_weights=weights_cat,
+        roi_mask=advantage_mask,
+        coordinate_weights=coordinate_weights,
+        grid=roi_heads.box_predictor.cbl_grid,
+        distance=distill_distance,
+        target_deltas=target_deltas,
+    )
+    if collect_audit:
+        tiny_mask = target_sizes < tiny_reference
+        selected_coordinates = (
+            coordinate_weights > 0
+            if coordinate_weights is not None
+            else advantage_mask.unsqueeze(-1).expand(-1, 4)
+        )
+        roi_heads._cbl_scale_audit = {
+            "positive_rois": int(student_logits_cat.shape[0]),
+            "selected_rois": int(advantage_mask.sum().item()),
+            "positive_coordinates": int(student_logits_cat.shape[0] * 4),
+            "selected_coordinates": int(selected_coordinates.sum().item()),
+            "coordinate_weight_sum": float(
+                selected_coordinates.sum().item()
+                if coordinate_weights is None
+                else coordinate_weights.sum().item()),
+            "distill_distance": distill_distance,
+            "cross_head": cross_head,
+            "pcgrad": pcgrad,
+            "positive_tiny_rois": int(tiny_mask.sum().item()),
+            "positive_larger_rois": int((~tiny_mask).sum().item()),
+            "selected_tiny_rois": int((advantage_mask & tiny_mask).sum().item()),
+            "selected_larger_rois": int(
+                (advantage_mask & ~tiny_mask).sum().item()),
+            "tiny_cutoff_px": float(tiny_reference),
+            "tiny_loss": loss_weight * _cbl_cross_scale_distillation_loss(
+                student_logits_cat,
+                teacher_logits_cat,
+                temperature=temperature,
+                roi_weights=weights_cat,
+                roi_mask=advantage_mask & tiny_mask,
+                coordinate_weights=coordinate_weights,
+                grid=roi_heads.box_predictor.cbl_grid,
+                distance=distill_distance,
+                target_deltas=target_deltas,
+            ),
+            "larger_loss": loss_weight * _cbl_cross_scale_distillation_loss(
+                student_logits_cat,
+                teacher_logits_cat,
+                temperature=temperature,
+                roi_weights=weights_cat,
+                roi_mask=advantage_mask & ~tiny_mask,
+                coordinate_weights=coordinate_weights,
+                grid=roi_heads.box_predictor.cbl_grid,
+                distance=distill_distance,
+                target_deltas=target_deltas,
+            ),
+        }
+        if consensus_filter:
+            base_coordinate_weights = torch.cat(
+                base_coordinate_weights_all, dim=0)
+            consensus_agreements = torch.cat(
+                consensus_agreements_all, dim=0)
+            teacher_coordinate_errors = torch.cat(
+                teacher_coordinate_errors_all, dim=0)
+            flip_coordinate_errors = torch.cat(
+                flip_coordinate_errors_all, dim=0)
+            base_weight_sum = base_coordinate_weights.sum()
+            retained_weight = (
+                coordinate_weights.sum() / base_weight_sum.clamp(min=EPS)
+            )
+            roi_heads._cbl_scale_audit.update({
+                "base_coordinate_weight_sum": float(base_weight_sum.item()),
+                "consensus_retained_weight_ratio": float(
+                    retained_weight.item()),
+                "consensus_agreement_mean": float(
+                    consensus_agreements.mean().item()),
+                "flip_alignment_max_error": max(
+                    flip_alignment_errors, default=0.0),
+                "_base_coordinate_weights": base_coordinate_weights.detach(),
+                "_consensus_agreements": consensus_agreements.detach(),
+                "_teacher_coordinate_errors": teacher_coordinate_errors.detach(),
+                "_flip_coordinate_errors": flip_coordinate_errors.detach(),
+                "_target_sizes": target_sizes.detach(),
+            })
+    return loss
+
+
+def _micro_rescue_rpn_snapshot(
+    model: nn.Module,
+    images: list[torch.Tensor],
+    targets: list[dict],
+    *,
+    train_head: bool,
+) -> dict:
+    """Collect RPN proposals while exposing only the student head graph."""
+    image_list, transformed_targets = model.transform(images, targets)
+    with torch.no_grad():
+        features = model.backbone(image_list.tensors)
+    if isinstance(features, torch.Tensor):
+        features = OrderedDict([("0", features)])
+    feature_list = [feature.detach() for feature in features.values()]
+
+    context = torch.enable_grad() if train_head else torch.no_grad()
+    with context:
+        objectness_list, bbox_delta_list = model.rpn.head(feature_list)
+        anchors = model.rpn.anchor_generator(image_list, feature_list)
+        num_images = len(anchors)
+        num_anchors_per_level = [
+            score[0].shape[0] * score[0].shape[1] * score[0].shape[2]
+            for score in objectness_list
+        ]
+        objectness, bbox_deltas = concat_box_prediction_layers(
+            objectness_list, bbox_delta_list)
+        objectness_by_image = objectness.reshape(num_images, -1)
+        bbox_deltas_by_image = bbox_deltas.reshape(num_images, -1, 4)
+        decoded = model.rpn.box_coder.decode(
+            bbox_deltas.detach(), anchors).reshape(num_images, -1, 4)
+        was_training = model.rpn.training
+        model.rpn.eval()
+        try:
+            filtered, _ = model.rpn.filter_proposals(
+                decoded,
+                objectness,
+                image_list.image_sizes,
+                num_anchors_per_level,
+            )
+            pre_nms_indices = model.rpn._get_top_n_idx(
+                objectness_by_image.detach(), num_anchors_per_level)
+        finally:
+            model.rpn.train(was_training)
+    return {
+        "targets": transformed_targets,
+        "anchors": anchors,
+        "bbox_deltas": bbox_deltas_by_image,
+        "decoded": decoded,
+        "filtered": filtered,
+        "pre_nms_indices": pre_nms_indices,
+    }
+
+
+def _best_rpn_proposal_iou(
+    gt_boxes: torch.Tensor,
+    proposals: torch.Tensor,
+    top_n: int,
+) -> torch.Tensor:
+    proposals = proposals[:top_n]
+    if len(gt_boxes) == 0 or len(proposals) == 0:
+        return torch.zeros(len(gt_boxes), device=gt_boxes.device)
+    return box_iou(gt_boxes, proposals).max(dim=1).values
+
+
+def _micro_rescue_rpn_regression_loss(
+    student: nn.Module,
+    teacher: nn.Module,
+    images: list[torch.Tensor],
+    targets: list[dict],
+    *,
+    loss_weight: float,
+    proposal_top_n: int,
+    micro_cutoff_px: float,
+    teacher_iou_floor: float,
+    advantage_margin: float,
+) -> tuple[torch.Tensor, dict[str, float | int]]:
+    student_snapshot = _micro_rescue_rpn_snapshot(
+        student, images, targets, train_head=True)
+    teacher_snapshot = _micro_rescue_rpn_snapshot(
+        teacher, images, targets, train_head=False)
+
+    selected_deltas = []
+    selected_targets = []
+    selected_weights = []
+    teacher_ious = []
+    student_ious = []
+    micro_gt_count = 0
+    for image_index, original_target in enumerate(targets):
+        original_boxes = original_target["boxes"]
+        micro_mask = (
+            (
+                (original_boxes[:, 2] - original_boxes[:, 0]).clamp(min=0)
+                * (original_boxes[:, 3] - original_boxes[:, 1]).clamp(min=0)
+            ).sqrt()
+            < micro_cutoff_px
+        )
+        micro_gt_count += int(micro_mask.sum().item())
+        if not micro_mask.any():
+            continue
+
+        student_gt = student_snapshot["targets"][image_index]["boxes"]
+        teacher_gt = teacher_snapshot["targets"][image_index]["boxes"]
+        if (
+            len(original_boxes) != len(student_gt)
+            or len(student_gt) != len(teacher_gt)
+        ):
+            raise AssertionError("Cross-scale RPN GT order/count changed")
+        student_best = _best_rpn_proposal_iou(
+            student_gt,
+            student_snapshot["filtered"][image_index],
+            proposal_top_n,
+        )
+        teacher_best = _best_rpn_proposal_iou(
+            teacher_gt,
+            teacher_snapshot["filtered"][image_index],
+            proposal_top_n,
+        )
+        advantage = teacher_best - student_best
+        selected_gt_indices = torch.where(
+            micro_mask
+            & (teacher_best >= teacher_iou_floor)
+            & (advantage >= advantage_margin)
+        )[0]
+        if selected_gt_indices.numel() == 0:
+            continue
+
+        candidate_indices = student_snapshot["pre_nms_indices"][image_index]
+        if candidate_indices.numel() == 0:
+            continue
+        candidate_boxes = student_snapshot["decoded"][
+            image_index, candidate_indices]
+        candidate_iou = box_iou(
+            student_gt[selected_gt_indices], candidate_boxes)
+        best_candidate_positions = candidate_iou.argmax(dim=1)
+        best_anchor_indices = candidate_indices[best_candidate_positions]
+        selected_anchors = student_snapshot["anchors"][image_index][
+            best_anchor_indices]
+        exact_gt = student_gt[selected_gt_indices]
+        selected_deltas.append(
+            student_snapshot["bbox_deltas"][
+                image_index, best_anchor_indices])
+        selected_targets.append(
+            student.rpn.box_coder.encode_single(exact_gt, selected_anchors))
+        selected_weights.append(advantage[selected_gt_indices].detach())
+        teacher_ious.append(teacher_best[selected_gt_indices].detach())
+        student_ious.append(student_best[selected_gt_indices].detach())
+
+    if not selected_weights:
+        zero = student_snapshot["bbox_deltas"].sum() * 0.0
+        return zero, {
+            "micro_gt": micro_gt_count,
+            "selected_gt": 0,
+            "selection_coverage": 0.0,
+            "teacher_iou_mean": 0.0,
+            "student_iou_mean": 0.0,
+            "raw_regression_loss": 0.0,
+        }
+
+    predicted_deltas = torch.cat(selected_deltas)
+    regression_targets = torch.cat(selected_targets)
+    weights = torch.cat(selected_weights).float()
+    regression_per_gt = F.smooth_l1_loss(
+        predicted_deltas.float(),
+        regression_targets.float(),
+        beta=1 / 9,
+        reduction="none",
+    ).sum(dim=1)
+    raw_loss = (
+        weights * regression_per_gt).sum() / weights.sum().clamp_min(EPS)
+    return loss_weight * raw_loss, {
+        "micro_gt": micro_gt_count,
+        "selected_gt": int(weights.numel()),
+        "selection_coverage": (
+            float(weights.numel() / micro_gt_count) if micro_gt_count else 0.0),
+        "teacher_iou_mean": float(torch.cat(teacher_ious).mean().item()),
+        "student_iou_mean": float(torch.cat(student_ious).mean().item()),
+        "raw_regression_loss": float(raw_loss.detach().item()),
+    }
+
+
+def attach_pc_micro_rescue_rpn_teacher(
+    student: nn.Module,
+    teacher: nn.Module,
+    *,
+    loss_weight: float = 0.005,
+    teacher_min_size: int = 960,
+    teacher_max_size: int = 1200,
+    proposal_top_n: int = 300,
+    micro_cutoff_px: float = 8.0,
+    teacher_iou_floor: float = 0.50,
+    advantage_margin: float = 0.02,
+) -> nn.Module:
+    """Attach a frozen teacher for regression-only PC-MR-RPN training."""
+    if loss_weight <= 0:
+        raise ValueError("Micro-rescue RPN loss weight must be positive")
+    if teacher_min_size <= 0 or teacher_max_size < teacher_min_size:
+        raise ValueError("Invalid micro-rescue teacher transform size")
+    if proposal_top_n <= 0 or micro_cutoff_px <= 0:
+        raise ValueError("Invalid micro-rescue proposal or size threshold")
+    if not 0 <= teacher_iou_floor <= 1 or advantage_margin < 0:
+        raise ValueError("Invalid micro-rescue selection thresholds")
+    if getattr(student.roi_heads, "_cbl_scale_teacher", None) is not None:
+        raise ValueError("PC-MR-RPN cannot share a run with RoI distillation")
+    selection_config = {
+        "teacher_min_size": int(teacher_min_size),
+        "teacher_max_size": int(teacher_max_size),
+        "proposal_top_n": int(proposal_top_n),
+        "micro_cutoff_px": float(micro_cutoff_px),
+        "teacher_iou_floor": float(teacher_iou_floor),
+        "advantage_margin": float(advantage_margin),
+    }
+    moc_teacher = getattr(student.backbone, "_moc_feature_teacher", None)
+    if moc_teacher is not None:
+        moc_config = getattr(student.backbone, "_moc_feature_config", {})
+        compatible_pc_moc = bool(
+            moc_teacher is teacher
+            and getattr(student.backbone, "_moc_feature_target", None)
+            == "cosine"
+            and moc_config.get("selection") == selection_config
+        )
+        if not compatible_pc_moc:
+            raise ValueError(
+                "PC-MR-RPN can share FPN supervision only with same-teacher "
+                "PC-MOC-FD and identical selection settings"
+            )
+    if getattr(student.rpn, "_micro_rescue_teacher", None) is not None:
+        raise ValueError("PC-MR-RPN teacher is already attached")
+
+    teacher.eval()
+    for parameter in teacher.parameters():
+        parameter.requires_grad_(False)
+    teacher.transform.min_size = (int(teacher_min_size),)
+    teacher.transform.max_size = int(teacher_max_size)
+    object.__setattr__(student.rpn, "_micro_rescue_teacher", teacher)
+    student.rpn._micro_rescue_pcgrad = True
+    student.rpn._micro_rescue_config = {
+        "loss_weight": float(loss_weight),
+        "selection": selection_config,
+    }
+    student.rpn._micro_rescue_stats = {}
+    original_forward = student.forward
+
+    def forward_with_micro_rescue(self, images, targets=None):
+        losses_or_detections = original_forward(images, targets)
+        if not self.training or targets is None:
+            return losses_or_detections
+        teacher_model = getattr(self.rpn, "_micro_rescue_teacher")
+        auxiliary_loss, stats = _micro_rescue_rpn_regression_loss(
+            self,
+            teacher_model,
+            images,
+            targets,
+            loss_weight=loss_weight,
+            proposal_top_n=proposal_top_n,
+            micro_cutoff_px=micro_cutoff_px,
+            teacher_iou_floor=teacher_iou_floor,
+            advantage_margin=advantage_margin,
+        )
+        self.rpn._micro_rescue_stats = stats
+        losses_or_detections = dict(losses_or_detections)
+        losses_or_detections["loss_rpn_micro_rescue"] = auxiliary_loss
+        return losses_or_detections
+
+    student.forward = types.MethodType(forward_with_micro_rescue, student)
+    return student
+
+
+def _micro_object_feature_snapshot(
+    model: nn.Module,
+    images: list[torch.Tensor],
+    targets: list[dict],
+    *,
+    train_fpn: bool,
+) -> dict:
+    """Pool exact-GT FPN features while detaching the backbone body."""
+    image_list, transformed_targets = model.transform(images, targets)
+    with torch.no_grad():
+        body_features = model.backbone.body(image_list.tensors)
+        if isinstance(body_features, torch.Tensor):
+            body_features = OrderedDict([("0", body_features)])
+        body_features = OrderedDict(
+            (name, feature.detach())
+            for name, feature in body_features.items()
+        )
+    context = torch.enable_grad() if train_fpn else torch.no_grad()
+    with context:
+        features = model.backbone.fpn(body_features)
+        if isinstance(features, torch.Tensor):
+            features = OrderedDict([("0", features)])
+        pooled = model.roi_heads.box_roi_pool(
+            features,
+            [target["boxes"] for target in transformed_targets],
+            image_list.image_sizes,
+        )
+
+    with torch.no_grad():
+        feature_list = [feature.detach() for feature in features.values()]
+        objectness_list, bbox_delta_list = model.rpn.head(feature_list)
+        anchors = model.rpn.anchor_generator(image_list, feature_list)
+        num_images = len(anchors)
+        num_anchors_per_level = [
+            score[0].shape[0] * score[0].shape[1] * score[0].shape[2]
+            for score in objectness_list
+        ]
+        objectness, bbox_deltas = concat_box_prediction_layers(
+            objectness_list, bbox_delta_list)
+        decoded = model.rpn.box_coder.decode(
+            bbox_deltas, anchors).reshape(num_images, -1, 4)
+        was_training = model.rpn.training
+        model.rpn.eval()
+        try:
+            proposals, _ = model.rpn.filter_proposals(
+                decoded,
+                objectness,
+                image_list.image_sizes,
+                num_anchors_per_level,
+            )
+        finally:
+            model.rpn.train(was_training)
+    counts = [len(target["boxes"]) for target in transformed_targets]
+    return {
+        "targets": transformed_targets,
+        "pooled": pooled.split(counts, dim=0),
+        "proposals": proposals,
+    }
+
+
+def _micro_object_feature_distillation_loss(
+    student: nn.Module,
+    teacher: nn.Module,
+    images: list[torch.Tensor],
+    targets: list[dict],
+    *,
+    loss_weight: float,
+    proposal_top_n: int,
+    micro_cutoff_px: float,
+    teacher_iou_floor: float,
+    advantage_margin: float,
+    feature_target: str = "cosine",
+) -> tuple[torch.Tensor, dict[str, float | int | str]]:
+    student_snapshot = _micro_object_feature_snapshot(
+        student, images, targets, train_fpn=True)
+    teacher_snapshot = _micro_object_feature_snapshot(
+        teacher, images, targets, train_fpn=False)
+    per_roi_losses = []
+    selected_weights = []
+    teacher_ious = []
+    student_ious = []
+    micro_gt_count = 0
+
+    for image_index, original_target in enumerate(targets):
+        original_boxes = original_target["boxes"]
+        micro_mask = (
+            (
+                (original_boxes[:, 2] - original_boxes[:, 0]).clamp(min=0)
+                * (original_boxes[:, 3] - original_boxes[:, 1]).clamp(min=0)
+            ).sqrt()
+            < micro_cutoff_px
+        )
+        micro_gt_count += int(micro_mask.sum().item())
+        if not micro_mask.any():
+            continue
+
+        student_gt = student_snapshot["targets"][image_index]["boxes"]
+        teacher_gt = teacher_snapshot["targets"][image_index]["boxes"]
+        if (
+            len(original_boxes) != len(student_gt)
+            or len(student_gt) != len(teacher_gt)
+        ):
+            raise AssertionError("Cross-scale feature GT order/count changed")
+        student_best = _best_rpn_proposal_iou(
+            student_gt,
+            student_snapshot["proposals"][image_index],
+            proposal_top_n,
+        )
+        teacher_best = _best_rpn_proposal_iou(
+            teacher_gt,
+            teacher_snapshot["proposals"][image_index],
+            proposal_top_n,
+        )
+        advantage = teacher_best - student_best
+        selected = (
+            micro_mask
+            & (teacher_best >= teacher_iou_floor)
+            & (advantage >= advantage_margin)
+        )
+        if not selected.any():
+            continue
+
+        student_features = student_snapshot["pooled"][image_index][selected]
+        teacher_features = teacher_snapshot["pooled"][image_index][selected]
+        if feature_target == "cosine":
+            student_features = F.normalize(student_features.float(), dim=1)
+            teacher_features = F.normalize(
+                teacher_features.float().detach(), dim=1)
+            cosine = (student_features * teacher_features).sum(dim=1)
+            roi_losses = (1.0 - cosine).mean(dim=(1, 2))
+        elif feature_target == "high_frequency":
+            roi_losses = _micro_high_frequency_feature_loss(
+                student_features,
+                teacher_features,
+            )
+        else:
+            raise ValueError(f"Unknown micro feature target: {feature_target}")
+        per_roi_losses.append(roi_losses)
+        selected_weights.append(advantage[selected].detach().float())
+        teacher_ious.append(teacher_best[selected].detach())
+        student_ious.append(student_best[selected].detach())
+
+    if not selected_weights:
+        zero = sum(
+            pooled.sum() * 0.0
+            for pooled in student_snapshot["pooled"]
+        )
+        return zero, {
+            "micro_gt": micro_gt_count,
+            "selected_gt": 0,
+            "selection_coverage": 0.0,
+            "teacher_iou_mean": 0.0,
+            "student_iou_mean": 0.0,
+            "raw_feature_loss": 0.0,
+            "feature_target": feature_target,
+        }
+
+    losses = torch.cat(per_roi_losses)
+    weights = torch.cat(selected_weights)
+    raw_loss = (weights * losses).sum() / weights.sum().clamp_min(EPS)
+    return loss_weight * raw_loss, {
+        "micro_gt": micro_gt_count,
+        "selected_gt": int(weights.numel()),
+        "selection_coverage": (
+            float(weights.numel() / micro_gt_count) if micro_gt_count else 0.0),
+        "teacher_iou_mean": float(torch.cat(teacher_ious).mean().item()),
+        "student_iou_mean": float(torch.cat(student_ious).mean().item()),
+        "raw_feature_loss": float(raw_loss.detach().item()),
+        "feature_target": feature_target,
+    }
+
+
+def _micro_high_frequency_feature_loss(
+    student_features: torch.Tensor,
+    teacher_features: torch.Tensor,
+) -> torch.Tensor:
+    """Match teacher-weighted local residual directions inside each GT RoI."""
+    if student_features.shape != teacher_features.shape:
+        raise ValueError("Student/teacher RoI feature shapes must match")
+    if student_features.ndim != 4:
+        raise ValueError("Expected RoI features shaped [N, C, H, W]")
+
+    student = F.normalize(student_features.float(), dim=1)
+    teacher = F.normalize(teacher_features.float().detach(), dim=1)
+    student_high = student - F.avg_pool2d(
+        student, kernel_size=3, stride=1, padding=1,
+        count_include_pad=False)
+    teacher_high = teacher - F.avg_pool2d(
+        teacher, kernel_size=3, stride=1, padding=1,
+        count_include_pad=False)
+    teacher_energy = teacher_high.square().sum(dim=1).sqrt().detach()
+    teacher_energy = torch.where(
+        teacher_energy > 1e-6,
+        teacher_energy,
+        torch.zeros_like(teacher_energy),
+    )
+    student_high = F.normalize(student_high, dim=1)
+    teacher_high = F.normalize(teacher_high, dim=1)
+    cosine = (student_high * teacher_high).sum(dim=1)
+    weighted = (1.0 - cosine) * teacher_energy
+    return weighted.sum(dim=(1, 2)) / teacher_energy.sum(
+        dim=(1, 2)).clamp_min(EPS)
+
+
+def attach_pc_micro_object_feature_teacher(
+    student: nn.Module,
+    teacher: nn.Module,
+    *,
+    loss_weight: float = 0.15,
+    teacher_min_size: int = 960,
+    teacher_max_size: int = 1200,
+    proposal_top_n: int = 300,
+    micro_cutoff_px: float = 8.0,
+    teacher_iou_floor: float = 0.50,
+    advantage_margin: float = 0.02,
+    feature_target: str = "cosine",
+) -> nn.Module:
+    """Attach frozen teacher-bounded, FPN-only micro-feature training."""
+    if loss_weight <= 0:
+        raise ValueError("Micro-object feature loss weight must be positive")
+    if teacher_min_size <= 0 or teacher_max_size < teacher_min_size:
+        raise ValueError("Invalid micro-object feature teacher transform size")
+    if proposal_top_n <= 0 or micro_cutoff_px <= 0:
+        raise ValueError("Invalid micro-object feature proposal or size threshold")
+    if not 0 <= teacher_iou_floor <= 1 or advantage_margin < 0:
+        raise ValueError("Invalid micro-object feature selection thresholds")
+    if feature_target not in {"cosine", "high_frequency"}:
+        raise ValueError(f"Unknown micro-object feature target: {feature_target}")
+    selection_config = {
+        "teacher_min_size": int(teacher_min_size),
+        "teacher_max_size": int(teacher_max_size),
+        "proposal_top_n": int(proposal_top_n),
+        "micro_cutoff_px": float(micro_cutoff_px),
+        "teacher_iou_floor": float(teacher_iou_floor),
+        "advantage_margin": float(advantage_margin),
+    }
+    roi_teacher = getattr(student.roi_heads, "_cbl_scale_teacher", None)
+    if roi_teacher is not None:
+        compatible_ra_tb = bool(
+            roi_teacher is teacher
+            and feature_target == "high_frequency"
+            and getattr(
+                student.roi_heads,
+                "_cbl_scale_distill_coordinate_reliable",
+                False,
+            )
+            and getattr(
+                student.roi_heads,
+                "_cbl_scale_distill_distance",
+                None,
+            ) == "teacher_bounded_gt"
+            and getattr(
+                student.roi_heads,
+                "_cbl_scale_distill_stage",
+                None,
+            ) == "refined"
+            and not getattr(
+                student.roi_heads,
+                "_cbl_scale_distill_pcgrad",
+                False,
+            )
+        )
+        if not compatible_ra_tb:
+            raise ValueError(
+                "FPN micro-feature distillation can share RoI supervision "
+                "only with same-teacher RA-TB plus high_frequency target"
+            )
+    rpn_teacher = getattr(student.rpn, "_micro_rescue_teacher", None)
+    if rpn_teacher is not None:
+        rpn_config = getattr(student.rpn, "_micro_rescue_config", {})
+        compatible_pc_mr = bool(
+            rpn_teacher is teacher
+            and feature_target == "cosine"
+            and rpn_config.get("selection") == selection_config
+        )
+        if not compatible_pc_mr:
+            raise ValueError(
+                "PC-MOC-FD can share RPN supervision only with same-teacher "
+                "PC-MR-RPN and identical selection settings"
+            )
+    if getattr(student.backbone, "_moc_feature_teacher", None) is not None:
+        raise ValueError("PC-MOC-FD teacher is already attached")
+
+    teacher.eval()
+    for parameter in teacher.parameters():
+        parameter.requires_grad_(False)
+    teacher.transform.min_size = (int(teacher_min_size),)
+    teacher.transform.max_size = int(teacher_max_size)
+    object.__setattr__(student.backbone, "_moc_feature_teacher", teacher)
+    student.backbone._moc_feature_pcgrad = True
+    student.backbone._moc_feature_target = feature_target
+    student.backbone._moc_feature_config = {
+        "loss_weight": float(loss_weight),
+        "selection": selection_config,
+    }
+    student.backbone._moc_feature_stats = {}
+    original_forward = student.forward
+
+    def forward_with_micro_object_features(self, images, targets=None):
+        losses_or_detections = original_forward(images, targets)
+        if not self.training or targets is None:
+            return losses_or_detections
+        teacher_model = getattr(self.backbone, "_moc_feature_teacher")
+        auxiliary_loss, stats = _micro_object_feature_distillation_loss(
+            self,
+            teacher_model,
+            images,
+            targets,
+            loss_weight=loss_weight,
+            proposal_top_n=proposal_top_n,
+            micro_cutoff_px=micro_cutoff_px,
+            teacher_iou_floor=teacher_iou_floor,
+            advantage_margin=advantage_margin,
+            feature_target=feature_target,
+        )
+        self.backbone._moc_feature_stats = stats
+        losses_or_detections = dict(losses_or_detections)
+        losses_or_detections["loss_fpn_micro_feature"] = auxiliary_loss
+        return losses_or_detections
+
+    student.forward = types.MethodType(
+        forward_with_micro_object_features, student)
+    return student
+
+
+def attach_cbl_cross_scale_teacher(
+    student: nn.Module,
+    teacher: nn.Module,
+    *,
+    loss_weight: float = 0.25,
+    temperature: float = 2.0,
+    advantage_margin: float = 0.02,
+    teacher_min_size: int = 960,
+    teacher_max_size: int = 1200,
+    tiny_reference: float = 16.0,
+    tiny_weight_cap: float = 2.0,
+    head_only: bool = False,
+    coordinate_reliable: bool = False,
+    consensus_filter: bool = False,
+    distill_distance: str = "kl",
+    cross_head: bool = False,
+    pcgrad: bool = False,
+    distill_stage: str = "first",
+) -> nn.Module:
+    """Attach a frozen high-resolution CBL teacher for training only."""
+    if loss_weight <= 0:
+        raise ValueError("Cross-scale distillation loss weight must be positive")
+    if temperature <= 0:
+        raise ValueError("Cross-scale distillation temperature must be positive")
+    if advantage_margin < 0:
+        raise ValueError("Cross-scale distillation margin must be non-negative")
+    if teacher_min_size <= 0 or teacher_max_size < teacher_min_size:
+        raise ValueError("Invalid cross-scale teacher transform size")
+    if tiny_reference <= 0 or tiny_weight_cap < 1:
+        raise ValueError("Invalid cross-scale tiny-object weighting")
+    if consensus_filter and not coordinate_reliable:
+        raise ValueError(
+            "Teacher consensus filtering requires coordinate reliability")
+    if distill_distance not in {"kl", "ordered_w1", "teacher_bounded_gt"}:
+        raise ValueError(f"Unsupported CBL distillation distance: {distill_distance}")
+    if cross_head and not coordinate_reliable:
+        raise ValueError("Cross-head distillation requires coordinate reliability")
+    if cross_head and head_only:
+        raise ValueError("Cross-head and head-only distillation are mutually exclusive")
+    if cross_head and (consensus_filter or distill_distance != "kl"):
+        raise ValueError(
+            "Cross-head Gate 0 must isolate the shared-representation path")
+    if pcgrad and not cross_head:
+        raise ValueError("PCGrad requires cross-head distillation")
+    if distill_stage not in {"first", "refined"}:
+        raise ValueError(f"Unsupported CBL distillation stage: {distill_stage}")
+    if distill_stage == "refined":
+        if getattr(student.roi_heads, "_cbl_refine_train_weight", 0.0) <= 0:
+            raise ValueError(
+                "Refined-stage distillation requires iterative CBL training")
+        if head_only or consensus_filter or cross_head or pcgrad:
+            raise ValueError(
+                "Refined-stage Gate 0 must isolate coordinate-reliable KL")
+    student_predictor = student.roi_heads.box_predictor
+    teacher_predictor = teacher.roi_heads.box_predictor
+    if (
+        not getattr(student_predictor, "is_distributional", False)
+        or not getattr(teacher_predictor, "is_distributional", False)
+    ):
+        raise ValueError("Cross-scale distillation requires CBL models")
+    if (
+        student_predictor.num_classes != teacher_predictor.num_classes
+        or student_predictor.num_bins != teacher_predictor.num_bins
+        or not torch.allclose(
+            student_predictor.cbl_grid.float().cpu(),
+            teacher_predictor.cbl_grid.float().cpu(),
+        )
+    ):
+        raise ValueError("Student and teacher CBL heads are incompatible")
+    if consensus_filter and not torch.allclose(
+        student_predictor.cbl_grid.float().cpu(),
+        -student_predictor.cbl_grid.float().cpu().flip(0),
+        atol=1e-6,
+        rtol=0,
+    ):
+        raise ValueError("Teacher consensus filtering requires a symmetric grid")
+
+    teacher.eval()
+    for parameter in teacher.parameters():
+        parameter.requires_grad_(False)
+    teacher.transform.min_size = (int(teacher_min_size),)
+    teacher.transform.max_size = int(teacher_max_size)
+    roi_heads = student.roi_heads
+    object.__setattr__(roi_heads, "_cbl_scale_teacher", teacher)
+    roi_heads._cbl_scale_distill_weight = float(loss_weight)
+    roi_heads._cbl_scale_distill_temperature = float(temperature)
+    roi_heads._cbl_scale_distill_margin = float(advantage_margin)
+    roi_heads._cbl_scale_distill_tiny_reference = float(tiny_reference)
+    roi_heads._cbl_scale_distill_tiny_weight_cap = float(tiny_weight_cap)
+    roi_heads._cbl_scale_distill_head_only = bool(head_only)
+    roi_heads._cbl_scale_distill_coordinate_reliable = bool(
+        coordinate_reliable)
+    roi_heads._cbl_scale_distill_consensus_filter = bool(consensus_filter)
+    roi_heads._cbl_scale_distill_distance = distill_distance
+    roi_heads._cbl_scale_distill_cross_head = bool(cross_head)
+    roi_heads._cbl_scale_distill_pcgrad = bool(pcgrad)
+    roi_heads._cbl_scale_distill_stage = distill_stage
+
+    original_forward = student.forward
+
+    def forward_with_source_images(self, images, targets=None):
+        self.roi_heads._cbl_scale_source_images = images
+        try:
+            return original_forward(images, targets)
+        finally:
+            self.roi_heads._cbl_scale_source_images = None
+
+    student.forward = types.MethodType(forward_with_source_images, student)
+    return student
 
 
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
+                                       metric_distance_fn=None,
                                        metric_loss_weight=1.0,
                                        box_loss_type="metric",
                                        box_loss_warmup_epochs=BOX_LOSS_WARMUP_EPOCHS,
@@ -1968,7 +3410,8 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             cbl_um_weight = getattr(self, '_cbl_um_weight', CBL_UM_WEIGHT)
             loss_classifier, loss_box_reg, loss_quality = _metric_box_loss(
                 class_logits, box_regression, labels, regression_targets,
-                self.box_coder, metric_fn, reliability_thr, metric_loss_weight,
+                self.box_coder, metric_fn, metric_distance_fn,
+                reliability_thr, metric_loss_weight,
                 proposals_sampled, current_epoch=current_epoch,
                 box_loss_type=box_loss_type,
                 box_loss_warmup_epochs=box_loss_warmup_epochs,
@@ -1984,8 +3427,13 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
             losses = {"loss_classifier": loss_classifier, "loss_box_reg": loss_box_reg}
             refine_train_weight = getattr(
                 self, "_cbl_refine_train_weight", 0.0)
+            distill_weight = getattr(
+                self, "_cbl_scale_distill_weight", 0.0)
+            distill_stage = getattr(
+                self, "_cbl_scale_distill_stage", "first")
+            refined_distill_context = None
             if refine_train_weight > 0:
-                losses["loss_box_refine"] = _iterative_cbl_training_loss(
+                refine_result = _iterative_cbl_training_loss(
                     self,
                     features,
                     proposals_sampled,
@@ -1995,7 +3443,48 @@ def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                     image_shapes,
                     cbl_um_weight,
                     refine_train_weight,
+                    return_context=(
+                        distill_weight > 0 and distill_stage == "refined"),
                 )
+                if isinstance(refine_result, tuple):
+                    losses["loss_box_refine"], refined_distill_context = (
+                        refine_result)
+                else:
+                    losses["loss_box_refine"] = refine_result
+            if distill_weight > 0:
+                if distill_stage == "refined":
+                    if refined_distill_context is None:
+                        losses["loss_box_scale_distill"] = (
+                            box_regression.sum() * 0.0)
+                    else:
+                        losses["loss_box_scale_distill"] = (
+                            _cbl_cross_scale_training_loss(
+                                self,
+                                refined_distill_context["proposals"],
+                                refined_distill_context["labels"],
+                                refined_distill_context["regression_targets"],
+                                refined_distill_context["distribution_logits"],
+                                refined_distill_context["box_regression"],
+                                refined_distill_context["student_box_features"],
+                                refined_distill_context[
+                                    "student_pooled_features"],
+                                image_shapes,
+                            )
+                        )
+                else:
+                    losses["loss_box_scale_distill"] = (
+                        _cbl_cross_scale_training_loss(
+                            self,
+                            proposals_sampled,
+                            labels,
+                            regression_targets,
+                            distribution_logits,
+                            box_regression,
+                            cls_features,
+                            box_features,
+                            image_shapes,
+                        )
+                    )
             if quality_logits is not None and quality_loss_weight > 0:
                 losses["loss_quality"] = loss_quality
         else:
@@ -2332,14 +3821,17 @@ def build_model(
     ] = None,
     snip_rpn_ignore_iou_thresh: float = RPN_BG_IOU,
     snip_collect_stats: bool = False,
+    metric_distance_fn: Optional[Callable] = None,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
     Args:
         metric_fn: callable; if None → standard torchvision
+        metric_distance_fn: aligned canonical distance used by RoI regression
         placement: one of:
             - "everywhere":       baseline (metric_fn ignored)
             - "la":               metric in RPN label assignment (hierarchical)
+            - "loss":             metric in RoI box loss only
             - "la_loss":          metric in RPN LA + RoI box loss
             - "la_loss_nms":      LA + loss + NMS (hard metric-NMS)
             - "la_loss_soft_nms": LA + loss + Soft-NMS (ALW score decay)
@@ -2403,7 +3895,7 @@ def build_model(
         snip_collect_stats: synchronize and retain assignment counts for audits
         channels_last: if True, convert backbone to channels_last memory format
     """
-    if placement not in ("everywhere", "la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner"):
+    if placement not in ("everywhere", "la", "loss", "la_loss", "la_loss_nms", "la_loss_soft_nms", "saalw_assigner", "sda_decoupled", "h_wiou"):
         raise ValueError(f"Unknown placement: {placement}")
     if rpn_refine_steps < 0:
         raise ValueError("RPN refinement steps must be non-negative")
@@ -2457,8 +3949,8 @@ def build_model(
                (128, 256, 512), (256, 512, 1024)),
         aspect_ratios=((0.5, 1.0, 2.0),) * 5)
 
-    use_metric_rpn  = placement in ("la", "la_loss", "la_loss_nms", "la_loss_soft_nms") and metric_fn is not None
-    use_metric_loss = placement in ("la_loss", "la_loss_nms", "la_loss_soft_nms") and metric_fn is not None
+    use_metric_rpn  = placement in ("la", "la_loss", "la_loss_nms", "la_loss_soft_nms", "h_wiou") and metric_fn is not None
+    use_metric_loss = placement in ("loss", "la_loss", "la_loss_nms", "la_loss_soft_nms", "h_wiou") and metric_fn is not None
     use_metric_nms  = placement in ("la_loss_nms",) and metric_fn is not None
     use_soft_nms    = placement in ("la_loss_soft_nms",) and metric_fn is not None
     use_saalw_rpn   = placement == "saalw_assigner"
@@ -2531,6 +4023,33 @@ def build_model(
             nms_thresh=RPN_NMS_THRESH,
             saalw_assigner=assigner,
         )
+    elif placement == "sda_decoupled" and metric_fn is not None:
+        from .assigner import ScaleDecoupledAssigner
+        cfg = saalw_rpn_cfg or {}
+        assigner = ScaleDecoupledAssigner(
+            metric_fn=metric_fn,
+            micro_cutoff_px=cfg.get("micro_cutoff_px", 8.0),
+            fg_iou_thresh=RPN_FG_IOU,
+            bg_iou_thresh=RPN_BG_IOU,
+            micro_topk=cfg.get("micro_topk", 4),
+            micro_pos_sim_thr=cfg.get("micro_pos_sim_thr", 0.35),
+            reliability_thr=reliability_thr,
+        )
+        print(f"  [SDA] Scale-Decoupled RPN enabled: micro_cutoff={assigner.micro_cutoff_px}px, "
+              f"micro_topk={assigner.micro_topk}, fg_iou={assigner.fg_iou_thresh}")
+        base.rpn = SAALWRPN(
+            anchor_generator=anchor_gen,
+            head=RPNHead(base.backbone.out_channels,
+                         anchor_gen.num_anchors_per_location()[0]),
+            fg_iou_thresh=RPN_FG_IOU, bg_iou_thresh=RPN_BG_IOU,
+            batch_size_per_image=256, positive_fraction=0.5,
+            pre_nms_top_n={"training": RPN_NUM_PROPOSALS_TRAIN,
+                           "testing": RPN_NUM_PROPOSALS_TEST},
+            post_nms_top_n={"training": RPN_NUM_PROPOSALS_TRAIN,
+                            "testing": RPN_NUM_PROPOSALS_TEST},
+            nms_thresh=RPN_NMS_THRESH,
+            saalw_assigner=assigner,
+        )
     elif use_metric_rpn:
         rpn_head = (
             PAAIoURPNHead(
@@ -2585,6 +4104,7 @@ def build_model(
                             "testing": RPN_NUM_PROPOSALS_TEST},
             nms_thresh=RPN_NMS_THRESH,
         )
+        base.rpn.box_similarity = chunked_box_iou
 
     base.roi_heads.fg_iou_thresh = ROI_FG_IOU_THRESH
     base.roi_heads.bg_iou_thresh = ROI_BG_IOU_THRESH
@@ -2725,6 +4245,7 @@ def build_model(
             (use_quality_score and quality_loss_weight > 0)):
         _wrap_roi_forward_for_metric_loss(
             base.roi_heads, metric_fn, reliability_thr,
+            metric_distance_fn=metric_distance_fn,
             metric_loss_weight=1.0,
             box_loss_type=box_loss_type,
             box_loss_warmup_epochs=box_loss_warmup_epochs,

@@ -42,6 +42,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument(
+        "--transform-min-size",
+        type=int,
+        default=None,
+        help="Override the checkpoint/model evaluation minimum image size",
+    )
+    parser.add_argument(
+        "--transform-max-size",
+        type=int,
+        default=None,
+        help="Override the checkpoint/model evaluation maximum image size",
+    )
+    parser.add_argument(
         "--top-n", type=int, nargs="+", default=(100, 300, 1000, 1500))
     parser.add_argument(
         "--iou-thresholds", type=float, nargs="+", default=(0.5, 0.75))
@@ -192,6 +204,10 @@ def main() -> None:
 
     if args.batch_size < 1:
         raise ValueError("--batch-size must be positive")
+    if args.transform_min_size is not None and args.transform_min_size < 1:
+        raise ValueError("--transform-min-size must be positive")
+    if args.transform_max_size is not None and args.transform_max_size < 1:
+        raise ValueError("--transform-max-size must be positive")
     top_ns = sorted(set(args.top_n))
     thresholds = sorted(set(args.iou_thresholds))
     if not top_ns or top_ns[0] < 1:
@@ -241,6 +257,13 @@ def main() -> None:
         device,
         iou_fusion_weight=args.rpn_iou_prediction_fusion_weight,
     )
+    if args.transform_min_size is not None:
+        model.transform.min_size = (args.transform_min_size,)
+    if args.transform_max_size is not None:
+        model.transform.max_size = args.transform_max_size
+    effective_transform_min_size = tuple(
+        int(value) for value in model.transform.min_size)
+    effective_transform_max_size = int(model.transform.max_size)
     config = checkpoint.get("config", {})
     cascade_enabled = bool(getattr(model.rpn, "cascade_refinement", False))
     iou_prediction_enabled = bool(
@@ -411,6 +434,8 @@ def main() -> None:
         "split": args.split,
         "metric": config.get("metric", "sa_alw_full"),
         "placement": config.get("placement", "la_loss"),
+        "transform_min_size": list(effective_transform_min_size),
+        "transform_max_size": effective_transform_max_size,
         "num_tiles": num_tiles,
         "num_tiles_with_gt": num_tiles_with_gt,
         "num_gt": counts["overall"],

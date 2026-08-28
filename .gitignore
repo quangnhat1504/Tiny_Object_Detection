@@ -20,4 +20,11 @@ working/
 .commandcode/
 .claude/
 .agents/
+.archive/
+.runtime/
+.hermes/
+scratch/
+*.log
+aitod_simd_s42/
+paper/checkpoints/
 bug.txt

@@ -9,16 +9,22 @@
 
 SOD-TinyPeopleInSea comprises $1{,}570$ images and $70{,}702$ instances
 across two classes (\texttt{dry-person}, \texttt{wet-swimmer}), split
-$1{,}374/131/65$ for train/val/test. The $\sqrt{\text{area}}$ has mean
-$15.7$\,px and median $11.5$\,px; $79.5\%$ and $92.1\%$ of instances are
-smaller than $20$\,px and $32$\,px (Table~\ref{tab:exp-eda}). The class
-distribution is $1.9:1$ (\texttt{dry-person} favored). Notably, $43.6\%$
-of \texttt{dry-person} instances have aspect ratio below $0.5$, motivating
-anisotropic normalization in ALW and SA-ALW.
+$1{,}374/131/65$ for train/val/test. It is an openly licensed (CC BY 4.0)
+Roboflow-hosted derivative of TinyPerson~\cite{yu2020tinyperson}, version~5,
+in which masked and crowded regions are removed. The export records
+auto-orientation and training augmentations (horizontal flip, shear, and
+brightness). To preserve double-blind review, the dataset landing-page URL
+and uploader metadata are withheld until the camera-ready version. The
+$\sqrt{\text{area}}$ has mean $15.7$\,px and median $11.5$\,px; $79.5\%$
+and $92.1\%$ of instances are smaller than $20$\,px and $32$\,px
+(Table~\ref{tab:exp-eda}). The class distribution is $1.9:1$
+(\texttt{dry-person} favored). Notably, $43.6\%$ of \texttt{dry-person}
+instances have aspect ratio below $0.5$, motivating anisotropic normalization
+in ALW and SA-ALW.
 
 \begin{table}[t]
 \centering
-\caption{\texorpdfstring{Object-size distribution by $\sqrt{\text{area}}$ bin.}{Object-size distribution.}}
+\caption{Object-size distribution by $\sqrt{\text{area}}$ bin.}
 \label{tab:exp-eda}
 \small
 \begin{tabular}{lrr}
@@ -39,7 +45,7 @@ $\geq 96$  & 501     & 0.7\% \\
 \subsection{Implementation Details}
 \label{sec:exp-impl}
 
-All Faster R-CNN experiments share a byte-identical training harness with
+All Faster R-CNN~\cite{ren2015faster} experiments share a byte-identical training harness with
 identical hyperparameters; only the bounding-box metric function changes.
 The detector uses a ResNet-50 + FPN backbone~\cite{he2016resnet,lin2017fpn}
 with COCO pretrained weights and RFLA-style~\cite{xu2022rfla} receptive-field
@@ -73,13 +79,13 @@ by $+11.9\%$ in AP and by $+15.8\%$ in AP$_{50}$. SA-ALW $w_{\text{pos}}$-only
 achieves the best AP$_{L}$ among Gaussian metrics ($0.4867$), trailing only
 the patched IoU baseline by $0.0086$.
 
-\begin{table*}[t]
+\begin{table}[t]
 \centering
-\caption{\texorpdfstring{Test-set evaluation (locked, $65$ images). Standard
-COCO metrics. Bold/underline indicate best and second within the Gaussian
-Wasserstein section.}{Test-set evaluation.}}
+\caption{Test-set evaluation (locked, $65$ images). Standard COCO metrics.
+Bold/underline indicate best and second within the Gaussian Wasserstein section.}
 \label{tab:test-results}
-\small
+\scriptsize
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}lccccccr@{}}
 \toprule
 Metric & AP & AP$_{50}$ & AP$_{75}$ & AP$_{S}$ & AP$_{M}$ & AP$_{L}$ & AR$_{100}$ \\
@@ -92,13 +98,14 @@ FRCNN patches      & 0.0958 & 0.2921 & \textbf{0.0375} & 0.0830 & 0.1938 & \text
 \multicolumn{8}{c}{\textit{Gaussian Wasserstein metrics (byte-identical harness)}} \\
 \midrule
 NWD~\cite{wang2021nwd}         & 0.0932 & 0.2975 & 0.0286 & \textbf{0.0882} & 0.1821 & 0.0985 & 0.2456 \\
-IGWD~\cite{igwd2024}           & 0.0874 & 0.2642 & 0.0371 & 0.0751 & \textbf{0.2048} & 0.4773 & 0.2318 \\
+IGWD~\cite{igwd2026}           & 0.0874 & 0.2642 & 0.0371 & 0.0751 & \textbf{0.2048} & 0.4773 & 0.2318 \\
 ALW (wrapped)$^{a}$       & 0.0738 & 0.2210 & 0.0326 & 0.0654 & 0.1701 & 0.3878 & 0.2058 \\
 SA-ALW $\beta$-only           & 0.0917 & 0.2894 & 0.0324 & 0.0802 & 0.1930 & 0.4639 & 0.2462 \\
 SA-ALW $w_{\text{pos}}$-only  & \underline{0.0968} & 0.2975 & \textbf{0.0353} & \underline{0.0851} & \underline{0.1949} & \textbf{0.4867} & \underline{0.2517} \\
 \textbf{SA-ALW full}          & \textbf{0.0978} & \textbf{0.3059} & \underline{0.0345} & \textbf{0.0866} & 0.1924 & 0.4247 & \textbf{0.2524} \\
 \bottomrule
 \end{tabular}
+}
 
 \vspace{3pt}
 \begin{minipage}{\textwidth}
@@ -108,7 +115,7 @@ penalty and reliability-gated shape weighting, which causes
 validation-to-test overfitting. A dedicated training run with the pure
 ALW formulation is underway.
 \end{minipage}
-\end{table*}
+\end{table}
 
 \textbf{SA-ALW full.} Achieves the best overall AP ($0.0978$) and
 AP$_{50}$ ($0.3059$) among all Gaussian metrics, along with the highest
@@ -152,7 +159,8 @@ with the anisotropic normalizer.
 \centering
 \caption{IGWD$\to$ALW component ablation (test, seed~42).}
 \label{tab:igwd-ablation}
-\small
+\scriptsize
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccccc}
 \toprule
 Configuration & AP & AP$_{50}$ & AP$_{75}$ & AP$_{S}$ & AP$_{M}$ & AP$_{L}$ & AR$_{100}$ \\
@@ -162,6 +170,7 @@ IGWD + anisotropic $\Sx,\Sy$   & \textbf{0.0908} & \textbf{0.2789} & 0.0331 & \t
 IGWD + log-ratio shape         & 0.0700 & 0.2173 & 0.0260 & 0.0568 & 0.1847 & 0.4733 & 0.1770 \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 \subsubsection{ALW$\to$SA-ALW: Scale-Adaptive Mechanisms}
@@ -180,7 +189,8 @@ by combining both mechanisms.
 \centering
 \caption{ALW$\to$SA-ALW mechanism ablation (test, seed~42).}
 \label{tab:saalw-ablation}
-\small
+\scriptsize
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccccc}
 \toprule
 Configuration & AP & AP$_{50}$ & AP$_{75}$ & AP$_{S}$ & AP$_{M}$ & AP$_{L}$ & AR$_{100}$ \\
@@ -191,6 +201,7 @@ SA-ALW $w_{\text{pos}}(s)$ only & 0.0968 & \textbf{0.2975} & \textbf{0.0353} & 0
 SA-ALW full (both)              & \textbf{0.0978} & \textbf{0.3059} & 0.0345 & \textbf{0.0866} & 0.1924 & 0.4247 & \textbf{0.2524} \\
 \bottomrule
 \end{tabular}
+}
 \end{table}
 
 % =============================================================================

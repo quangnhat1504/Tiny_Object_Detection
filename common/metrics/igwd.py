@@ -34,19 +34,32 @@ def _area_sum(wn, hn, wg, hg):
 
 
 def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg,
-                beta: float = METRIC_BETA, **kwargs) -> torch.Tensor:
-    """IGWD similarity, Eq (8) of paper IGWD.
+                beta: float = METRIC_BETA, chunk_size: int = 16384, **kwargs) -> torch.Tensor:
+    """IGWD similarity, Eq (8) of paper IGWD with memory chunking."""
+    N = xn.shape[0]
+    M = xg.shape[0]
+    if N == 0 or M == 0:
+        return torch.zeros((N, M), device=xn.device, dtype=xn.dtype)
 
-    IGWD = sqrt(W2^2 / S)
-    sim  = exp(-beta * sqrt(IGWD))
-    """
-    wn = wn.clamp(min=EPS); hn = hn.clamp(min=EPS)
-    wg = wg.clamp(min=EPS); hg = hg.clamp(min=EPS)
-    w2sq = _wasserstein_sq(xn, yn, wn, hn, xg, yg, wg, hg).clamp(min=0.0)
-    S = _area_sum(wn, hn, wg, hg).clamp(min=EPS)
-    igwd = (w2sq / S).clamp(min=0.0)
-    igwd = igwd.clamp(max=30.0 / max(beta, EPS))
-    return torch.exp(-beta * igwd)
+    if N <= chunk_size:
+        wn = wn.clamp(min=EPS); hn = hn.clamp(min=EPS)
+        wg = wg.clamp(min=EPS); hg = hg.clamp(min=EPS)
+        w2sq = _wasserstein_sq(xn, yn, wn, hn, xg, yg, wg, hg).clamp(min=0.0)
+        S = _area_sum(wn, hn, wg, hg).clamp(min=EPS)
+        igwd = (w2sq / S).clamp(min=0.0)
+        igwd = igwd.clamp(max=30.0 / max(beta, EPS))
+        return torch.exp(-beta * igwd)
+
+    chunks = []
+    for i in range(0, N, chunk_size):
+        end_idx = min(i + chunk_size, N)
+        wn_c = xn[i:end_idx].clamp(min=EPS); hn_c = yn[i:end_idx].clamp(min=EPS)
+        w2sq_c = _wasserstein_sq(xn[i:end_idx], yn[i:end_idx], wn[i:end_idx], hn[i:end_idx], xg, yg, wg, hg).clamp(min=0.0)
+        S_c = _area_sum(wn[i:end_idx], hn[i:end_idx], wg, hg).clamp(min=EPS)
+        igwd_c = (w2sq_c / S_c).clamp(min=0.0).clamp(max=30.0 / max(beta, EPS))
+        chunks.append(torch.exp(-beta * igwd_c))
+
+    return torch.cat(chunks, dim=0)
 
 
 # ── Ablation: IGWD + reliability gate ────────────────────────────────────

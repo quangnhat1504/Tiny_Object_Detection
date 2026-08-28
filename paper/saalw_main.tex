@@ -1,30 +1,27 @@
 % =============================================================================
 %  SA-ALW: Scale-Adaptive Anisotropic Log-Wasserstein Distance
 %          with Cascaded Routing for Tiny Object Detection
-%  IEEE Transactions on Image Processing (TIP) — Journal format
-%  Compile:  pdflatex → bibtex → pdflatex ×2
+%  Springer proceedings submission format for ICogSys 2026.
+%  Compile from paper/: pdflatex saalw_main → bibtex saalw_main → pdflatex ×2
 % =============================================================================
-\documentclass[journal]{IEEEtran}
+\documentclass[runningheads]{llncs}
 
-\usepackage{cite}
+\usepackage[T1]{fontenc}
 \usepackage{amsmath,amssymb,amsfonts}
-\usepackage{amsthm}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{graphicx}
-\usepackage{textcomp}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{array}
 \usepackage{url}
-\usepackage{hyperref}
 \usepackage{pifont}
 
 \hbadness=10000
 \vbadness=10000
-
-\newtheorem{theorem}{Theorem}
 
 % EDICS: 1-IMAG (Image/Video Analysis and Understanding)
 %        1-OBJE (Object Detection and Recognition)
@@ -39,9 +36,14 @@
 
 \begin{document}
 
-\title{SA-ALW: Scale-Adaptive Anisotropic Log-Wasserstein Distance\\ for Tiny Object Detection}
+\title{SA-ALW: Scale-Adaptive Anisotropic Log-Wasserstein Distance for Tiny Object Detection}
+\titlerunning{SA-ALW for Tiny Object Detection}
 
-\author{\IEEEauthorblockN{Anonymous Authors}\IEEEauthorblockA{\textit{Affiliation (to be added)}\\\textit{email (to be added)}}}
+% ICogSys 2026 uses double-blind review. Do not add authors, affiliations,
+% emails, acknowledgements, or identifying repository links before acceptance.
+\author{Anonymous Author(s)}
+\authorrunning{Anonymous Author(s)}
+\institute{Anonymous Institution}
 
 \maketitle
 
@@ -67,10 +69,9 @@ measurements are unreliable at micro scales. On a maritime benchmark where
 isolates the contribution of each design element.
 \end{abstract}
 
-\begin{IEEEkeywords}
-tiny object detection, bounding-box metric, Wasserstein distance, label
-assignment, scale-adaptive metrics, log-Wasserstein distance.
-\end{IEEEkeywords}
+\keywords{Tiny object detection \and bounding-box metric \and Wasserstein
+distance \and label assignment \and scale-adaptive metrics \and
+log-Wasserstein distance.}
 
 % =============================================================================
 \section{Introduction}
@@ -361,6 +362,43 @@ $w_{\text{pos}}(s)\to1.0$, recovering ALW exactly. For micro objects
 ($s\approx s_{\text{min}}$), $\beta(s)\approx10$ tightens the similarity
 gradient and $w_{\text{pos}}(s)\approx1.5$ amplifies position accuracy.
 
+Figure~\ref{fig:saalw-overview} summarizes how the scale statistic controls
+both adaptive schedules before the resulting metric is used by the detector.
+\begin{figure}[t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=3.5mm and 4mm,
+  >=Latex,
+  proc/.style={draw, rounded corners, align=center, minimum height=9mm,
+    text width=25mm, font=\footnotesize},
+  metric/.style={draw, rounded corners, align=center, minimum height=9mm,
+    text width=28mm, font=\footnotesize, fill=gray!8},
+  output/.style={draw, rounded corners, align=center, minimum height=9mm,
+    text width=28mm, font=\footnotesize},
+  flow/.style={-{Latex[length=1.5mm]}, thick}
+]
+  \node[proc] (boxes) {Target and candidate\\boxes $(x,y,w,h)$};
+  \node[proc, right=of boxes] (scale) {Target scale\\$s=\sqrt{w_t h_t}$};
+  \node[proc, right=of scale] (schedule) {Percentile\\schedule\\$s_{\min},s_{\max}$};
+  \node[metric, right=of schedule] (adaptive) {Adaptive parameters\\$\beta(s)$,\\$w_{\mathrm{pos}}(s)$};
+  \node[metric, right=of adaptive] (distance) {SA-ALW\\distance and\\similarity};
+  \node[output, above right=of distance] (assignment) {RFLA-HLA\\label assignment};
+  \node[output, below right=of distance] (regression) {Bounding-box\\regression loss};
+  \draw[flow] (boxes) -- (scale);
+  \draw[flow] (scale) -- (schedule);
+  \draw[flow] (schedule) -- (adaptive);
+  \draw[flow] (adaptive) -- (distance);
+  \draw[flow] (distance) -- (assignment);
+  \draw[flow] (distance) -- (regression);
+\end{tikzpicture}%
+}
+\caption{SA-ALW data flow. The target scale determines the temperature and
+position-weight schedules, which parameterize the same anisotropic
+log-Wasserstein metric for label assignment and box regression.}
+\label{fig:saalw-overview}
+\end{figure}
+
 \subsection{Integration into the Detection Pipeline}
 
 \textbf{Label Assignment.} We adopt the RFLA~\cite{xu2022rfla} Hierarchical
@@ -400,8 +438,6 @@ mean and standard deviation are planned.
 (3) The linear interpolation functions for $\beta(s)$ and $w_{\text{pos}}(s)$
 are simple and interpretable, but learned or dataset-calibrated functions
 could potentially yield further improvements.
-(4) One baseline reference requires bibliographic verification before
-camera-ready submission.
 
 % =============================================================================
 
@@ -429,7 +465,7 @@ harness and evaluation scripts are in \texttt{scripts/} and
 \texttt{common/config.py}. All metric experiments use the identical harness
 with only the metric function varying.
 
-\bibliographystyle{IEEEtran}
+\bibliographystyle{splncs04}
 \bibliography{references}
 
 \end{document}

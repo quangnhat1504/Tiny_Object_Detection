@@ -1,0 +1,1308 @@
+ứ<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tổng Hợp Kết Quả Thực Nghiệm 12 Notebooks - Tiny Object Detection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            overflow: hidden;
+        }
+        
+        .slides-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        .slide {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: none;
+            background: white;
+            padding: 60px 80px;
+            overflow-y: auto;
+        }
+        
+        .slide.active {
+            display: flex;
+            flex-direction: column;
+            animation: slideIn 0.5s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .slide h1 {
+            color: #667eea;
+            font-size: 3em;
+            margin-bottom: 30px;
+            border-bottom: 4px solid #667eea;
+            padding-bottom: 20px;
+        }
+        
+        .slide h2 {
+            color: #764ba2;
+            font-size: 2em;
+            margin: 30px 0 20px 0;
+        }
+        
+        .slide h3 {
+            color: #555;
+            font-size: 1.5em;
+            margin: 20px 0 15px 0;
+        }
+        
+        .slide p, .slide li {
+            font-size: 1.2em;
+            line-height: 1.8;
+            margin: 10px 0;
+        }
+        
+        .slide ul {
+            margin-left: 40px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.9em;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: center;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: bold;
+        }
+        
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        tr:hover {
+            background: #f0f0f0;
+        }
+        
+        .highlight {
+            background: #fff3cd;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .failure {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        
+        .warning {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 5px solid #2196F3;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .success-box {
+            background: #d4edda;
+            border-left: 5px solid #28a745;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .warning-box {
+            background: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .failure-box {
+            background: #f8d7da;
+            border-left: 5px solid #dc3545;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        
+        button {
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .slide-number {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            font-size: 1.2em;
+            color: #667eea;
+            font-weight: bold;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .title-slide {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        
+        .title-slide h1 {
+            font-size: 4em;
+            border: none;
+        }
+        
+        .title-slide .subtitle {
+            font-size: 1.8em;
+            color: #764ba2;
+            margin: 20px 0;
+        }
+        
+        .title-slide .author {
+            font-size: 1.3em;
+            color: #666;
+            margin-top: 40px;
+        }
+        
+        .emoji {
+            font-size: 1.5em;
+        }
+        
+        .metric-card {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 25px;
+            margin: 10px;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+        
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 30px;
+            margin: 30px 0;
+        }
+        
+        .comparison-item {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            border-left: 5px solid #667eea;
+        }
+        
+        .comparison-item img {
+            width: 100%;
+            max-width: 600px;
+            height: auto;
+            margin: 15px 0;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="slides-container">
+        <!-- Slide 1: Title -->
+        <div class="slide active title-slide">
+            <h1>🔬 Báo Cáo Tổng Hợp</h1>
+            <div class="subtitle">Tiny Object Detection: 12 Notebooks Thực Nghiệm</div>
+            <div class="subtitle">TinyPerson Dataset với Faster R-CNN + RFLA</div>
+            <div class="author">Ngày báo cáo: 5/6/2026</div>
+        </div>
+
+        <!-- Slide 2: Tổng Quan -->
+        <div class="slide">
+            <h1>📊 Tổng Quan Thực Nghiệm</h1>
+            
+            <h2>Mục Tiêu</h2>
+            <p>Tìm kiếm metric và architecture tối ưu cho phát hiện tiny objects (< 32px)</p>
+            
+            <h2>Dataset: TinyPerson</h2>
+            <ul>
+                <li><strong>70,702 objects</strong> trên 1,570 images</li>
+                <li><span class="highlight">79.5%</span> objects có sqrt(area) < 20px</li>
+                <li><span class="highlight">92.1%</span> objects có sqrt(area) < 32px</li>
+                <li>Trung bình <strong>45 objects/image</strong></li>
+            </ul>
+            
+            <h2>3 Giai Đoạn Thực Nghiệm</h2>
+            <div class="comparison-grid">
+                <div class="comparison-item">
+                    <h3>📈 Phase 1: Baseline Metrics</h3>
+                    <p>Notebooks 1-4: NWD, GCD, IGWD, ALW</p>
+                </div>
+                <div class="comparison-item">
+                    <h3>🎯 Phase 2: SAH-GD Variants</h3>
+                    <p>Notebooks 5-8: Hybrid metric approach</p>
+                </div>
+                <div class="comparison-item">
+                    <h3>🔧 Phase 3: P2 Feature Level</h3>
+                    <p>Notebooks 9-12: Architecture improvements</p>
+                </div>
+                <div class="comparison-item">
+                    <h3>📊 Tổng Kết</h3>
+                    <p>12 notebooks, 16 epochs mỗi run</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Phase 1 Overview -->
+        <div class="slide">
+            <h1>Phase 1: Baseline Metrics (NB 1-4)</h1>
+            
+            <h2>Các Metric Đã Thử</h2>
+            <table>
+                <tr>
+                    <th>Notebook</th>
+                    <th>Method</th>
+                    <th>mAP</th>
+                    <th>AP_micro</th>
+                    <th>AP@75</th>
+                    <th>Det/img</th>
+                </tr>
+                <tr>
+                    <td>1</td>
+                    <td>NWD</td>
+                    <td>0.3967</td>
+                    <td class="success">0.2652</td>
+                    <td>0.0376</td>
+                    <td class="failure">214.68</td>
+                </tr>
+                <tr class="success">
+                    <td>2</td>
+                    <td>GCD</td>
+                    <td class="success">0.5522</td>
+                    <td>0.2582</td>
+                    <td>0.0415</td>
+                    <td>119.38</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>IGWD</td>
+                    <td>0.5187</td>
+                    <td>0.1928</td>
+                    <td>0.0312</td>
+                    <td>133.92</td>
+                </tr>
+                <tr class="failure">
+                    <td>4</td>
+                    <td>ALW</td>
+                    <td class="failure">0.1822</td>
+                    <td>0.1029</td>
+                    <td>0.0145</td>
+                    <td class="failure">599.20</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Slide 4: Phase 1 Analysis -->
+        <div class="slide">
+            <h1>Phase 1: Phân Tích & Nhận Định</h1>
+            
+            <div class="success-box">
+                <h3>✅ Thành Công: GCD</h3>
+                <ul>
+                    <li><strong>mAP=0.5522</strong> - Cao nhất trong Phase 1</li>
+                    <li>Cân bằng tốt giữa các scale</li>
+                    <li>Detection count hợp lý (119/img)</li>
+                    <li><strong>Được chọn làm baseline chính</strong></li>
+                </ul>
+            </div>
+            
+            <div class="info-box">
+                <h3>ℹ️ NWD: Tốt Cho Micro Objects</h3>
+                <ul>
+                    <li><strong>AP_micro=0.2652</strong> - Cao nhất Phase 1</li>
+                    <li>Nhưng mAP thấp (0.3967) và quá nhiều detections</li>
+                    <li>Gợi ý: NWD tốt cho tiny nhưng cần hybrid approach</li>
+                </ul>
+            </div>
+            
+            <div class="failure-box">
+                <h3>❌ Thất Bại: ALW</h3>
+                <ul>
+                    <li>mAP chỉ 0.1822 - thấp nhất</li>
+                    <li>599 detections/img - quá nhiều false positives</li>
+                    <li><strong>Loại bỏ khỏi xem xét tiếp theo</strong></li>
+                </ul>
+            </div>
+            
+            <div class="warning-box">
+                <h3>⚠️ Bottleneck Chung</h3>
+                <p><strong>AP@75 rất thấp (0.0312-0.0415)</strong> → Localization accuracy yếu cho tất cả metrics</p>
+            </div>
+        </div>
+
+        <!-- Slide 5: Phase 1 Decisions -->
+        <div class="slide">
+            <h1>Phase 1: Quyết Định Cải Tiến</h1>
+            
+            <h2>❓ Vấn Đề Cốt Lõi</h2>
+            <div class="warning-box">
+                <p><strong>Tại sao single metric không đủ?</strong></p>
+                <ul>
+                    <li>GCD tốt overall nhưng yếu với micro objects</li>
+                    <li>NWD tốt với micro nhưng yếu overall</li>
+                    <li>Không có metric nào cân bằng được cả hai</li>
+                </ul>
+            </div>
+            
+            <h2>💡 Ý Tưởng: Scale-Adaptive Hybrid</h2>
+            <div class="success-box">
+                <p><strong>Kết hợp NWD + GCD theo scale</strong></p>
+                <ul>
+                    <li>Micro objects (< 8px): Dùng adaptive NWD</li>
+                    <li>Larger objects (≥ 8px): Dùng GCD</li>
+                    <li>Tận dụng ưu điểm của cả hai metrics</li>
+                </ul>
+            </div>
+            
+            <h2>🎯 Hướng Đi Phase 2</h2>
+            <p><strong>Phát triển SAH-GD (Scale-Adaptive Hybrid Gaussian Distance)</strong></p>
+            <ul>
+                <li>Test 4 variants khác nhau</li>
+                <li>So sánh hard switch vs soft blend</li>
+                <li>Thử scale-aware top-k selection</li>
+            </ul>
+        </div>
+
+        <!-- Slide 6: Phase 2 Overview -->
+        <div class="slide">
+            <h1>Phase 2: SAH-GD Variants (NB 5-8)</h1>
+            
+            <h2>4 Biến Thể Được Test</h2>
+            
+            <div class="comparison-grid">
+                <div class="comparison-item">
+                    <h3>5️⃣ ADAPTIVE_NWD</h3>
+                    <p>Pure adaptive NWD với scale-dependent normalization</p>
+                    <div class="metric-card">mAP: 0.5671</div>
+                </div>
+                
+                <div class="comparison-item">
+                    <h3>6️⃣ HARD_SWITCH ⭐</h3>
+                    <p>Hard threshold τ=8px giữa NWD và GCD</p>
+                    <div class="metric-card">mAP: 0.5770</div>
+                </div>
+                
+                <div class="comparison-item">
+                    <h3>7️⃣ SOFT_BLEND</h3>
+                    <p>Smooth sigmoid blend với K=2.0</p>
+                    <div class="metric-card">mAP: 0.5752</div>
+                </div>
+                
+                <div class="comparison-item">
+                    <h3>8️⃣ SCALE_TOPK 🎯</h3>
+                    <p>SOFT_BLEND + scale-aware top-k</p>
+                    <div class="metric-card">mAP: 0.5768</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 6a: NB05 ADAPTIVE_NWD Detail -->
+        <div class="slide">
+            <h1>5️⃣ Notebook 05: ADAPTIVE_NWD</h1>
+            
+            <h2>Approach</h2>
+            <p>Pure adaptive NWD với scale-dependent normalization</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+                <img src="../../image/nb05_adaptive_nwd_llm.png" alt="NB05 Overview" style="max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            </div>
+            
+            <h2>Performance</h2>
+            <div class="metric-card">mAP: 0.5671</div>
+            <div class="metric-card">AP_micro: 0.2395</div>
+            <div class="metric-card">AP_tiny: 0.5617</div>
+            <div class="metric-card">Det/img: 94.63</div>
+        </div>
+
+        <!-- Slide 6b: NB06 HARD_SWITCH Detail -->
+        <div class="slide">
+            <h1>6️⃣ Notebook 06: HARD_SWITCH ⭐</h1>
+            
+            <h2>Approach</h2>
+            <p>Hard threshold τ=8px switching giữa NWD (micro) và GCD (larger)</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+                <img src="../../image/nb06_hard_switch_nwd_gcd_llm.png" alt="NB06 Overview" style="max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            </div>
+            
+            <h2>Performance</h2>
+            <div class="metric-card success">mAP: 0.5770 (Best Phase 2)</div>
+            <div class="metric-card">AP_micro: 0.2776</div>
+            <div class="metric-card">AP_tiny: 0.5721</div>
+            <div class="metric-card">AP_large: 0.7620</div>
+        </div>
+
+        <!-- Slide 6c: NB07 SOFT_BLEND Detail -->
+        <div class="slide">
+            <h1>7️⃣ Notebook 07: SOFT_BLEND</h1>
+            
+            <h2>Approach</h2>
+            <p>Smooth sigmoid blend between NWD and GCD with K=2.0</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+                <img src="../../image/nb07_sah_gd_soft_blend_llm.png" alt="NB07 Overview" style="max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            </div>
+            
+            <h2>Performance</h2>
+            <div class="metric-card">mAP: 0.5752</div>
+            <div class="metric-card">AP_micro: 0.2758</div>
+            <div class="metric-card">AP_tiny: 0.5686</div>
+            <div class="metric-card warning">Inference: 5.08s/img (slowest)</div>
+        </div>
+
+        <!-- Slide 6d: NB08 SCALE_TOPK Detail -->
+        <div class="slide">
+            <h1>8️⃣ Notebook 08: SCALE_TOPK 🎯</h1>
+            
+            <h2>Approach</h2>
+            <p>SOFT_BLEND + scale-aware top-k selection</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+                <img src="../../image/nb08_sah_gd_scale_topk_llm.png" alt="NB08 Overview" style="max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            </div>
+            
+            <h2>Performance</h2>
+            <div class="metric-card">mAP: 0.5768</div>
+            <div class="metric-card success">AP_micro: 0.2947 (Best Phase 2)</div>
+            <div class="metric-card success">AP_tiny: 0.5810 (Best Phase 2)</div>
+            <div class="metric-card success">AP@75: 0.0453 (Best localization)</div>
+        </div>
+
+        <!-- Slide 7: Phase 2 Results -->
+        <div class="slide">
+            <h1>Phase 2: Kết Quả Chi Tiết</h1>
+            
+            <table>
+                <tr>
+                    <th>Method</th>
+                    <th>mAP</th>
+                    <th>AP_micro</th>
+                    <th>AP_tiny</th>
+                    <th>AP@75</th>
+                    <th>Det/img</th>
+                </tr>
+                <tr>
+                    <td>ADAPTIVE_NWD</td>
+                    <td>0.5671</td>
+                    <td>0.2395</td>
+                    <td>0.5617</td>
+                    <td>0.0345</td>
+                    <td class="success">94.63</td>
+                </tr>
+                <tr class="success">
+                    <td>HARD_SWITCH ⭐</td>
+                    <td class="success">0.5770</td>
+                    <td>0.2776</td>
+                    <td>0.5721</td>
+                    <td>0.0428</td>
+                    <td>100.08</td>
+                </tr>
+                <tr>
+                    <td>SOFT_BLEND</td>
+                    <td>0.5752</td>
+                    <td>0.2758</td>
+                    <td>0.5686</td>
+                    <td>0.0447</td>
+                    <td>100.68</td>
+                </tr>
+                <tr class="success">
+                    <td>SCALE_TOPK 🎯</td>
+                    <td>0.5768</td>
+                    <td class="success">0.2947</td>
+                    <td class="success">0.5810</td>
+                    <td class="success">0.0453</td>
+                    <td>101.46</td>
+                </tr>
+            </table>
+            
+            <div class="success-box">
+                <h3>🎉 So Sánh Với GCD Baseline</h3>
+                <ul>
+                    <li>HARD_SWITCH: <strong>+4.5% mAP</strong> (0.5770 vs 0.5522)</li>
+                    <li>SCALE_TOPK: <strong>+14.1% AP_micro</strong> (0.2947 vs 0.2582)</li>
+                    <li>Detection count giảm: 94-101 vs 119 (ít duplicate noise hơn)</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 8: Phase 2 Analysis -->
+        <div class="slide">
+            <h1>Phase 2: Phân Tích Thành Công</h1>
+            
+            <h2>🥇 HARD_SWITCH: Best Overall</h2>
+            <div class="success-box">
+                <ul>
+                    <li><strong>mAP=0.5770</strong> - Cao nhất</li>
+                    <li>AP_large=0.7620 - Tốt nhất cho large objects</li>
+                    <li>Đơn giản, dễ implement, inference nhanh</li>
+                    <li><strong>Được chọn làm production baseline</strong></li>
+                </ul>
+            </div>
+            
+            <h2>🥈 SCALE_TOPK: Best for Micro/Tiny</h2>
+            <div class="success-box">
+                <ul>
+                    <li><strong>AP_micro=0.2947</strong> - Cao nhất Phase 2</li>
+                    <li><strong>AP_tiny=0.5810</strong> - Cao nhất Phase 2</li>
+                    <li><strong>AP@75=0.0453</strong> - Best localization</li>
+                    <li>Scale-aware top-k giúp micro objects</li>
+                </ul>
+            </div>
+            
+            <h2>💭 Nhận Định</h2>
+            <div class="info-box">
+                <ul>
+                    <li>Hard switch đơn giản nhưng hiệu quả hơn soft blend</li>
+                    <li>Scale-aware top-k là improvement quan trọng</li>
+                    <li>Hybrid approach vượt trội single metric</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 9: Phase 2 Failures -->
+        <div class="slide">
+            <h1>Phase 2: Những Điều Không Hiệu Quả</h1>
+            
+            <h2>❌ SOFT_BLEND: Không Có Lợi Thế Rõ Ràng</h2>
+            <div class="failure-box">
+                <ul>
+                    <li>mAP=0.5752 - Không vượt HARD_SWITCH</li>
+                    <li>Inference chậm nhất (5.08s/img)</li>
+                    <li>Complexity tăng nhưng performance không tăng</li>
+                    <li><strong>Kết luận: Smooth transition không cần thiết</strong></li>
+                </ul>
+            </div>
+            
+            <h2>⚠️ ADAPTIVE_NWD: Yếu Với Micro</h2>
+            <div class="warning-box">
+                <ul>
+                    <li>AP_micro=0.2395 - Thấp nhất Phase 2</li>
+                    <li>Pure adaptive không đủ cho tiny objects</li>
+                    <li>Cần GCD component cho improvement</li>
+                </ul>
+            </div>
+            
+            <h2>🔍 Bottleneck Vẫn Còn</h2>
+            <div class="warning-box">
+                <p><strong>AP@75 vẫn thấp</strong> (0.0345-0.0453)</p>
+                <ul>
+                    <li>Metric improvements giúp nhưng không đủ</li>
+                    <li>Localization bottleneck cần architecture changes</li>
+                    <li><strong>→ Gợi ý: Thêm P2 feature level</strong></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 10: Phase 2 Decisions -->
+        <div class="slide">
+            <h1>Phase 2: Quyết Định Tiếp Theo</h1>
+            
+            <h2>✅ Thành Tựu Đạt Được</h2>
+            <div class="success-box">
+                <ul>
+                    <li>Hybrid metric approach thành công</li>
+                    <li>+4.5% mAP, +14.1% AP_micro vs baseline</li>
+                    <li>Có production-ready config (HARD_SWITCH)</li>
+                </ul>
+            </div>
+            
+            <h2>❓ Vấn Đề Chưa Giải Quyết</h2>
+            <div class="warning-box">
+                <ul>
+                    <li>AP@75 vẫn thấp → Localization chưa tốt</li>
+                    <li>AP_micro chỉ 0.29 → Còn nhiều room for improvement</li>
+                    <li>Micro objects (0-8px) vẫn là challenge</li>
+                </ul>
+            </div>
+            
+            <h2>🎯 Hướng Đi Phase 3</h2>
+            <div class="info-box">
+                <p><strong>Architecture Improvement: Thêm P2 Feature Level</strong></p>
+                <ul>
+                    <li>P2 = stride-4 features cho micro objects</li>
+                    <li>Higher resolution cho tiny object detection</li>
+                    <li>Kết hợp với SAH-GD metric</li>
+                    <li>Test 4 variants với different P2 configurations</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 11: Phase 3 Overview -->
+        <div class="slide">
+            <h1>Phase 3: P2 Feature Level (NB 9-12)</h1>
+            
+            <h2>Mục Tiêu</h2>
+            <p>Cải thiện micro object detection bằng P2 (stride-4) features</p>
+            
+            <h2>4 Thí Nghiệm</h2>
+            <div class="comparison-grid">
+                <div class="comparison-item">
+                    <h3>9️⃣ HARD_SWITCH_P2F</h3>
+                    <p>P2 baseline với HARD_SWITCH metric</p>
+                    <div class="metric-card">mAP: 0.4292</div>
+                </div>
+                <div class="comparison-item">
+                    <h3>🔟 HARD_SWITCH_P2_DUAL</h3>
+                    <p>P2 + dual regularization</p>
+                    <div class="metric-card">mAP: 0.4516</div>
+                </div>
+                <div class="comparison-item">
+                    <h3>1️⃣1️⃣ SCALE_TOPK_P2</h3>
+                    <p>P2 + scale-aware top-k</p>
+                    <div class="metric-card">mAP: 0.4522</div>
+                </div>
+                <div class="comparison-item">
+                    <h3>1️⃣2️⃣ HARD_SWITCH_P2_TOPK_DUAL</h3>
+                    <p>P2 + top-k + dual reg (all combined)</p>
+                    <div class="metric-card">mAP: 0.4724</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 11a: NB09 HARD_SWITCH_P2F Detail -->
+        <div class="slide">
+            <h1>9️⃣ Notebook 09: HARD_SWITCH_P2F</h1>
+            
+            <h2>Approach</h2>
+            <p>P2 (stride-4) feature level baseline với HARD_SWITCH metric</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+                <img src="../../image/nb09_hard_switch_p2f_llm.png" alt="NB09 Overview" style="max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            </div>
+            
+            <h2>Performance</h2>
+            <div class="metric-card">mAP: 0.4292</div>
+            <div class="metric-card">AP_micro: 0.2717</div>
+            <div class="metric-card">AP_tiny: 0.4695</div>
+            <div class="metric-card warning">AP_large: 0.2591 (−66%)</div>
+        </div>
+
+        <!-- Slide 11b: NB10 HARD_SWITCH_P2_DUAL Detail -->
+        <div class="slide">
+            <h1>🔟 Notebook 10: HARD_SWITCH_P2_DUAL</h1>
+            
+            <h2>Approach</h2>
+            <p>P2 feature level + dual regularization (IoU + metric loss)</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+                <img src="../../image/nb10_hard_switch_p2_dual_llm.png" alt="NB10 Overview" style="max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            </div>
+            
+            <h2>Performance</h2>
+            <div class="metric-card">mAP: 0.4516</div>
+            <div class="metric-card">AP_micro: 0.2806</div>
+            <div class="metric-card">AP_tiny: 0.4901</div>
+            <div class="metric-card">Det/img: 72.54</div>
+        </div>
+
+        <!-- Slide 11c: NB11 SCALE_TOPK_P2 Detail -->
+        <div class="slide">
+            <h1>1️⃣1️⃣ Notebook 11: SCALE_TOPK_P2</h1>
+            
+            <h2>Approach</h2>
+            <p>P2 feature level + scale-aware top-k anchor selection</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+                <img src="../../image/nb11_scale_topk_p2_llm.png" alt="NB11 Overview" style="max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            </div>
+            
+            <h2>Performance</h2>
+            <div class="metric-card">mAP: 0.4522</div>
+            <div class="metric-card">AP_micro: 0.2821</div>
+            <div class="metric-card">AP_tiny: 0.4971</div>
+            <div class="metric-card">Det/img: 75.02</div>
+        </div>
+
+        <!-- Slide 11d: NB12 HARD_SWITCH_P2_TOPK_DUAL Detail -->
+        <div class="slide">
+            <h1>1️⃣2️⃣ Notebook 12: P2_TOPK_DUAL 💎</h1>
+            
+            <h2>Approach</h2>
+            <p>All combined: P2 + top-k + dual regularization + HARD_SWITCH</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+                <img src="../../image/nb12_hard_switch_p2_topk_dual_llm.png" alt="NB12 Overview" style="max-width: 90%; height: auto; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+            </div>
+            
+            <h2>Performance</h2>
+            <div class="metric-card">mAP: 0.4724</div>
+            <div class="metric-card success">AP_micro: 0.3151 (Best ALL notebooks!)</div>
+            <div class="metric-card">AP_tiny: 0.5151</div>
+            <div class="metric-card success">Det/img: 70.45 (lowest)</div>
+        </div>
+
+        <!-- Slide 12: Phase 3 Results -->
+        <div class="slide">
+            <h1>Phase 3: Kết Quả</h1>
+            
+            <table>
+                <tr>
+                    <th>Method</th>
+                    <th>mAP</th>
+                    <th>AP_micro</th>
+                    <th>AP_tiny</th>
+                    <th>AP_large</th>
+                    <th>Det/img</th>
+                </tr>
+                <tr>
+                    <td>HARD_SWITCH_P2F</td>
+                    <td>0.4292</td>
+                    <td>0.2717</td>
+                    <td>0.4695</td>
+                    <td>0.2591</td>
+                    <td>79.02</td>
+                </tr>
+                <tr>
+                    <td>HARD_SWITCH_P2_DUAL</td>
+                    <td>0.4516</td>
+                    <td>0.2806</td>
+                    <td>0.4901</td>
+                    <td>0.2852</td>
+                    <td>72.54</td>
+                </tr>
+                <tr>
+                    <td>SCALE_TOPK_P2</td>
+                    <td>0.4522</td>
+                    <td>0.2821</td>
+                    <td>0.4971</td>
+                    <td>0.2823</td>
+                    <td>75.02</td>
+                </tr>
+                <tr class="warning">
+                    <td>HARD_SWITCH_P2_TOPK_DUAL</td>
+                    <td>0.4724</td>
+                    <td class="success">0.3151</td>
+                    <td>0.5151</td>
+                    <td>0.2903</td>
+                    <td class="success">70.45</td>
+                </tr>
+            </table>
+            
+            <div class="warning-box">
+                <h3>⚠️ So Sánh Với SAH-GD</h3>
+                <p><strong>Tất cả P2 variants đều giảm mAP</strong></p>
+                <ul>
+                    <li>mAP giảm từ ~0.57 xuống ~0.42-0.47                    <li>AP_large giảm mạnh: từ 0.76 xuống 0.26-0.29</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 13: Phase 3 Deep Analysis -->
+        <div class="slide">
+            <h1>Phase 3: Phân Tích Chi Tiết</h1>
+            
+            <h2>💎 NB12: Highlight Quan Trọng</h2>
+            <div class="success-box">
+                <p><strong>AP_micro=0.3151</strong> - CAO NHẤT trong tất cả 12 notebooks!</p>
+                <ul>
+                    <li>Vượt cả SCALE_TOPK (0.2947) từ Phase 2</li>
+                    <li>Detection count thấp nhất (70.45/img)</li>
+                    <li>Top-k + dual reg combination hiệu quả cho micro</li>
+                </ul>
+            </div>
+            
+            <h2>📊 Tradeoff: mAP vs AP_micro</h2>
+            <div class="warning-box">
+                <ul>
+                    <li>P2 tốt cho micro nhưng mất overall performance</li>
+                    <li>AP_large giảm từ 0.76 → 0.29 (−62%!)</li>
+                    <li>P2 chưa optimize tốt cho multi-scale</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 14: Phase 3 Failures -->
+        <div class="slide">
+            <h1>Phase 3: Những Thất Bại</h1>
+            
+            <div class="failure-box">
+                <h3>❌ Vấn Đề #1: mAP Giảm Mạnh</h3>
+                <ul>
+                    <li>Best P2 (NB12): mAP=0.4724</li>
+                    <li>Best SAH-GD (NB6): mAP=0.5770</li>
+                    <li><strong>Loss: −18% mAP</strong></li>
+                </ul>
+            </div>
+            
+            <div class="failure-box">
+                <h3>❌ Vấn Đề #2: Large Objects Collapse</h3>
+                <ul>
+                    <li>SAH-GD AP_large: 0.76</li>
+                    <li>P2 AP_large: 0.26-0.29</li>
+                    <li><strong>Loss: −62% AP_large</strong></li>
+                    <li>P2 resolution không phù hợp với large objects</li>
+                </ul>
+            </div>
+            
+            <div class="failure-box">
+                <h3>❌ Vấn Đề #3: Không Cải Thiện AP@75</h3>
+                <ul>
+                    <li>P2 AP@75: 0.0121-0.0145 (thấp hơn SAH-GD!)</li>
+                    <li>Feature resolution cao hơn nhưng localization không tốt hơn</li>
+                    <li>Bottleneck không chỉ ở feature level</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 15: Root Cause Analysis -->
+        <div class="slide">
+            <h1>Phân Tích Nguyên Nhân</h1>
+            
+            <h2>🔍 Tại Sao P2 Thất Bại?</h2>
+            
+            <div class="comparison-grid">
+                <div class="comparison-item">
+                    <h3>Vấn Đề Architecture</h3>
+                    <ul>
+                        <li>P2 stride-4 quá fine cho large objects</li>
+                        <li>Memory/compute overhead cao</li>
+                        <li>FPN không balance tốt P2-P5</li>
+                    </ul>
+                </div>
+                
+                <div class="comparison-item">
+                    <h3>Vấn Đề Training</h3>
+                    <ul>
+                        <li>Anchors chưa retune cho P2</li>
+                        <li>RPN proposals chưa optimize</li>
+                        <li>NMS threshold chưa điều chỉnh</li>
+                    </ul>
+                </div>
+                
+                <div class="comparison-item">
+                    <h3>Vấn Đề Data</h3>
+                    <ul>
+                        <li>Large objects ít (8% only)</li>
+                        <li>P2 over-focus on tiny, neglect large</li>
+                        <li>Imbalanced scale distribution</li>
+                    </ul>
+                </div>
+                
+                <div class="comparison-item">
+                    <h3>Vấn Đề Implementation</h3>
+                    <ul>
+                        <li>P2 RoI Align chưa tối ưu</li>
+                        <li>Feature fusion suboptimal</li>
+                        <li>Cần more tuning</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 16: Complete Comparison -->
+        <div class="slide">
+            <h1>So Sánh Tổng Thể 12 Notebooks</h1>
+            
+            <table style="font-size: 0.75em;">
+                <tr>
+                    <th>#</th>
+                    <th>Method</th>
+                    <th>mAP</th>
+                    <th>AP_micro</th>
+                    <th>AP_tiny</th>
+                    <th>AP@75</th>
+                </tr>
+                <tr><td>1</td><td>NWD</td><td>0.3967</td><td>0.2652</td><td>0.4741</td><td>0.0376</td></tr>
+                <tr><td>2</td><td>GCD</td><td>0.5522</td><td>0.2582</td><td>0.5437</td><td>0.0415</td></tr>
+                <tr><td>3</td><td>IGWD</td><td>0.5187</td><td>0.1928</td><td>0.5084</td><td>0.0312</td></tr>
+                <tr><td>4</td><td>ALW</td><td>0.1822</td><td>0.1029</td><td>0.2190</td><td>0.0145</td></tr>
+                <tr><td>5</td><td>ADAPTIVE_NWD</td><td>0.5671</td><td>0.2395</td><td>0.5617</td><td>0.0345</td></tr>
+                <tr class="success"><td>6</td><td>HARD_SWITCH ⭐</td><td class="success">0.5770</td><td>0.2776</td><td>0.5721</td><td>0.0428</td></tr>
+                <tr><td>7</td><td>SOFT_BLEND</td><td>0.5752</td><td>0.2758</td><td>0.5686</td><td>0.0447</td></tr>
+                <tr class="success"><td>8</td><td>SCALE_TOPK 🎯</td><td>0.5768</td><td>0.2947</td><td class="success">0.5810</td><td class="success">0.0453</td></tr>
+                <tr><td>9</td><td>HARD_SWITCH_P2F</td><td>0.4292</td><td>0.2717</td><td>0.4695</td><td>0.0130</td></tr>
+                <tr><td>10</td><td>HARD_SWITCH_P2_DUAL</td><td>0.4516</td><td>0.2806</td><td>0.4901</td><td>0.0129</td></tr>
+                <tr><td>11</td><td>SCALE_TOPK_P2</td><td>0.4522</td><td>0.2821</td><td>0.4971</td><td>0.0121</td></tr>
+                <tr class="warning"><td>12</td><td>HARD_SWITCH_P2_TOPK_DUAL 💎</td><td>0.4724</td><td class="success">0.3151</td><td>0.5151</td><td>0.0145</td></tr>
+            </table>
+        </div>
+
+        <!-- Slide 17: Key Findings -->
+        <div class="slide">
+            <h1>🎯 Phát Hiện Chính</h1>
+            
+            <div class="success-box">
+                <h3>1. Hybrid Metric Thành Công</h3>
+                <p>SAH-GD (NB 5-8) vượt trội baseline metrics (NB 1-4)</p>
+                <ul>
+                    <li>+4.5% mAP, +14.1% AP_micro</li>
+                    <li>Hard switch tốt hơn soft blend</li>
+                    <li>Scale-aware top-k quan trọng</li>
+                </ul>
+            </div>
+            
+            <div class="warning-box">
+                <h3>2. P2 Implementation Cần Cải Thiện</h3>
+                <p>P2 có potential nhưng chưa realize được</p>
+                <ul>
+                    <li>AP_micro=0.3151 (NB12) là best overall</li>
+                    <li>Nhưng mất 18% mAP và 62% AP_large</li>
+                    <li>Cần balance tốt hơn multi-scale</li>
+                </ul>
+            </div>
+            
+            <div class="failure-box">
+                <h3>3. Localization Vẫn Là Bottleneck</h3>
+                <p>AP@75 thấp xuyên suốt tất cả experiments</p>
+                <ul>
+                    <li>Best: 0.0453 (NB8) - vẫn rất thấp</li>
+                    <li>Không phải chỉ metric hay P2</li>
+                    <li>Cần deeper architecture changes</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 18: Performance Progression -->
+        <div class="slide">
+            <h1>📈 Tiến Triển Qua 3 Giai Đoạn</h1>
+            
+            <h2>mAP Progression</h2>
+            <div class="metric-card">Phase 1 Best: 0.5522 (GCD)</div>
+            <div class="metric-card success">Phase 2 Best: 0.5770 (HARD_SWITCH) +4.5%</div>
+            <div class="metric-card failure">Phase 3 Best: 0.4724 (NB12) −18%</div>
+            
+            <h2>AP_micro Progression</h2>
+            <div class="metric-card">Phase 1 Best: 0.2652 (NWD)</div>
+            <div class="metric-card success">Phase 2 Best: 0.2947 (SCALE_TOPK) +11%</div>
+            <div class="metric-card success">Phase 3 Best: 0.3151 (NB12) +18%</div>
+            
+            <h2>AP@75 Progression</h2>
+            <div class="metric-card">Phase 1 Best: 0.0415 (GCD)</div>
+            <div class="metric-card success">Phase 2 Best: 0.0453 (SCALE_TOPK) +9%</div>
+            <div class="metric-card failure">Phase 3 Best: 0.0145 (NB12) −65%</div>
+        </div>
+
+        <!-- Slide 19: Best Configurations -->
+        <div class="slide">
+            <h1>🏆 Top Configurations</h1>
+            
+            <h2>🥇 For Production: NB6 HARD_SWITCH</h2>
+            <div class="success-box">
+                <ul>
+                    <li><strong>mAP=0.5770</strong> - Highest overall</li>
+                    <li>AP_large=0.7620 - Best for large objects</li>
+                    <li>Simple, fast inference (4.86s/img)</li>
+                    <li>100 det/img - controlled false positives</li>
+                    <li><strong>✅ RECOMMENDED FOR DEPLOYMENT</strong></li>
+                </ul>
+            </div>
+            
+            <h2>🥈 For Micro-Focused Apps: NB8 SCALE_TOPK</h2>
+            <div class="success-box">
+                <ul>
+                    <li><strong>AP_micro=0.2947, AP_tiny=0.5810</strong></li>
+                    <li><strong>AP@75=0.0453</strong> - Best localization in SAH-GD</li>
+                    <li>Good for applications targeting tiny objects</li>
+                    <li><strong>✅ RECOMMENDED FOR TINY-FOCUSED USE CASES</strong></li>
+                </ul>
+            </div>
+            
+            <h2>🥉 For Research: NB12 P2_TOPK_DUAL</h2>
+            <div class="info-box">
+                <ul>
+                    <li><strong>AP_micro=0.3151</strong> - Highest across all notebooks</li>
+                    <li>Lowest det/img (70.45) - most precise</li>
+                    <li>But: mAP only 0.4724, AP_large collapsed</li>
+                    <li><strong>⚠️ NEEDS IMPROVEMENT BEFORE PRODUCTION</strong></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 20: Recommendations -->
+        <div class="slide">
+            <h1>💡 Khuyến Nghị</h1>
+            
+            <h2>✅ Triển Khai Ngay</h2>
+            <div class="success-box">
+                <ul>
+                    <li><strong>Deploy NB6 (HARD_SWITCH)</strong> for production</li>
+                    <li>Use NB8 (SCALE_TOPK) for micro-object applications</li>
+                    <li>Hybrid metric approach đã proven</li>
+                </ul>
+            </div>
+            
+            <h2>🔧 Cần Cải Thiện</h2>
+            <div class="warning-box">
+                <ul>
+                    <li><strong>P2 implementation cần rework:</strong>
+                        <ul>
+                            <li>Fix multi-scale balance (large objects)</li>
+                            <li>Retune anchors specifically for P2</li>
+                            <li>Optimize RoI Align for stride-4</li>
+                        </ul>
+                    </li>
+                    <li><strong>Localization improvements:</strong>
+                        <ul>
+                            <li>Not just metrics or P2 level</li>
+                            <li>May need detection head redesign</li>
+                            <li>Consider RoI Align variations</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 21: Future Work -->
+        <div class="slide">
+            <h1>🚀 Hướng Nghiên Cứu Tiếp Theo</h1>
+            
+            <h2>Priority 1: Fix P2 Multi-Scale Balance</h2>
+            <div class="info-box">
+                <ul>
+                    <li>Dynamic feature selection based on object size</li>
+                    <li>Adaptive RoI pooling levels</li>
+                    <li>Weighted loss per scale</li>
+                </ul>
+            </div>
+            
+            <h2>Priority 2: Improve Localization</h2>
+            <div class="info-box">
+                <ul>
+                    <li>Test different RoI Align variants (14x14 convhead, etc.)</li>
+                    <li>Add DIoU/GIoU for better box regression</li>
+                    <li>Post-processing calibration</li>
+                </ul>
+            </div>
+            
+            <h2>Priority 3: Architecture Exploration</h2>
+            <div class="info-box">
+                <ul>
+                    <li>Try different backbones (Swin, ConvNeXt)</li>
+                    <li>Test BiFPN instead of FPN</li>
+                    <li>Explore attention mechanisms for tiny objects</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 22: Lessons Learned -->
+        <div class="slide">
+            <h1>📚 Bài Học Rút Ra</h1>
+            
+            <div class="success-box">
+                <h3>✅ Worked Well</h3>
+                <ul>
+                    <li><strong>Hybrid metrics:</strong> Kết hợp strengths of different metrics</li>
+                    <li><strong>Scale-aware strategies:</strong> Top-k selection per scale</li>
+                    <li><strong>Simplicity wins:</strong> Hard switch > soft blend</li>
+                    <li><strong>Systematic testing:</strong> 12 experiments đều có value</li>
+                </ul>
+            </div>
+            
+            <div class="failure-box">
+                <h3>❌ Didn't Work</h3>
+                <ul>
+                    <li><strong>ALW metric:</strong> Completely failed</li>
+                    <li><strong>Soft blend complexity:</strong> No benefit over hard switch</li>
+                    <li><strong>Naive P2 addition:</strong> Hurt overall performance</li>
+                    <li><strong>Pure metric approach:</strong> Can't solve localization</li>
+                </ul>
+            </div>
+            
+            <div class="warning-box">
+                <h3>⚠️ Need More Work</h3>
+                <ul>
+                    <li><strong>P2 has potential:</strong> Best AP_micro but needs tuning</li>
+                    <li><strong>Localization bottleneck:</strong> Deeper than expected</li>
+                    <li><strong>Multi-scale balance:</strong> Critical for tiny object detection</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 23: Methodology Value -->
+        <div class="slide">
+            <h1>🔬 Giá Trị Phương Pháp</h1>
+            
+            <h2>Progressive Refinement Approach</h2>
+            <div class="success-box">
+                <ul>
+                    <li>Phase 1: Understand baseline metrics</li>
+                    <li>Phase 2: Develop hybrid approach</li>
+                    <li>Phase 3: Explore architecture changes</li>
+                    <li>Each phase informed by previous learnings</li>
+                </ul>
+            </div>
+            
+            <h2>Systematic Comparison</h2>
+            <div class="success-box">
+                <ul>
+                    <li>Same dataset, same architecture base</li>
+                    <li>Controlled experiments</li>
+                    <li>Multiple metrics tracked</li>
+                    <li>Clear failure analysis</li>
+                </ul>
+            </div>
+            
+            <h2>What We Learned About Tiny Object Detection</h2>
+            <div class="info-box">
+                <ul>
+                    <li>No single metric solves everything</li>
+                    <li>Scale-adaptive strategies are essential</li>
+                    <li>Architecture matters as much as metrics</li>
+                    <li>Localization is the real bottleneck</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 24: Conclusion -->
+        <div class="slide">
+            <h1>🎯 Kết Luận</h1>
+            
+            <h2>Thành Tựu Chính</h2>
+            <div class="success-box">
+                <ul>
+                    <li>✅ Phát triển thành công SAH-GD hybrid metric (+4.5% mAP)</li>
+                    <li>✅ Xác định HARD_SWITCH là production-ready config</li>
+                    <li>✅ Cải thiện AP_micro lên 0.3151 (record qua 12 notebooks)</li>
+                    <li>✅ Systematic understanding của tiny object detection</li>
+                </ul>
+            </div>
+            
+            <h2>Hạn Chế & Challenges</h2>
+            <div class="warning-box">
+                <ul>
+                    <li>⚠️ P2 implementation chưa optimize (−18% mAP)</li>
+                    <li>⚠️ Localization bottleneck chưa giải quyết (AP@75 thấp)</li>
+                    <li>⚠️ Multi-scale balance cần improvement</li>
+                </ul>
+            </div>
+            
+            <h2>Next Steps</h2>
+            <div class="info-box">
+                <ul>
+                    <li>🚀 Deploy NB6 (HARD_SWITCH) to production</li>
+                    <li>🔧 Fix P2 multi-scale issues</li>
+                    <li>🔬 Deeper architecture exploration</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 25: Q&A -->
+        <div class="slide title-slide">
+            <h1>❓ Câu Hỏi</h1>
+            <div class="subtitle">Questions & Discussion</div>
+            <br><br>
+            <div class="success-box" style="max-width: 800px; margin: 40px auto;">
+                <h2>Key Takeaways</h2>
+                <ul style="text-align: left;">
+                    <li><strong>Best Overall:</strong> NB6 HARD_SWITCH (mAP=0.5770)</li>
+                    <li><strong>Best Micro:</strong> NB12 P2_TOPK_DUAL (AP_micro=0.3151)</li>
+                    <li><strong>Production Ready:</strong> Deploy NB6 now</li>
+                    <li><strong>Future Work:</strong> Fix P2, improve localization</li>
+                </ul>
+            </div>
+            <div class="author">Cảm ơn đã theo dõi!</div>
+        </div>
+    </div>
+
+    <div class="slide-number">
+        <span id="current-slide">1</span> / <span id="total-slides">25</span>
+    </div>
+
+    <div class="controls">
+        <button id="prev-btn">◀ Previous</button>
+        <button id="next-btn">Next ▶</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const currentSlideSpan = document.getElementById('current-slide');
+        const totalSlidesSpan = document.getElementById('total-slides');
+
+        totalSlidesSpan.textContent = totalSlides;
+
+        function showSlide(n) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (n + totalSlides) % totalSlides;
+            slides[currentSlide].classList.add('active');
+            currentSlideSpan.textContent = currentSlide + 1;
+            
+            prevBtn.disabled = currentSlide === 0;
+            nextBtn.disabled = currentSlide === totalSlides - 1;
+        }
+
+        prevBtn.addEventListener('click', () => showSlide(currentSlide - 1));
+        nextBtn.addEventListener('click', () => showSlide(currentSlide + 1));
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') showSlide(currentSlide - 1);
+            if (e.key === 'ArrowRight') showSlide(currentSlide + 1);
+        });
+
+        // Initialize
+        showSlide(0);
+    </script>
+</body>
+</html>

@@ -108,7 +108,7 @@ The dominant remedy models each box as a two-dimensional Gaussian and replaces
 IoU with a distribution distance. The Normalized Gaussian Wasserstein Distance
 (NWD)~\cite{wang2021nwd} makes the metric smooth under sub-pixel shifts; later
 work adds scale invariance and coupled center/shape optimization, notably the
-Improved Gaussian Wasserstein Distance (IGWD)~\cite{igwd2024} and the Gaussian
+Improved Gaussian Wasserstein Distance (IGWD)~\cite{igwd2026} and the Gaussian
 Combined Distance (GCD)~\cite{guan2025gcd}. These metrics substantially raise
 recall on tiny objects. Yet two structural weaknesses persist across all of
 them:
@@ -212,7 +212,7 @@ $2$-Wasserstein distance and is smooth to sub-pixel shifts, but depends on a
 dataset-level constant and is not fully scale invariant. GWD~\cite{yang2021gwd}
 and KLD~\cite{yang2021kld} popularized Gaussian distances for oriented
 detection. DotD~\cite{xu2021dotd} normalizes center distance by average object
-size. IGWD~\cite{igwd2024} normalizes Wasserstein geometry by area to recover
+size. IGWD~\cite{igwd2026} normalizes Wasserstein geometry by area to recover
 smoothness, symmetry, and scale invariance, while GCD~\cite{guan2025gcd}
 couples center and shape optimization and proves equiaffine invariance,
 reporting state-of-the-art results on AI-TOD-v2. Recent variants include
@@ -230,7 +230,7 @@ Metric & Pos.\ sens. & Scale inv. & Anisotropic & Shape space \\
 \midrule
 IoU~\cite{rezatofighi2019giou}      & \ding{55} & \ding{55} & \ding{55} & --- \\
 NWD~\cite{wang2021nwd}              & \ding{51} & \ding{55} & \ding{55} & Euclidean \\
-IGWD~\cite{igwd2024}                & \ding{51} & \ding{51} & \ding{55} & Euclidean \\
+IGWD~\cite{igwd2026}                & \ding{51} & \ding{51} & \ding{55} & Euclidean \\
 GCD~\cite{guan2025gcd}              & \ding{51} & \ding{51} & \ding{55} & Euclidean \\
 \textbf{ALW (ours)}                 & \ding{51} & \ding{51} & \ding{51} & log-ratio \\
 \bottomrule

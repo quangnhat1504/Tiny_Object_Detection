@@ -1,10 +1,21 @@
-# ALW Paper — Draft
+# ALW / SA-ALW Legacy Drafts
 
-Conference-style draft for **ALW: An Anisotropic Log-Wasserstein Distance for Tiny Object Detection**.
+> **Diagnostic history only.** The conference-refinement source of truth is
+> `../paper_a/`. Numerical claims and tables in this directory use legacy
+> tile-level/reused-test protocols and must not be copied into a submission.
+
+Historical drafts for ALW and SA-ALW.
 
 ## Files
 - `main.tex` — full paper (IEEEtran conference format).
 - `references.bib` — bibliography.
+- `saalw_main.tex` / `saalw_experiments.tex` — SA-ALW paper draft.
+- `checkpoints/iterative_cbl_fair20_2026-08-01.md` — frozen evidence package
+  for the next SA-ALW + trainable iterative-CBL paper. It is not yet merged
+  into either existing LaTeX draft.
+- `checkpoints/performance_research_2026-08-02.md` — current paper handoff for
+  PC-MR-RPN, PC-MOC-FD, the rejected PC-MHFD branch, the compatibility-only
+  combination, and the still-running fair-20 matrix.
 
 ## Build
 No LaTeX toolchain is installed in this environment, so the PDF was not compiled here. To build (TeX Live / MiKTeX with `IEEEtran`, `pifont`, `algorithm`, `algpseudocode`, `booktabs`):
@@ -18,6 +29,8 @@ pdflatex main
 or `latexmk -pdf main.tex`. To target a CVPR/ICCV submission later, swap the document class for `cvpr.sty`/`iccv.sty`; the body is class-agnostic.
 
 ## Scope (important)
+The scope below describes the historical draft, not the current Paper A
+contract. See `../paper_a/scope_contract.md` for the frozen scope.
 This draft covers **only the published baseline + ALW story**, per project instructions:
 - **Proposed method:** ALW (anisotropic per-axis position normalization + log-ratio shape), used in **RFLA label assignment** and **RoI box-regression loss**.
 - **Baselines:** NWD, IGWD, GCD (and IoU for context), RFLA as the assignment skeleton.

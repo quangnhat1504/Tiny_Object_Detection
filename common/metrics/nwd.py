@@ -30,17 +30,29 @@ def _wasserstein_sq(xn, yn, wn, hn, xg, yg, wg, hg):
 
 
 def compute_rfd(xn, yn, wn, hn, xg, yg, wg, hg, C: float = NWD_C,
-                beta: float = METRIC_BETA, **kwargs) -> torch.Tensor:
-    """NWD similarity (Wang et al. 2022).
+                beta: float = METRIC_BETA, chunk_size: int = 16384, **kwargs) -> torch.Tensor:
+    """NWD similarity with memory chunking (Wang et al. 2022)."""
+    N = xn.shape[0]
+    M = xg.shape[0]
+    if N == 0 or M == 0:
+        return torch.zeros((N, M), device=xn.device, dtype=xn.dtype)
 
-    Args:
-        C: dataset normalization constant (= avg sqrt-area of objects).
-           Default 12.0 works well for tiny-object detection.
-        beta: scaling for exp(-β·d)
-    """
-    w2sq = _wasserstein_sq(xn, yn, wn, hn, xg, yg, wg, hg).clamp(min=0.0)
-    w2 = w2sq.sqrt().clamp(max=30.0 / max(beta, EPS))
-    return torch.exp(-beta * w2 / max(C, EPS))
+    if N <= chunk_size:
+        w2sq = _wasserstein_sq(xn, yn, wn, hn, xg, yg, wg, hg).clamp(min=0.0)
+        w2 = w2sq.sqrt().clamp(max=30.0 / max(beta, EPS))
+        return torch.exp(-beta * w2 / max(C, EPS))
+
+    chunks = []
+    for i in range(0, N, chunk_size):
+        end_idx = min(i + chunk_size, N)
+        w2sq_chunk = _wasserstein_sq(
+            xn[i:end_idx], yn[i:end_idx], wn[i:end_idx], hn[i:end_idx],
+            xg, yg, wg, hg
+        ).clamp(min=0.0)
+        w2_chunk = w2sq_chunk.sqrt().clamp(max=30.0 / max(beta, EPS))
+        chunks.append(torch.exp(-beta * w2_chunk / max(C, EPS)))
+
+    return torch.cat(chunks, dim=0)
 
 
 name = "nwd"

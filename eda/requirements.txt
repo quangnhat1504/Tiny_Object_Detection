@@ -1,0 +1,2 @@
+# Cac thu vien can cho EDA (ngoai cv2/numpy/yaml da co san trong .venv)
+matplotlib>=3.7

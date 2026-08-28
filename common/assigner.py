@@ -148,6 +148,145 @@ class SAALWAssigner(nn.Module):
         return labels, matched_boxes
 
 
+class ScaleDecoupledAssigner(nn.Module):
+    """Scale-Decoupled Assigner for Tiny Object Detection (SDA-FRCNN).
+
+    Preserves 100% standard IoU anchor assignment for normal/tiny objects (>= cutoff px)
+    while activating SA-ALW dynamic top-k assignment for microscopic objects (< cutoff px).
+    Prevents assignment distortion on normal scales and guarantees positive anchors for micro scales.
+    """
+
+    def __init__(
+        self,
+        metric_fn: Callable,
+        micro_cutoff_px: float = 8.0,
+        fg_iou_thresh: float = 0.7,
+        bg_iou_thresh: float = 0.3,
+        micro_topk: int = 4,
+        micro_pos_sim_thr: float = 0.35,
+        max_center_dist_ratio: float = 4.0,
+        reliability_thr: float = 16.0,
+    ):
+        super().__init__()
+        self.metric_fn = metric_fn
+        self.micro_cutoff_px = float(micro_cutoff_px)
+        self.fg_iou_thresh = float(fg_iou_thresh)
+        self.bg_iou_thresh = float(bg_iou_thresh)
+        self.micro_topk = int(micro_topk)
+        self.micro_pos_sim_thr = float(micro_pos_sim_thr)
+        self.max_center_dist_ratio = float(max_center_dist_ratio)
+        self.reliability_thr = float(reliability_thr)
+
+    def forward(self, anchors: torch.Tensor, gt_boxes: torch.Tensor):
+        """Assign anchors to ground truth boxes in a scale-decoupled manner.
+
+        Args:
+            anchors: Tensor (N, 4) in (x1, y1, x2, y2)
+            gt_boxes: Tensor (M, 4) in (x1, y1, x2, y2)
+        Returns:
+            labels: (N,) tensor (1=pos, 0=neg, -1=ignore)
+            matched_boxes: (N, 4) tensor
+        """
+        from torchvision.ops import box_iou
+        N = anchors.shape[0]
+        M = gt_boxes.shape[0]
+        dev = anchors.device
+
+        labels = torch.full((N,), -1, dtype=torch.float32, device=dev)
+        matched_boxes = torch.zeros((N, 4), device=dev)
+
+        if M == 0:
+            labels.zero_()
+            return labels, matched_boxes
+
+        # Compute GT sizes
+        wg = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=1.0)
+        hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=1.0)
+        gt_scales = torch.sqrt(wg * hg)
+
+        is_micro_gt = gt_scales < self.micro_cutoff_px
+        is_standard_gt = ~is_micro_gt
+
+        # 1. Standard IoU Branch for Standard GTs (>= cutoff px)
+        if is_standard_gt.any():
+            std_gt_indices = torch.where(is_standard_gt)[0]
+            std_gts = gt_boxes[std_gt_indices]
+            iou_matrix = box_iou(anchors, std_gts)  # (N, M_std)
+
+            # Standard max IoU per anchor
+            matched_vals, matched_idx = iou_matrix.max(dim=1)
+            below_bg = matched_vals < self.bg_iou_thresh
+            labels[below_bg] = 0.0
+
+            above_fg = matched_vals >= self.fg_iou_thresh
+            labels[above_fg] = 1.0
+            matched_boxes[above_fg] = std_gts[matched_idx[above_fg]]
+
+            # Best anchor per GT rule
+            gt_max_vals, gt_max_idx = iou_matrix.max(dim=0)
+            for j_idx, max_anchor_idx in enumerate(gt_max_idx):
+                if gt_max_vals[j_idx] > 0.1:  # non-degenerate
+                    labels[max_anchor_idx] = 1.0
+                    matched_boxes[max_anchor_idx] = std_gts[j_idx]
+
+        # 2. Micro SA-ALW Branch for Micro GTs (< cutoff px)
+        if is_micro_gt.any():
+            micro_gt_indices = torch.where(is_micro_gt)[0]
+            micro_gts = gt_boxes[micro_gt_indices]
+
+            xa = (anchors[:, 0] + anchors[:, 2]) / 2.0
+            ya = (anchors[:, 1] + anchors[:, 3]) / 2.0
+            wa = (anchors[:, 2] - anchors[:, 0]).clamp(min=1.0)
+            ha = (anchors[:, 3] - anchors[:, 1]).clamp(min=1.0)
+
+            xg_m = (micro_gts[:, 0] + micro_gts[:, 2]) / 2.0
+            yg_m = (micro_gts[:, 1] + micro_gts[:, 3]) / 2.0
+            wg_m = (micro_gts[:, 2] - micro_gts[:, 0]).clamp(min=1.0)
+            hg_m = (micro_gts[:, 3] - micro_gts[:, 1]).clamp(min=1.0)
+            scale_m = torch.sqrt(wg_m * hg_m)
+
+            sim_m = self.metric_fn(
+                xa, ya, wa, ha,
+                xg_m, yg_m, wg_m, hg_m,
+                reliability_thr=self.reliability_thr,
+            )  # (N, M_micro)
+
+            for j_local, j_global in enumerate(micro_gt_indices):
+                sim_col = sim_m[:, j_local]
+                s_gt = scale_m[j_local]
+                max_radius = max(32.0, float(s_gt.item()) * self.max_center_dist_ratio)
+                spatial_dist_sq = (xa - xg_m[j_local]).square() + (ya - yg_m[j_local]).square()
+                is_spatial_candidate = spatial_dist_sq <= (max_radius ** 2)
+
+                # High sim matches within spatial radius
+                high_sim_mask = (sim_col >= self.micro_pos_sim_thr) & is_spatial_candidate & (labels != 1.0)
+                labels[high_sim_mask] = 1.0
+                matched_boxes[high_sim_mask] = micro_gts[j_local]
+
+                # Dynamic Top-k fallback on spatially valid candidates if deficit
+                curr_assigned = (labels == 1.0) & (matched_boxes == micro_gts[j_local]).all(dim=-1)
+                deficit = self.micro_topk - int(curr_assigned.sum().item())
+                if deficit > 0:
+                    sim_masked = sim_col.clone()
+                    # Do not steal anchors already assigned to standard GTs
+                    sim_masked[labels == 1.0] = -1.0
+                    # Filter out anchors outside spatial radius
+                    sim_masked[~is_spatial_candidate] = -1.0
+                    valid_candidates = (sim_masked >= 0.0).sum().item()
+                    k_val = min(deficit, valid_candidates)
+                    if k_val > 0:
+                        _, topk_idx = sim_masked.topk(k_val)
+                        labels[topk_idx] = 1.0
+                        matched_boxes[topk_idx] = micro_gts[j_local]
+
+        # If an anchor is neither positive nor marked negative, check global background
+        unassigned = labels == -1
+        if unassigned.any():
+            labels[unassigned] = 0.0
+
+        return labels, matched_boxes
+
+
 def build_saalw_assigner(metric_name: str = "sa_alw_full", **kwargs) -> SAALWAssigner:
     """Build SAALWAssigner with specified metric.
 
@@ -158,3 +297,19 @@ def build_saalw_assigner(metric_name: str = "sa_alw_full", **kwargs) -> SAALWAss
     from common.metrics import get_metric_fn
     metric_fn = get_metric_fn(metric_name)
     return SAALWAssigner(metric_fn=metric_fn, **kwargs)
+
+
+def build_scale_decoupled_assigner(
+    metric_name: str = "sa_alw_full",
+    micro_cutoff_px: float = 8.0,
+    **kwargs,
+) -> ScaleDecoupledAssigner:
+    """Build ScaleDecoupledAssigner."""
+    from common.metrics import get_metric_fn
+    metric_fn = get_metric_fn(metric_name)
+    return ScaleDecoupledAssigner(
+        metric_fn=metric_fn,
+        micro_cutoff_px=micro_cutoff_px,
+        **kwargs,
+    )
+
