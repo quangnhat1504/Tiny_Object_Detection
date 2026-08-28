@@ -3,8 +3,8 @@
 This directory contains the independent, self-contained journal manuscript, publication assets, experimental tools, and statistical verification ledgers targeting **IEEE TPAMI / IJCV / IEEE TMM**.
 
 ### Authors
-1. **Lê Hồ Anh Duy** (DE200171) - `lehoanhduy5426@gmail.com` - 0898896962
-2. **Đặng Quang Nhật** (DE200497) - `dangquangnhat1504@gmail.com` - 0377231436
+1. **Đặng Quang Nhật** (DE200497) - `dangquangnhat1504@gmail.com` - 0377231436 (First & Corresponding Author)
+2. **Lê Hồ Anh Duy** (DE200171) - `lehoanhduy5426@gmail.com` - 0898896962
 3. **Phạm Minh Tiến** (DE191091) - `taxaceae.forwork@gmail.com` - 0968338702
 *Affiliation: Department of Artificial Intelligence & Computer Science, FPT University*
 
