@@ -53,14 +53,12 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Scale-Adaptive Weighting Function}{3}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Additive Scale-Adaptive Similarity and Loss}{3}{}\protected@file@percent }
 \newlabel{thm:nonvanishing}{{1}{3}{}{target*.1}{}}
-\citation{yu2020tinyperson}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Homotopy Wasserstein-IoU Detection Framework}{4}{}\protected@file@percent }
+\newlabel{prop:corrective_direction}{{1}{4}{}{target*.2}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces \textbf  {Multi-Metric Radar Comparison on TinyPerson Official Test Set.} H-WIoU (blue) achieves the best overall $\text  {AP}^{0.50}_{\text  {all}}$ ($23.77\%$) and $\text  {AP}^{0.25}_{\text  {all}}$ ($48.58\%$) precision across competing paradigms, while remaining highly competitive on microscopic scale partitions and recall-focused axes.}}{4}{}\protected@file@percent }
 \newlabel{fig:radar}{{2}{4}{}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Homotopy Label Assignment (HLA) in RPN}{4}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Bounded Homotopy Regression in RoI Head}{4}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}Experimental Setup}{4}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Datasets \& Protocols}{4}{}\protected@file@percent }
+\newlabel{prop:homothetic}{{2}{4}{}{target*.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Homotopy Wasserstein-IoU Detection Framework}{4}{}\protected@file@percent }
+\citation{yu2020tinyperson}
 \citation{xu2022aitodv2nwd}
 \citation{he2016resnet}
 \citation{lin2017fpn}
@@ -69,25 +67,26 @@
 \citation{hu2022igwd}
 \citation{yu2020tinyperson}
 \citation{xu2022rfla}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces \textbf  {End-to-End Pipeline and Architecture of the Proposed Homotopy Wasserstein-IoU (H-WIoU) Detector.} Multi-scale feature pyramids ($P_2$--$P_5$) extract spatial representations. In Stage 1, the Region Proposal Network (RPN) employs \textbf  {Homotopy Label Assignment (HLA)} to compute continuous scale-adaptive similarity scores $\mathcal  {S}_{\text  {H-WIoU}}$ under invariant matching thresholds ($t_{\text  {pos}}=0.7, t_{\text  {neg}}=0.3$). In Stage 2, candidate RoIs are pooled via RoIAlign and supervised using the bounded \textbf  {Homotopy Regression Loss} $\mathcal  {L}_{\text  {H-WIoU}}$. The continuous scale homotopy parameter $\gamma (s) = \frac  {s^2}{s^2+\sigma _0^2}$ smoothly deforms between pure optimal transport ($\mathcal  {W}_2$) under microscopic scales and discrete Lebesgue measure ($\text  {IoU}$) for larger targets.}}{5}{}\protected@file@percent }
-\newlabel{fig:pipeline}{{3}{5}{}{figure.3}{}}
+\citation{ren2015faster}
+\citation{wang2021nwd}
+\citation{liu2024safit}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Homotopy Label Assignment (HLA) in RPN}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Bounded Homotopy Regression in RoI Head}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Experimental Setup}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Datasets \& Protocols}{5}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Evaluation Metrics}{5}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Implementation Details}{5}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {6}Main Experimental Results}{5}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Evaluation on Official TinyPerson Benchmark}{5}{}\protected@file@percent }
-\citation{ren2015faster}
-\citation{wang2021nwd}
-\citation{liu2024safit}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Benchmark on AI-TOD-v2}{5}{}\protected@file@percent }
 \citation{liu2024safit}
 \citation{ren2015faster}
 \citation{wang2021nwd}
 \citation{liu2024safit}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces \textbf  {End-to-End Pipeline and Architecture of the Proposed Homotopy Wasserstein-IoU (H-WIoU) Detector.} Multi-scale feature pyramids ($P_2$--$P_5$) extract spatial representations. In Stage 1, the Region Proposal Network (RPN) employs \textbf  {Homotopy Label Assignment (HLA)} to compute continuous scale-adaptive similarity scores $\mathcal  {S}_{\text  {H-WIoU}}$ under invariant matching thresholds ($t_{\text  {pos}}=0.7, t_{\text  {neg}}=0.3$). In Stage 2, candidate RoIs are pooled via RoIAlign and supervised using the bounded \textbf  {Homotopy Regression Loss} $\mathcal  {L}_{\text  {H-WIoU}}$. The continuous scale homotopy parameter $\gamma (s) = \frac  {s^2}{s^2+\sigma _0^2}$ smoothly deforms between pure optimal transport ($\mathcal  {W}_2$) under microscopic scales and discrete Lebesgue measure ($\text  {IoU}$) for larger targets.}}{6}{}\protected@file@percent }
+\newlabel{fig:pipeline}{{3}{6}{}{figure.3}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces \textbf  {Official TinyPerson 786-Image Test Set Benchmark (18,508 Ground Truth Instances).} All checkpoints trained independently on Kaggle Tesla T4 GPU (Fair-20 protocol, ResNet-50-FPN) and evaluated on local NVIDIA GeForce RTX 5070 Ti under the canonical \texttt  {tinyperson\_official} protocol ($AP^{0.25}$ and $AP^{0.50}$). Scale partitions: $\text  {Tiny1}$ ($s \le 8\text  {px}$), $\text  {Tiny2}$ ($8 < s \le 12\text  {px}$), $\text  {Tiny3}$ ($12 < s \le 20\text  {px}$), $\text  {Tiny}$ ($s \le 20\text  {px}$). Best results in bold.}}{6}{}\protected@file@percent }
 \newlabel{tab:tinyperson_test}{{1}{6}{}{table.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Benchmark on AI-TOD-v2}{6}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {7}Ablation Studies}{6}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Sensitivity to Scale Parameter $\sigma _0$}{6}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Scale Weighting Functional Forms}{6}{}\protected@file@percent }
 \citation{xu2022rfla}
 \citation{cai2018cascade}
 \citation{li2020gfl}
@@ -95,22 +94,24 @@
 \newlabel{tab:aitod_sota}{{2}{7}{}{table.2}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces \textbf  {Per-Category $\text  {AP}_{50}$ (\%) Performance Breakdown on AI-TOD-v2 Test Set.} Categories: \emph  {AP} (Airplane), \emph  {BR} (Bridge), \emph  {ST} (Storage-tank), \emph  {SH} (Ship), \emph  {SP} (Swimming-pool), \emph  {VE} (Vehicle), \emph  {PE} (Person), \emph  {WM} (Wind-mill). Evaluated on 14,018 test images. Best results in each column in bold.}}{7}{}\protected@file@percent }
 \newlabel{tab:per_class}{{3}{7}{}{table.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Ablation Studies}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Sensitivity to Scale Parameter $\sigma _0$}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Scale Weighting Functional Forms}{7}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Module Placement Integration}{7}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Cross-Paradigm Compatibility}{7}{}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces \textbf  {Cross-Paradigm Compatibility Matrix on AI-TOD-v2 (14,018 Test Images).} Demonstrating compatibility across distinct detector heads, receptive field assignment (RFLA), multi-stage cascades, dynamic uncertainty (DU), and quality focal loss (QFL).}}{7}{}\protected@file@percent }
-\newlabel{tab:generalization}{{4}{7}{}{table.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {8}Statistical Significance Analysis}{7}{}\protected@file@percent }
 \citation{liu2024safit}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces \textbf  {Comprehensive 3-Axis Ablation Study Landscape on TinyPerson Validation Split.} (a) Sensitivity analysis across $\sigma _0 \in [4, 16]\text  { px}$, confirming optimal micro-scale trade-off at $\sigma _0=8\text  { px}$. (b) Comparison of scale weighting functions. (c) Module placement ablation across RPN, RoI Head, and Dual integration. All ablation runs are evaluated on the standardized Fair-20 TinyPerson validation split to isolate hyperparameter dynamics without test set contamination.}}{8}{}\protected@file@percent }
+\newlabel{fig:ablation}{{4}{8}{}{figure.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces \textbf  {Cross-Paradigm Compatibility Matrix on AI-TOD-v2 (14,018 Test Images).} Demonstrating compatibility across distinct detector heads, receptive field assignment (RFLA), multi-stage cascades, dynamic uncertainty (DU), and quality focal loss (QFL).}}{8}{}\protected@file@percent }
+\newlabel{tab:generalization}{{4}{8}{}{table.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Statistical Significance Analysis}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Computational Complexity \& Training Overhead}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Discussion of Limitations and Future Work}{8}{}\protected@file@percent }
 \bibcite{yu2020tinyperson}{1}
 \bibcite{wang2021aitod}{2}
 \bibcite{xu2022aitodv2nwd}{3}
 \bibcite{cai2018cascade}{4}
 \bibcite{wang2021nwd}{5}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces \textbf  {Comprehensive 3-Axis Ablation Study Landscape on TinyPerson Validation Split.} (a) Sensitivity analysis across $\sigma _0 \in [4, 16]\text  { px}$, confirming optimal micro-scale trade-off at $\sigma _0=8\text  { px}$. (b) Comparison of scale weighting functions. (c) Module placement ablation across RPN, RoI Head, and Dual integration. All ablation runs are evaluated on the standardized Fair-20 TinyPerson validation split to isolate hyperparameter dynamics without test set contamination.}}{8}{}\protected@file@percent }
-\newlabel{fig:ablation}{{4}{8}{}{figure.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {9}Computational Complexity \& Training Overhead}{8}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {10}Discussion of Limitations and Future Work}{8}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {11}Conclusion}{8}{}\protected@file@percent }
 \bibcite{hu2022igwd}{6}
 \bibcite{xu2022rfla}{7}
 \bibcite{chen2023simd}{8}
@@ -141,5 +142,6 @@
 \bibcite{li2020gfl}{33}
 \bibcite{zhu2021visdrone}{34}
 \bibcite{xia2018dota}{35}
+\@writefile{toc}{\contentsline {section}{\numberline {11}Conclusion}{9}{}\protected@file@percent }
 \bibcite{cheng2023soda}{36}
-\gdef \@abspage@last{9}
+\gdef \@abspage@last{10}

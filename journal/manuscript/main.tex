@@ -108,7 +108,7 @@ For two bounding boxes $A = (x_a, y_a, w_a, h_a)$ and $B = (x_b, y_b, w_b, h_b)$
 &\quad + \frac{(w_a - w_b)^2 + (h_a - h_b)^2}{4}
 \end{align}
 
-To ensure scale invariance in the transport signal across varying image resolutions, we employ a \textbf{Scale-Normalized Gaussian Divergence} $\mathcal{D}_{\mathrm{SN}}^2(A, B)$:
+To ensure scale invariance in the transport signal across varying image resolutions, we employ a \textbf{Scale-Normalized Geometric Divergence (SNGD)} $\mathcal{D}_{\mathrm{SN}}^2(A, B)$, which combines normalized centroid displacement with logarithmic width–height mismatch, motivated by distributional representations of bounding boxes:
 \begin{align}
 \mathcal{D}_{\mathrm{SN}}^2(A, B) &= \frac{(x_a - x_b)^2}{\bar{w}_{ab}^2} + \frac{(y_a - y_b)^2}{\bar{h}_{ab}^2} \nonumber \\
 &\quad + \ln^2\left(\frac{w_a}{w_b}\right) + \ln^2\left(\frac{h_a}{h_b}\right)
@@ -150,26 +150,26 @@ For any predicted box parameter $\theta_a \in \{x_a, y_a, w_a, h_a\}$, since $\g
 \end{equation}
 
 \begin{theorem}[Non-Vanishing Centroid Gradient on Compact Domain]\label{thm:nonvanishing}
-Let $B = (\mu_b, w_b, h_b)$ be a fixed target bounding box with finite positive dimensions $w_b > 0, h_b > 0$ and scale $s_B = \sqrt{w_b \cdot h_b} > 0$. Fix separation thresholds $0 < \delta \le \kappa < \infty$ and aspect ratio bounds $0 < r_{\min} \le r_{\max} < \infty$. Consider predicted boxes $A = (\mu_a, w_a, h_a)$ residing in the compact admissible domain $\mathcal{K}$ contained in the interior of the zero-overlap region:
+Let $B = (\mu_b, w_b, h_b)$ be a fixed target bounding box with finite positive dimensions $w_b > 0, h_b > 0$ and scale $s_B = \sqrt{w_b \cdot h_b} > 0$. Define the zero-overlap configuration set $\mathcal{Z}_B = \{ A \mid \mathrm{IoU}(A, B) = 0 \}$. Fix separation thresholds $0 < \delta \le \kappa < \infty$ and aspect ratio bounds $0 < r_{\min} \le r_{\max} < \infty$. Consider predicted boxes $A = (\mu_a, w_a, h_a)$ residing in the compact admissible domain $\mathcal{K} \subset \mathrm{int}(\mathcal{Z}_B)$:
 \begin{equation}
 \begin{split}
-\mathcal{K} &= \Big\{ A \;\Big|\; \delta \le \frac{\|\mu_a - \mu_b\|_2}{s_B} \le \kappa, \\
-&\qquad \frac{w_a}{w_b} \in [r_{\min}, r_{\max}], \; \frac{h_a}{h_b} \in [r_{\min}, r_{\max}], \; \mathrm{IoU} = 0 \Big\}
+\mathcal{K} &= \Big\{ A \in \mathrm{int}(\mathcal{Z}_B) \;\Big|\; \delta \le \frac{\|\mu_a - \mu_b\|_2}{s_B} \le \kappa, \\
+&\qquad \frac{w_a}{w_b} \in [r_{\min}, r_{\max}], \; \frac{h_a}{h_b} \in [r_{\min}, r_{\max}] \Big\}
 \end{split}
 \end{equation}
-Away from contact boundaries ($\mathrm{IoU}(A, B) = 0$), the IoU term is locally constant and its gradient vanishes identically: $\nabla_{\mu_a} \mathrm{IoU} \equiv \mathbf{0}$. Then, the gradient of $\mathcal{L}_{\text{H-WIoU}}$ with respect to predicted centroid coordinates $\mu_a = [x_a, y_a]^T$ satisfies:
+For every $A \in \mathcal{K}$, $\mathrm{IoU}$ is locally constant with respect to centroid perturbations on an open neighborhood within $\mathrm{int}(\mathcal{Z}_B)$, hence $\nabla_{\mu_a} \mathrm{IoU}(A, B) \equiv \mathbf{0}$. Then, the centroid gradient of $\mathcal{L}_{\text{H-WIoU}}$ satisfies:
 \begin{equation}
 \begin{split}
-\|\nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}}\| &= (1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)} \\
-&\quad \cdot \|\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2(A, B)\| \\
-&\ge c(B, \delta, \kappa, r_{\min}, r_{\max}) > 0
+\|\nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}}\| &= (1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)} \, \|\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2(A, B)\| \\
+&\ge (1 - \gamma(s_B))\,e^{-M} \frac{4\delta s_B}{(1 + r_{\max}^2)\max(w_b^2, h_b^2)} \\
+&=: c(B, \delta, \kappa, r_{\min}, r_{\max}) > 0
 \end{split}
 \end{equation}
-guaranteeing that the loss retains a strictly non-zero centroid correction signal over the specified compact zero-overlap domain.
+guaranteeing a strictly positive lower bound over the specified compact zero-overlap domain.
 \end{theorem}
 
 \textbf{Proof:}
-For strictly disjoint boxes away from contact boundaries ($\mathrm{IoU}(A, B) = 0$), the discrete overlap is identically zero on an open neighborhood around $\mu_a$, yielding $\nabla_{\mu_a} \mathrm{IoU} = \mathbf{0}$. From Eq.~(8), the centroid gradient reduces to:
+For any $A \in \mathcal{K} \subset \mathrm{int}(\mathcal{Z}_B)$, there exists an open ball around $\mu_a$ where $\mathrm{IoU}(A, B) \equiv 0$, yielding $\nabla_{\mu_a} \mathrm{IoU} = \mathbf{0}$. From Eq.~(8), the centroid gradient reduces to:
 \begin{equation}
 \nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}} = (1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)}\,\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2(A, B)
 \end{equation}
@@ -186,7 +186,10 @@ which implies $e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)} \ge e^{-M} > 0$.
 
 \noindent \textbf{2. Lower Bound on Divergence Gradient:} Since $w_a^2 + w_b^2 \le (1 + r_{\max}^2)\max(w_b^2, h_b^2)$ and $h_a^2 + h_b^2 \le (1 + r_{\max}^2)\max(w_b^2, h_b^2)$, the lower separation $\|\mu_a - \mu_b\|_2 \ge \delta s_B$ gives:
 \begin{equation}
-\|\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2(A, B)\| \ge \frac{4\delta s_B}{(1 + r_{\max}^2)\max(w_b^2, h_b^2)} =: m > 0
+\begin{split}
+\|\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2(A, B)\| &\ge \frac{4\sqrt{(x_a - x_b)^2 + (y_a - y_b)^2}}{(1 + r_{\max}^2)\max(w_b^2, h_b^2)} \\
+&\ge \frac{4\delta s_B}{(1 + r_{\max}^2)\max(w_b^2, h_b^2)} =: m > 0
+\end{split}
 \end{equation}
 
 Combining both bounds with $1 - \gamma(s_B) = \frac{\sigma_0^2}{s_B^2 + \sigma_0^2} > 0$ yields:
@@ -196,7 +199,31 @@ Combining both bounds with $1 - \gamma(s_B) = \frac{\sigma_0^2}{s_B^2 + \sigma_0
 &=: c(B, \delta, \kappa, r_{\min}, r_{\max}) > 0
 \end{split}
 \end{equation}
-which proves the theorem. $\blacksquare$
+which completes the proof. $\blacksquare$
+
+\begin{proposition}[Corrective Gradient Direction under Zero Overlap]\label{prop:corrective_direction}
+For any predicted box $A \in \mathcal{K} \subset \mathrm{int}(\mathcal{Z}_B)$, the inner product between the centroid gradient $\nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}}$ and the displacement vector $\mu_a - \mu_b$ is strictly positive:
+\begin{equation}
+\begin{split}
+&\langle \nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}}, \mu_a - \mu_b \rangle = 4(1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)} \\
+&\qquad \cdot \left[ \frac{(x_a - x_b)^2}{w_a^2 + w_b^2} + \frac{(y_a - y_b)^2}{h_a^2 + h_b^2} \right] > 0
+\end{split}
+\end{equation}
+Consequently, the gradient descent update direction $d = -\nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}}$ satisfies $\langle d, \mu_a - \mu_b \rangle < 0$, guaranteeing that the instantaneous parameter update possesses a strictly positive component directed toward the target centroid $\mu_b$.
+\end{proposition}
+
+\begin{proposition}[Homothetic Invariance and Asymptotic Limits]\label{prop:homothetic}
+Let $A = (\mu_a, w_a, h_a)$ and $B = (\mu_b, w_b, h_b)$. For any uniform scaling parameter $\lambda > 0$, define the homothetic dilations $A_\lambda = (\lambda \mu_a, \lambda w_a, \lambda h_a)$ and $B_\lambda = (\lambda \mu_b, \lambda w_b, \lambda h_b)$. Then:
+\begin{equation}
+\mathrm{IoU}(A_\lambda, B_\lambda) = \mathrm{IoU}(A, B), \quad \mathcal{D}_{\mathrm{SN}}^2(A_\lambda, B_\lambda) = \mathcal{D}_{\mathrm{SN}}^2(A, B).
+\end{equation}
+Under the scale homotopy parameter $\gamma(\lambda s_B) = \frac{\lambda^2 s_B^2}{\lambda^2 s_B^2 + \sigma_0^2}$, the similarity $\mathcal{S}(A_\lambda, B_\lambda)$ exhibits the asymptotic transitions:
+\begin{equation}
+\lim_{\lambda \to \infty} \mathcal{S}(A_\lambda, B_\lambda) = \mathrm{IoU}(A, B), \quad \lim_{\lambda \to 0^+} \mathcal{S}(A_\lambda, B_\lambda) = e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)}.
+\end{equation}
+\end{proposition}
+
+\noindent \textbf{Remark on Floating-Point Precision:} The analytical non-vanishing guarantee holds on the specified compact domain in real arithmetic. For extremely distant boxes outside this operating region ($\mathcal{D}_{\mathrm{SN}}^2 \gg M$), floating-point evaluation of the exponential in finite precision (e.g., IEEE FP16 or FP32) may numerically underflow; such configurations correspond to negligible geometric affinity and reside outside the compact admissible domain $\mathcal{K}$.
 
 \begin{figure}[t]
     \centering
@@ -236,7 +263,7 @@ We evaluate H-WIoU across two widely recognized tiny object detection benchmarks
 Following official benchmark protocols, we report mean Average Precision ($\text{mAP}_{50}$ at $\text{IoU}=0.50$, $\text{AP}_{50:95}$, $\text{AP}_{75}$), scale-partitioned precision ($\text{AP}_{\text{micro}}$ for $s < 8\text{px}$, $\text{AP}_{\text{tiny}}$ for $8 \le s < 20\text{px}$, $\text{mAP}_{\text{scale}}$), and Average Recall ($\text{AR}_{100}$).
 
 \subsection{Implementation Details}
-All models are implemented using PyTorch on NVIDIA Tesla T4 GPUs with ResNet-50-FPN~\cite{he2016resnet, lin2017fpn} backbones. Detector heads are trained using standard SGD optimization for 20 epochs on TinyPerson and 12 epochs on AI-TOD-v2 with initial learning rate $\eta = 0.005$, momentum $0.9$, weight decay $0.0001$, and cosine learning rate decay. We enforce a strict Fair-20 / Fair S42 zero-leakage training protocol across all competing baselines.
+All models are implemented using PyTorch on NVIDIA Tesla T4 GPUs with ResNet-50-FPN~\cite{he2016resnet, lin2017fpn} backbones. Detector heads are trained using standard SGD optimization for 20 epochs on TinyPerson and 12 epochs on AI-TOD-v2 with initial learning rate $\eta = 0.005$, momentum $0.9$, weight decay $0.0001$, and cosine learning rate decay. We enforce a strict Fair-20 / Fair S42 zero-leakage training protocol across all competing baselines. We additionally provide comprehensive numerical gradient checks and boundary-condition unit test suites validating the analytical properties of the proposed objective.
 
 \section{Main Experimental Results}
 

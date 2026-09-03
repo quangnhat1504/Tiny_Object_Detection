@@ -262,6 +262,86 @@ class TestMathSoundnessHWIoU(unittest.TestCase):
             self.assertGreater(min_norm, 0.0, f"Observed min norm is not strictly positive for B=({wb}, {hb}): {min_norm}")
             self.assertGreaterEqual(min_norm, c_theoretical * 0.99, f"Gradient norm fell below theoretical lower bound for B=({wb}, {hb}): min_norm={min_norm}, c={c_theoretical}")
 
+    def test_9_homothetic_scaling_asymptotics_proposition_3(self):
+        """Property 9 (Proposition 3): Homothetic scaling A_lambda = lambda * A, B_lambda = lambda * B
+        preserves exact IoU and exact SNGD divergence D_SN^2, while S(A_lambda, B_lambda)
+        smoothly transitions from exp(-D_SN^2) (at lambda -> 0) to IoU (at lambda -> inf).
+        """
+        # Base boxes A and B
+        box_a = torch.tensor([[10.0, 10.0, 30.0, 30.0]], dtype=torch.float64)  # center (20, 20), size (20, 20)
+        box_b = torch.tensor([[15.0, 15.0, 35.0, 35.0]], dtype=torch.float64)  # center (25, 25), size (20, 20)
+
+        # Baseline invariants
+        from torchvision.ops import box_iou
+        base_iou = box_iou(box_a, box_b).item()
+
+        xa, ya, wa, ha = (box_a[:, 0] + box_a[:, 2]) / 2, (box_a[:, 1] + box_a[:, 3]) / 2, box_a[:, 2] - box_a[:, 0], box_a[:, 3] - box_a[:, 1]
+        xb, yb, wb, hb = (box_b[:, 0] + box_b[:, 2]) / 2, (box_b[:, 1] + box_b[:, 3]) / 2, box_b[:, 2] - box_b[:, 0], box_b[:, 3] - box_b[:, 1]
+        base_d_sn_sq = aligned_scale_normalized_divergence_squared(xa, ya, wa, ha, xb, yb, wb, hb).item()
+        base_transport = math.exp(-base_d_sn_sq)
+
+        # Verify geometric invariance under diverse lambda
+        for lam in [0.01, 0.1, 0.5, 1.0, 2.0, 10.0, 100.0]:
+            a_lam = box_a * lam
+            b_lam = box_b * lam
+            lam_iou = box_iou(a_lam, b_lam).item()
+            self.assertAlmostEqual(lam_iou, base_iou, places=6, msg=f"IoU not invariant under lambda={lam}")
+
+            xa_l, ya_l, wa_l, ha_l = (a_lam[:, 0] + a_lam[:, 2]) / 2, (a_lam[:, 1] + a_lam[:, 3]) / 2, a_lam[:, 2] - a_lam[:, 0], a_lam[:, 3] - a_lam[:, 1]
+            xb_l, yb_l, wb_l, hb_l = (b_lam[:, 0] + b_lam[:, 2]) / 2, (b_lam[:, 1] + b_lam[:, 3]) / 2, b_lam[:, 2] - b_lam[:, 0], b_lam[:, 3] - b_lam[:, 1]
+            lam_d_sn_sq = aligned_scale_normalized_divergence_squared(xa_l, ya_l, wa_l, ha_l, xb_l, yb_l, wb_l, hb_l).item()
+            self.assertAlmostEqual(lam_d_sn_sq, base_d_sn_sq, places=6, msg=f"SNGD not invariant under lambda={lam}")
+
+        # Asymptotic limit lambda -> inf: S -> IoU
+        a_inf = box_a * 1000.0
+        b_inf = box_b * 1000.0
+        s_inf = 1.0 - aligned_h_wiou_loss(a_inf, b_inf, sigma_0=8.0).item()
+        self.assertAlmostEqual(s_inf, base_iou, places=4, msg="S does not converge to IoU at large lambda")
+
+        # Asymptotic limit lambda -> 0: S -> exp(-D_SN^2)
+        a_zero = box_a * 0.001
+        b_zero = box_b * 0.001
+        s_zero = 1.0 - aligned_h_wiou_loss(a_zero, b_zero, sigma_0=8.0).item()
+        self.assertAlmostEqual(s_zero, base_transport, places=4, msg="S does not converge to exp(-D_SN^2) at small lambda")
+
+    def test_10_proposition_2_corrective_descent_direction(self):
+        """Property 10 (Proposition 2): For any disjoint box in the interior int(Z_B),
+        < -grad L, mu_a - mu_b > < 0 strictly (descent direction points toward target centroid).
+        """
+        target = torch.tensor([[50.0, 50.0, 60.0, 60.0]], dtype=torch.float64)  # center (55, 55)
+        for angle in range(0, 360, 30):
+            rad = angle * math.pi / 180.0
+            dist = 30.0  # strictly outside box
+            dx = dist * math.cos(rad)
+            dy = dist * math.sin(rad)
+            pred = torch.tensor([[50.0 + dx, 50.0 + dy, 60.0 + dx, 60.0 + dy]], dtype=torch.float64, requires_grad=True)
+
+            loss = aligned_h_wiou_loss(pred, target, sigma_0=8.0)
+            loss.backward()
+
+            grad = pred.grad[0]
+            cx_grad = (grad[0] + grad[2]).item()
+            cy_grad = (grad[1] + grad[3]).item()
+
+            inner_prod = cx_grad * dx + cy_grad * dy
+            self.assertGreater(inner_prod, 0.0, f"Positive inner product failed at angle {angle}")
+
+            descent_inner_prod = -inner_prod
+            self.assertLess(descent_inner_prod, 0.0, f"Descent direction failed to point towards target at angle {angle}")
+
+    def test_11_fp16_amp_numerical_stability_in_compact_domain(self):
+        """Property 11: In IEEE FP16, loss and gradient within the compact domain K remain strictly finite and non-vanishing."""
+        target = torch.tensor([[10.0, 10.0, 18.0, 18.0]], dtype=torch.float16)
+        pred = torch.tensor([[25.0, 25.0, 33.0, 33.0]], dtype=torch.float16, requires_grad=True)
+
+        loss = aligned_h_wiou_loss(pred, target, sigma_0=8.0)
+        self.assertTrue(torch.isfinite(loss).all())
+        self.assertGreater(loss.item(), 0.0)
+
+        loss.backward()
+        self.assertTrue(torch.isfinite(pred.grad).all())
+        self.assertFalse(torch.all(pred.grad == 0.0), "FP16 gradient underflowed to exact zero within compact domain")
+
 
 if __name__ == '__main__':
     unittest.main()

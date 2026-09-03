@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.6.20)  3 SEP 2026 01:25
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.6.20)  4 SEP 2026 01:28
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -250,6 +250,16 @@ Underfull \hbox (badness 2221) in paragraph at lines 100--100
 []\OT1/cmr/bx/n/12 Gaussian Rep-re-sen-ta-tion & Scale-
  []
 
+
+Underfull \hbox (badness 2717) in paragraph at lines 111--112
+[]\OT1/cmr/m/n/10 To en-sure scale in-vari-ance in the trans-port sig-
+ []
+
+
+Underfull \hbox (badness 1960) in paragraph at lines 111--112
+\OT1/cmr/m/n/10 nal across vary-ing im-age res-o-lu-tions, we em-ploy a
+ []
+
 [2]
 Underfull \hbox (badness 2903) in paragraph at lines 131--131
 []\OT1/cmr/bx/n/12 Additive Scale-Adaptive Sim-i-lar-ity
@@ -261,82 +271,103 @@ Overfull \hbox (100.86894pt too wide) in paragraph at lines 153--154
  []
 
 
-Underfull \hbox (badness 1400) in paragraph at lines 153--154
-\OT1/cmr/m/it/10 olds $\OT1/cmr/m/n/10 0 \OML/cmm/m/it/10 < ^^N \OMS/cmtt/m/n/1
-0 ^^T \OML/cmm/m/it/10 ^^T < \OMS/cmtt/m/n/10 1$ \OT1/cmr/m/it/10 and as-pect r
-a-tio bounds
+Overfull \hbox (4.6487pt too wide) detected at line 167
+[]
  []
 
 [3 <./figures/fig1_homotopy_theory.pdf>]
-<figures/fig2_multimetric_radar.pdf, id=163, 503.37584pt x 407.75453pt>
+Overfull \hbox (90.27885pt too wide) in paragraph at lines 205--206
+[]
+ []
+
+
+Underfull \hbox (badness 2875) in paragraph at lines 205--206
+\OT1/cmr/m/it/10 be-tween the cen-troid gra-di-ent $\OMS/cmtt/m/n/10 r[]L[]$ \O
+T1/cmr/m/it/10 and the
+ []
+
+
+Overfull \hbox (69.89268pt too wide) in paragraph at lines 216--217
+[]
+ []
+
+
+Overfull \hbox (20.98218pt too wide) detected at line 223
+[][] \OMS/cmtt/m/n/10 S\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 A[]; B[]\OT1/cmr/m/n/1
+0 ) = [](\OML/cmm/m/it/10 A; B\OT1/cmr/m/n/10 )\OML/cmm/m/it/10 ;  [] \OMS/cmtt
+/m/n/10 S\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 A[]; B[]\OT1/cmr/m/n/10 ) = \OML/cmm
+/m/it/10 e[]:
+ []
+
+<figures/fig2_multimetric_radar.pdf, id=162, 503.37584pt x 407.75453pt>
 File: figures/fig2_multimetric_radar.pdf Graphic file (type pdf)
 <use figures/fig2_multimetric_radar.pdf>
 Package pdftex.def Info: figures/fig2_multimetric_radar.pdf  used on input line
- 203.
+ 230.
 (pdftex.def)             Requested size: 248.02821pt x 200.91518pt.
 
-Underfull \hbox (badness 1436) in paragraph at lines 204--204
+Underfull \hbox (badness 1436) in paragraph at lines 231--231
 []\OT1/cmr/m/n/10 Figure 2: \OT1/cmr/bx/n/10 Multi-Metric Radar Com-par-i-son o
 n
  []
 
-
-Underfull \hbox (badness 1755) in paragraph at lines 216--216
+[4 <./figures/fig2_multimetric_radar.pdf>]
+Underfull \hbox (badness 1755) in paragraph at lines 243--243
 []\OT1/cmr/bx/n/12 Bounded Ho-mo-topy Re-gres-sion in
  []
 
-<figures/fig5_pipeline_architecture.pdf, id=164, 1012.50267pt x 527.42645pt>
+<figures/fig5_pipeline_architecture.pdf, id=234, 1012.50267pt x 527.42645pt>
 File: figures/fig5_pipeline_architecture.pdf Graphic file (type pdf)
 <use figures/fig5_pipeline_architecture.pdf>
 Package pdftex.def Info: figures/fig5_pipeline_architecture.pdf  used on input 
-line 221.
+line 248.
 (pdftex.def)             Requested size: 490.89197pt x 255.70494pt.
 
-Underfull \hbox (badness 1953) in paragraph at lines 231--232
+Underfull \hbox (badness 1953) in paragraph at lines 258--259
 []\OT1/cmr/bx/n/10 TinyPerson \OT1/cmr/m/n/10 [[]]: High-resolution mar-itime a
 nd
  []
 
-[4 <./figures/fig2_multimetric_radar.pdf>]
-Underfull \hbox (badness 2644) in paragraph at lines 243--243
+
+Underfull \hbox (badness 2644) in paragraph at lines 270--270
 []\OT1/cmr/bx/n/12 Evaluation on Of-fi-cial TinyPer-son
  []
 
 
-Underfull \hbox (badness 1237) in paragraph at lines 269--270
+Underfull \hbox (badness 1237) in paragraph at lines 296--297
 \OT1/cmr/m/n/10 on the of-fi-cial 786-image TinyPer-son test set un-der
  []
 
 
-Underfull \hbox (badness 1242) in paragraph at lines 271--272
+Underfull \hbox (badness 1242) in paragraph at lines 298--299
 []\OT1/cmr/bx/n/10 Overall Precision--Localization Bal-ance\OT1/cmr/m/n/10 : H-
 
  []
 
-[5 <./figures/fig5_pipeline_architecture.pdf>]
-Underfull \hbox (badness 4518) in paragraph at lines 304--305
+[5]
+Underfull \hbox (badness 4518) in paragraph at lines 331--332
 []\OT1/cmr/bx/n/10 Microscopic De-tec-tion Gain & Pre-ci-sion
  []
 
-<figures/fig3_ablation_landscape.pdf, id=311, 939.51pt x 274.626pt>
+<figures/fig3_ablation_landscape.pdf, id=238, 939.51pt x 274.626pt>
 File: figures/fig3_ablation_landscape.pdf Graphic file (type pdf)
 <use figures/fig3_ablation_landscape.pdf>
 Package pdftex.def Info: figures/fig3_ablation_landscape.pdf  used on input lin
-e 335.
+e 362.
 (pdftex.def)             Requested size: 475.3907pt x 138.9595pt.
 
-Underfull \hbox (badness 1590) in paragraph at lines 342--343
+Underfull \hbox (badness 1590) in paragraph at lines 369--370
 \OT1/cmr/m/n/10 To rig-or-ously iso-late hy-per-pa-ram-e-ter sen-si-tiv-ity ($\
 OML/cmm/m/it/10 ^^[[]$\OT1/cmr/m/n/10 ,
  []
 
-
-Underfull \hbox (badness 2080) in paragraph at lines 348--349
+[6 <./figures/fig5_pipeline_architecture.pdf>]
+Underfull \hbox (badness 2080) in paragraph at lines 375--376
 \OT1/cmr/m/n/10 In Fig. 4[](b), we com-pare the ra-tio-nal for-mu-la-tion
  []
 
-[6]
-Underfull \hbox (badness 10000) in paragraph at lines 361--362
+
+Underfull \hbox (badness 10000) in paragraph at lines 388--389
 []\OT1/cmr/bx/n/10 Baseline (Stan-dard IoU / Smooth-L1)\OT1/cmr/m/n/10 :
  []
 
@@ -344,7 +375,7 @@ Underfull \hbox (badness 10000) in paragraph at lines 361--362
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 [7]
-Underfull \hbox (badness 2277) in paragraph at lines 411--411
+Underfull \hbox (badness 2277) in paragraph at lines 438--438
 []\OT1/cmr/bx/n/14.4 Computational Com-plex-ity &
  []
 
@@ -352,7 +383,9 @@ Underfull \hbox (badness 2277) in paragraph at lines 411--411
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
  [9]
-(main.aux)
+[10
+
+] (main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2025-12-24>
@@ -363,10 +396,10 @@ LaTeX Font Warning: Some font shapes were not available, defaults substituted.
 
  ) 
 Here is how much of TeX's memory you used:
- 2827 strings out of 467871
- 42430 string characters out of 5418376
- 489545 words of memory out of 5000000
- 31686 multiletter control sequences out of 15000+600000
+ 2831 strings out of 467871
+ 42540 string characters out of 5418376
+ 487869 words of memory out of 5000000
+ 31690 multiletter control sequences out of 15000+600000
  640174 words of font info for 86 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  57i,19n,65p,1250b,382s stack positions out of 10000i,1000n,20000p,200000b,200000s
@@ -400,9 +433,9 @@ ype1/public/amsfonts/cm/cmtt10.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTe
 X/fonts/type1/public/amsfonts/cm/cmtt8.pfb><C:/Users/ADMIN/AppData/Local/Progra
 ms/MiKTeX/fonts/type1/public/amsfonts/symbols/msam10.pfb><C:/Users/ADMIN/AppDat
 a/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on main.pdf (9 pages, 782882 bytes).
+Output written on main.pdf (10 pages, 787570 bytes).
 PDF statistics:
- 529 PDF objects out of 1000 (max. 8388607)
+ 532 PDF objects out of 1000 (max. 8388607)
  0 named destinations out of 1000 (max. 500000)
  21 words of extra memory for PDF output out of 10000 (max. 10000000)
 
