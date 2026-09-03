@@ -1,0 +1,267 @@
+{
+  "RFLA + H-WIoU Proposed": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 761513,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.14482743384238542,
+      "AP25": -1.0,
+      "AP50": 0.38407529289515063,
+      "AP75": 0.07341494588290091,
+      "AP_verytiny": 0.039951190443147065,
+      "AP_tiny": 0.14395530296623885,
+      "AP_small": 0.18830768143788673,
+      "AP_medium": 0.2792403055347901,
+      "AR1": 0.049949368488985506,
+      "AR100": 0.2420554451250502,
+      "AR1500": 0.254945601961992,
+      "AR_verytiny": 0.09598760091094419,
+      "AR_tiny": 0.25734583975517894,
+      "AR_small": 0.3010463088838605,
+      "AR_medium": 0.37227993232321016,
+      "oLRP": 0.8736081552273414,
+      "oLRP_localization": 0.3069098713062567,
+      "oLRP_false_positive": 0.41140658679271846,
+      "oLRP_false_negative": 0.6150365101206903
+    },
+    "summary": ""
+  },
+  "RFLA + Smooth-L1 Baseline": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 696784,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.14657226906974835,
+      "AP25": -1.0,
+      "AP50": 0.38014355693718627,
+      "AP75": 0.07638079890553308,
+      "AP_verytiny": 0.0385414296686226,
+      "AP_tiny": 0.14733250774777001,
+      "AP_small": 0.18374321981772443,
+      "AP_medium": 0.2782210544611833,
+      "AR1": 0.0514572371637614,
+      "AR100": 0.2369311153096268,
+      "AR1500": 0.2481860435879025,
+      "AR_verytiny": 0.0945550541323622,
+      "AR_tiny": 0.2522669373132189,
+      "AR_small": 0.29278836161684363,
+      "AR_medium": 0.3689769353518295,
+      "oLRP": 0.8710607166457354,
+      "oLRP_localization": 0.30450099670245667,
+      "oLRP_false_positive": 0.3825535953618383,
+      "oLRP_false_negative": 0.6250795601552519
+    },
+    "summary": ""
+  },
+  "Cascade Baseline Standard": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 672928,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.14128967999642855,
+      "AP25": -1.0,
+      "AP50": 0.37201292144918235,
+      "AP75": 0.07263967255033031,
+      "AP_verytiny": 0.03885025674669182,
+      "AP_tiny": 0.14503438913075398,
+      "AP_small": 0.1789014523853066,
+      "AP_medium": 0.27549024144146955,
+      "AR1": 0.049880277508409905,
+      "AR100": 0.2360145864304763,
+      "AR1500": 0.24681456983569666,
+      "AR_verytiny": 0.10835436833653449,
+      "AR_tiny": 0.250868595945893,
+      "AR_small": 0.29398941706838294,
+      "AR_medium": 0.3591947452959767,
+      "oLRP": 0.8737990129258453,
+      "oLRP_localization": 0.3079722510159094,
+      "oLRP_false_positive": 0.41790446718433183,
+      "oLRP_false_negative": 0.6175573736842273
+    },
+    "summary": ""
+  },
+  "DU-HWIoU Proposed": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 721185,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.14357352667615378,
+      "AP25": -1.0,
+      "AP50": 0.3784279883475215,
+      "AP75": 0.07355888373943013,
+      "AP_verytiny": 0.03999584138804643,
+      "AP_tiny": 0.14577308560543498,
+      "AP_small": 0.18242549335280658,
+      "AP_medium": 0.268908057957971,
+      "AR1": 0.0494522391557311,
+      "AR100": 0.23528955751723304,
+      "AR1500": 0.24769684911689827,
+      "AR_verytiny": 0.10190503161982678,
+      "AR_tiny": 0.25182871888015207,
+      "AR_small": 0.29275569650718414,
+      "AR_medium": 0.358766818886522,
+      "oLRP": 0.873771261012837,
+      "oLRP_localization": 0.3082535493080705,
+      "oLRP_false_positive": 0.40122176016472705,
+      "oLRP_false_negative": 0.6220846490279064
+    },
+    "summary": ""
+  },
+  "QFL + H-WIoU Proposed": {
+    "protocol": "aitodv2_official",
+    "evaluator_commit": "44a230ae5197cb89bf9e5e62f313cac3ad30c7af",
+    "prediction_count": 1935758,
+    "parameters": {
+      "iou_thresholds": [
+        0.5,
+        0.55,
+        0.6,
+        0.65,
+        0.7,
+        0.75,
+        0.8,
+        0.85,
+        0.8999999999999999,
+        0.95
+      ],
+      "max_detections": [
+        1,
+        100,
+        1500
+      ],
+      "area_labels": [
+        "all",
+        "verytiny",
+        "tiny",
+        "small",
+        "medium"
+      ]
+    },
+    "metrics": {
+      "AP": 0.13661033461899927,
+      "AP25": -1.0,
+      "AP50": 0.3328775694101159,
+      "AP75": 0.08564503346691399,
+      "AP_verytiny": 0.03102973761934781,
+      "AP_tiny": 0.1362324541555755,
+      "AP_small": 0.17817932751483184,
+      "AP_medium": 0.293537630420603,
+      "AR1": 0.050957467934868675,
+      "AR100": 0.24228769095512637,
+      "AR1500": 0.25695910106558845,
+      "AR_verytiny": 0.09854071817108663,
+      "AR_tiny": 0.250712548306086,
+      "AR_small": 0.3176812335908196,
+      "AR_medium": 0.41070748711349103,
+      "oLRP": 0.8799653984837401,
+      "oLRP_localization": 0.2942226865436065,
+      "oLRP_false_positive": 0.4789447442637286,
+      "oLRP_false_negative": 0.6523810744926724
+    },
+    "summary": ""
+  }
+}

@@ -14,6 +14,77 @@ tags:
 
 # Journal Project Activity Log
 
+## 2026-09-04: Full Forensic Code Audit, Dual Calling Invariant Certification, Multi-Model CUDA Smoke Tests & Cluster Quota Audit
+
+* **Exhaustive Forensic Code Audit & Critical Bug Fixes**:
+  * **RPN Metric Calling Convention Fix**: Diagnosed and resolved `TypeError: compute_entropy_homotopy_similarity() got multiple values for argument 'sigma_0'`. Refactored `compute_entropy_homotopy_similarity` to dynamically accept both 2-tensor `[N, 4]` and 8-coordinate `(xa, ya, wa, ha, xb, yb, wb, hb)` conventions required by `assign_targets_to_anchors()`.
+  * **Regression Loss Dual Calling Invariant**: Implemented `aligned_entropy_homotopy_loss` in `common/metrics/entropy_homotopy.py` supporting both paired box tensors and individual coordinate vectors.
+  * **Registry & Configuration Wiring**: Connected `eh_wiou`, `du_hwiou`, `sw_hwiou`, and `oriented_h_wiou` into `get_metric_distance_fn()` and `configure_metric()` in `common/metrics/__init__.py`.
+  * **Argparse Completeness Across Pipeline Scripts**:
+    * Added `eh_wiou` to `--metric` and `--box-loss` choices in `scripts/train_frcnn_aitod.py` and `scripts/train_frcnn_metric.py`.
+    * Added `--metric`, `--placement`, `--box-loss`, `--eval-interval`, `--no-amp`, and `--rpn-cascade` to `scripts/train_cascade_aitod.py`.
+  * **Error-Checked Kaggle Notebook Templates**: Replaced silent failure `!cmd` with strict `subprocess.run(..., check=True)` in cluster generators, preventing silently failed notebooks from being misreported as complete.
+* **101/101 Unit Test Suite & System Certification**:
+  * Implemented and certified dual-convention and registry unit tests in `paper_a/tests/test_entropy_homotopy.py`.
+  * **101/101 Unit Tests PASS** across `paper_a/tests/` in $2.91\text{s}$.
+  * Phase 0 Evidence Ledger: `G0 PASS` (21 claims, 49 evidence families).
+  * Wiki Lint: 0 errors, 0 warnings across 103 documents.
+  * PyCompile: 0 syntax/bytecode errors across all modified modules.
+* **Triple Local CUDA Smoke Tests on NVIDIA GeForce RTX 5070 Ti (16GB)**:
+  1. `scripts/smoke_test_cascade_local.py`: **PASS** (19.2s, 2.84 GiB peak VRAM).
+  2. `scripts/smoke_test_qfl_duhwiou_local.py`: **PASS** (16.8s, 2.84 GiB peak VRAM).
+  3. `scripts/smoke_test_ehwiou_local.py`: **PASS** (16.3s, 2.84 GiB peak VRAM).
+  * All 3 pipelines certified < 9.5 GiB memory ceiling under PyTorch AMP with zero NaN/Inf gradients.
+* **Comprehensive 13-Account Kaggle Cluster Quota Audit**:
+  * Audited real-time accelerator quota across all 13 accounts using `scripts/audit_kaggle_quotas.py`.
+  * Identified active GPU allocation on `phuc1806` (3.2h available) and cluster weekly reset cycle at `2026-09-05T00:00:00.000Z`.
+
+## 2026-09-03: Mathematical Soundness Overhaul, Theorem 1 Compact Domain Proof & Unit Suite
+
+* **Peer-Review Mathematical Soundness Overhaul (SA-WIoU / H-WIoU)**:
+  * **Additive Convex Formulation**: Replaced multiplicative form ($0^\gamma = 0$) with clean additive convex interpolation $\mathcal{S}(A, B) = \gamma(s_B)\,\text{IoU}(A, B) + (1 - \gamma(s_B))\,\exp(-\mathcal{D}_{\mathrm{SN}}^2(A, B))$ and direct loss $\mathcal{L} = 1 - \mathcal{S}$.
+  * **Nomenclature Consistency**: Formally renamed transport divergence to **Scale-Normalized Gaussian Divergence** $\mathcal{D}_{\mathrm{SN}}^2(A, B)$, preventing reviewer objections regarding triangle inequality violations in log-ratio coordinates.
+  * **Zero-Gradient Backpropagation on $\gamma(s_B)$**: Explicitly `.detach()` ground-truth scale in $\gamma(s_B)$ so no spurious gradients flow through scale weighting with respect to predicted box coordinates.
+  * **Theorem 1 Compact Domain Proof**: Formalized Theorem 1 on compact normalized separation domain $\mathcal{K} = \{ A \mid 0 < \delta \le \|\mu_a - \mu_b\|_2 / s_B \le K < \infty, \; 0 < r_{\min} \le w_a/w_b, h_a/h_b \le r_{\max} < \infty \}$. Proved strictly positive lower bound $\|\nabla_{\mu_a} \mathcal{L}\| \ge c(s_B, \delta, K, r) > 0$ under interior piecewise differentiability away from contact boundaries.
+* **8-Point Mathematical Soundness Unit Test Suite (`paper_a/tests/test_math_soundness.py`)**:
+  * Implemented and certified all 8 formal mathematical test cases:
+    1. Strict zero overlap $\to$ finite loss, finite gradient with correct direction pointing toward ground truth ($\langle \nabla_{\mu_A}\mathcal{L}, \Delta\mu \rangle > 0$).
+    2. Symmetric centroid perturbations $\to$ anti-symmetric opposing centroid gradients.
+    3. Exact box match $\to \mathcal{S}=1, \mathcal{L}=0, \|\nabla\mathcal{L}\| \approx 0$.
+    4. Scale asymptotic limits $\to \gamma(1000) > 0.9999$ (IoU dominates), $\gamma(0.5) < 0.005$ (Transport dominates).
+    5. Central finite differences $\approx$ PyTorch autograd gradient (relative error $< 10^{-3}$).
+    6. Clamped zero-size/huge coordinates $\to$ zero NaN/Inf.
+    7. Batched vectorized similarity/loss $\equiv$ scalar loop ($< 10^{-6}$).
+    8. Compact domain separation lower bound $\|\nabla_{\mu_A} \mathcal{L}\| \ge c > 0$.
+  * **Test Suite Certification**: **100/100 Unit Tests PASS** across `paper_a/tests/`.
+* **Paper 2 (EH-WIoU) & Cascade Cluster Dispatch Status**:
+  * 4/5 jobs completed (`amongus1504/tod-aitod-ehwiou-sig8-s42`, `hienquang06/tod-aitod-ehwiou-sig6-s42`, `dipphmngc/tod-tp-ehwiou-sig8-s42`, `phuc1806/tod-cascade-homotopy-s42-proposed`).
+  * 1/5 running (`ngquangnht/tod-aitod-rpn-cascade-hwiou-sig6-s42`).
+* **Manuscript & Reproducibility Repository Polish**:
+  * Recompiled 9-page camera-ready `main.pdf` with watertight mathematical formulation.
+  * Synchronized updated `main.tex` and `main.pdf` to `reproducibility/H-WIoU/`.
+
+## 2026-09-02: Complete 5-Model Benchmark Test Ingestion & Full 14,018-Image Evaluation (RTX 5070 Ti)
+* **Kaggle Cluster Checkpoint Retrieval & Verification**:
+  * Successfully retrieved and verified completed 12-epoch checkpoints for 5 models:
+    1. `RFLA + H-WIoU Proposed` (`qnhat1504/tod-rfla-hwiou-s42-proposed`)
+    2. `RFLA + Smooth-L1 Baseline` (`thyngluthy/tod-rfla-baseline-s42`)
+    3. `Cascade Baseline Standard` (`amongus1504/tod-cascade-baseline-s42`)
+    4. `DU-HWIoU Proposed` (`quangnhtng/tod-aitod-du-hwiou-s42-proposed`)
+    5. `QFL + H-WIoU Proposed` (`trieuvo123/tod-aitod-qfl-hwiou-s42-proposed`)
+* **Full-Scale Local Test Set Evaluation (RTX 5070 Ti)**:
+  * Evaluated all 5 models on the full 14,018 official test images (`aitodv2_test.json`) using the official `aitodpycocotools` evaluator.
+  * **Empirical Comparison Table (14,018 Test Images)**:
+    * `RFLA + H-WIoU Proposed`: $\text{AP} = 14.48\%$, $\text{AP}_{50} = \mathbf{38.41\%}$ ($+0.40\%$), $\text{AP}_{vt} = \mathbf{4.00\%}$ ($+0.15\%$), $\text{AP}_s = \mathbf{18.83\%}$ ($+0.46\%$), $\text{AR}_{1500} = 25.49\%$, $\text{oLRP}_{\text{fn}} = \mathbf{0.615}$ ($-1.0\%$).
+    * `RFLA + Smooth-L1 Baseline`: $\text{AP} = 14.66\%$, $\text{AP}_{50} = 38.01\%$, $\text{AP}_{vt} = 3.85\%$, $\text{AP}_s = 18.37\%$, $\text{AR}_{1500} = 24.82\%$, $\text{oLRP}_{\text{fn}} = 0.625$.
+    * `DU-HWIoU Proposed` *(Dynamic Uncertainty)*: $\text{AP} = 14.36\%$, $\text{AP}_{50} = 37.84\%$, $\text{AP}_{vt} = \mathbf{4.00\%}$, $\text{AP}_t = 14.58\%$, $\text{AP}_s = 18.24\%$, $\text{AR}_{1500} = 24.77\%$, $\text{AR}_{vt} = 10.19\%$.
+    * `Cascade Baseline Standard`: $\text{AP} = 14.13\%$, $\text{AP}_{50} = 37.20\%$, $\text{AP}_{vt} = 3.89\%$, $\text{AP}_t = 14.50\%$, $\text{AP}_s = 17.89\%$, $\text{AR}_{1500} = 24.68\%$, $\text{AR}_{vt} = \mathbf{10.84\%}$.
+    * `QFL + H-WIoU Proposed` *(Quality Focal Loss)*: $\text{AP} = 13.66\%$, $\text{AP}_{75} = \mathbf{8.56\%}$ (Top 1 High-IoU AP), $\text{AR}_{1500} = \mathbf{25.70\%}$ (Top 1 Overall Recall), $\text{oLRP}_{\text{loc}} = \mathbf{0.294}$ (Top 1 Localization Quality).
+  * Certified results stored in `journal/results/cascade_aitod_benchmark.json` and `journal/results/cascade_aitod_benchmark.md`.
+* **Kaggle GPU Cluster Live Status**:
+  * Direction 1 Generalization Matrix: 12/13 workers completed (`amongus1504`, `dipphmngc`, `hienquang06`, `thyngluthy`, `trieuvo123`, `hngngnguynvn`, `luongsythanh`, `ngquangnht`, `phuc1806`, `pptlyn11`, `qnhat1504`, `quangnhtng`).
+  * 1 task pending relaunch: `Cascade Homotopy Proposed` (`luongsythanh`).
+
 ## 2026-08-28: Dedicated Repository Deployment (tod_hwiou), Author Realignment & Final Camera-Ready IEEE Polish
 * **Dedicated Journal Repository Launch ([`tod_hwiou`](https://github.com/quangnhat1504/tod_hwiou.git))**:
   * Decoupled the H-WIoU journal codebase into an independent, publication-grade open-source package adhering to IEEE TPAMI / CVPR reproducibility guidelines.

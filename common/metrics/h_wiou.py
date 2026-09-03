@@ -1,16 +1,16 @@
 """
-Homotopy Wasserstein-IoU (H-WIoU) Metric & Loss Module.
+Scale-Adaptive Wasserstein-IoU (SA-WIoU / H-WIoU) Metric & Loss Module.
 
-Constructs a continuous C^infinity homotopy between the Discrete Lebesgue Measure space (IoU)
-and the Riemannian 2-Wasserstein Optimal Transport space (W_2):
+Constructs a continuous scale-adaptive convex interpolation between area-overlap
+Intersection-over-Union (IoU) and Scale-Normalized Gaussian Divergence (D_SN^2):
 
-    gamma(s) = s^2 / (s^2 + sigma_0^2)   where s = sqrt(w_gt * h_gt)
-    S_HWIoU(A, B) = [IoU(A, B)]^gamma(s) * exp( - (1 - gamma(s)) * D_W^2(A, B) )
-    L_HWIoU(A, B) = 1 - S_HWIoU(A, B)
+    gamma(s_B) = s_B^2 / (s_B^2 + sigma_0^2)   where s_B = sqrt(w_B * h_B) (ground truth scale)
+    S_SAWIoU(A, B) = gamma(s_B) * IoU(A, B) + (1 - gamma(s_B)) * exp( - D_SN^2(A, B) )
+    L_SAWIoU(A, B) = 1 - S_SAWIoU(A, B)
 
 Asymptotic Boundary Properties:
-    lim_{s -> inf} gamma(s) = 1  ==> S_HWIoU -> IoU (Exact IoU precision for normal/tiny objects)
-    lim_{s -> 0}   gamma(s) = 0  ==> S_HWIoU -> exp(-D_W^2) (Smooth Optimal Transport for micro objects)
+    lim_{s_B -> inf} gamma(s_B) = 1  ==> S_SAWIoU -> IoU (Standard IoU boundary supervision for normal objects)
+    lim_{s_B -> 0}   gamma(s_B) = 0  ==> S_SAWIoU -> exp(-D_SN^2) (Smooth transport gradient under zero overlap)
 """
 from __future__ import annotations
 import math
@@ -27,12 +27,13 @@ def compute_scale_homotopy(
     static_gamma: float = 0.5,
     sigmoid_tau: float = 2.0,
 ) -> torch.Tensor:
-    """Compute continuous scale homotopy parameter gamma(s) in [0, 1].
+    """Compute continuous scale weighting parameter gamma(s_B) in [0, 1].
+    Target scale is strictly detached so gradients do not flow through gamma with respect to predictions.
 
     Args:
-        gt_wh: Tensor [N, 2] of (width, height)
+        gt_wh: Tensor [N, 2] of ground truth (width, height)
         sigma_0: Characteristic microscopic scale threshold (default: 8.0 px)
-        form: Homotopy deformation function form:
+        form: Scale transition functional form:
               - 'rational': s^2 / (s^2 + sigma_0^2) (Standard)
               - 'exponential': 1 - exp(-s / sigma_0)
               - 'sigmoid': 1 / (1 + exp(-(s - sigma_0) / tau))
@@ -54,7 +55,8 @@ def compute_scale_homotopy(
     if form == "static":
         return torch.full((gt_wh.shape[0],), float(static_gamma), device=gt_wh.device, dtype=gt_wh.dtype).clamp(0.0, 1.0)
 
-    safe_wh = gt_wh.clamp_min(EPS)
+    # Detach gt_wh so scale weighting is strictly a constant with respect to predicted box coordinates
+    safe_wh = gt_wh.detach().clamp_min(EPS)
     s = torch.sqrt(safe_wh[:, 0] * safe_wh[:, 1])
 
     if form == "rational":
@@ -71,7 +73,7 @@ def compute_scale_homotopy(
     return gamma.clamp(0.0, 1.0)
 
 
-def pairwise_wasserstein_distance_squared(
+def pairwise_scale_normalized_divergence_squared(
     xa: torch.Tensor,
     ya: torch.Tensor,
     wa: torch.Tensor,
@@ -81,7 +83,7 @@ def pairwise_wasserstein_distance_squared(
     wb: torch.Tensor,
     hb: torch.Tensor,
 ) -> torch.Tensor:
-    """Compute pairwise scale-normalized 2-Wasserstein distance squared [N, M]."""
+    """Compute pairwise Scale-Normalized Gaussian Divergence squared D_SN^2 [N, M]."""
     wa = wa.clamp_min(EPS)
     ha = ha.clamp_min(EPS)
     wb = wb.clamp_min(EPS)
@@ -100,7 +102,11 @@ def pairwise_wasserstein_distance_squared(
     return (position_term + shape_term).clamp_min(0.0)
 
 
-def aligned_wasserstein_distance_squared(
+# Backwards compatibility alias
+pairwise_wasserstein_distance_squared = pairwise_scale_normalized_divergence_squared
+
+
+def aligned_scale_normalized_divergence_squared(
     xa: torch.Tensor,
     ya: torch.Tensor,
     wa: torch.Tensor,
@@ -110,7 +116,7 @@ def aligned_wasserstein_distance_squared(
     wb: torch.Tensor,
     hb: torch.Tensor,
 ) -> torch.Tensor:
-    """Compute aligned scale-normalized 2-Wasserstein distance squared [N]."""
+    """Compute aligned Scale-Normalized Gaussian Divergence squared D_SN^2 [N]."""
     wa = wa.clamp_min(EPS)
     ha = ha.clamp_min(EPS)
     wb = wb.clamp_min(EPS)
@@ -127,6 +133,10 @@ def aligned_wasserstein_distance_squared(
     shape_term = log_w.square() + log_h.square()
 
     return (position_term + shape_term).clamp_min(0.0)
+
+
+# Backwards compatibility alias
+aligned_wasserstein_distance_squared = aligned_scale_normalized_divergence_squared
 
 
 def _compute_h_wiou_similarity_chunk(
@@ -148,12 +158,13 @@ def _compute_h_wiou_similarity_chunk(
         xg - wg / 2.0, yg - hg / 2.0,
         xg + wg / 2.0, yg + hg / 2.0
     ], dim=1)
-    iou_mat = box_iou(boxes_a, boxes_g).clamp(min=EPS, max=1.0)  # [N_chunk, M]
+    iou_mat = box_iou(boxes_a, boxes_g).clamp(min=0.0, max=1.0)  # [N_chunk, M]
     dw_sq = pairwise_wasserstein_distance_squared(xa, ya, wa, ha, xg, yg, wg, hg)  # [N_chunk, M]
 
-    iou_part = torch.pow(iou_mat, gamma)
-    ot_part = torch.exp(-(1.0 - gamma) * dw_sq)
-    return (iou_part * ot_part).clamp(0.0, 1.0)
+    ot_part = torch.exp(-dw_sq)
+    # Additive Scale-Conditioned Convex Interpolation
+    similarity = gamma * iou_mat + (1.0 - gamma) * ot_part
+    return similarity.clamp(0.0, 1.0)
 
 
 def compute_h_wiou_similarity(
@@ -173,7 +184,7 @@ def compute_h_wiou_similarity(
     chunk_size: int = 16384,
     **_,
 ) -> torch.Tensor:
-    """Compute pairwise Homotopy Wasserstein-IoU similarity matrix [N, M] with chunking for memory safety."""
+    """Compute pairwise Scale-Adaptive Wasserstein-IoU similarity matrix [N, M] with chunking for memory safety."""
     N = xa.shape[0]
     M = xg.shape[0]
     if N == 0 or M == 0:
@@ -207,7 +218,7 @@ def aligned_h_wiou_loss(
     sigmoid_tau: float = 2.0,
     **_,
 ) -> torch.Tensor:
-    """Compute aligned Homotopy Wasserstein-IoU loss for bounding box regression.
+    """Compute aligned Scale-Adaptive Wasserstein-IoU loss for bounding box regression.
     Supports both 2-tensor calling convention (pred_boxes [N,4], target_boxes [N,4])
     and 8-coordinate convention (xa, ya, wa, ha, xb, yb, wb, hb [N]).
     """
@@ -236,7 +247,7 @@ def aligned_h_wiou_loss(
         area_a = wa * ha
         area_b = wb * hb
         union = (area_a + area_b - inter).clamp_min(EPS)
-        iou = (inter / union).clamp(min=EPS, max=1.0)
+        iou = (inter / union).clamp(min=0.0, max=1.0)
     elif len(args) == 8:
         xa, ya, wa, ha, xb, yb, wb, hb = args
         x1_a, y1_a, x2_a, y2_a = xa - wa / 2.0, ya - ha / 2.0, xa + wa / 2.0, ya + ha / 2.0
@@ -245,7 +256,7 @@ def aligned_h_wiou_loss(
         inter_h = (torch.min(y2_a, y2_b) - torch.max(y1_a, y1_b)).clamp(min=0.0)
         inter = inter_w * inter_h
         union = (wa * ha + wb * hb - inter).clamp_min(EPS)
-        iou = (inter / union).clamp(min=EPS, max=1.0)
+        iou = (inter / union).clamp(min=0.0, max=1.0)
     else:
         raise ValueError(f"aligned_h_wiou_loss expects 2 or 8 arguments, got {len(args)}")
 
@@ -258,10 +269,9 @@ def aligned_h_wiou_loss(
         target_wh, sigma_0=sigma_0, form=form, static_gamma=static_gamma, sigmoid_tau=sigmoid_tau
     )
 
-    # 3. Homotopy Similarity & Loss
-    iou_part = torch.pow(iou, gamma)
-    ot_part = torch.exp(-(1.0 - gamma) * dw_sq)
-    similarity = (iou_part * ot_part).clamp(0.0, 1.0)
+    # 3. Additive Scale-Conditioned Convex Similarity & Loss
+    ot_part = torch.exp(-dw_sq)
+    similarity = gamma * iou + (1.0 - gamma) * ot_part
 
     loss = 1.0 - similarity
     return loss

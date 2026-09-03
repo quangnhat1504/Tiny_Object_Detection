@@ -1863,6 +1863,11 @@ def _metric_box_loss(class_logits, box_regression, labels, regression_targets,
             pred_boxes_for_quality.detach().float(),
             gt_boxes_for_quality.detach().float(),
         ).clamp(0, 1)
+
+    if use_quality_focal:
+        quality_targets = class_logits.new_zeros(labels.shape)
+        quality_targets[sampled_pos_inds] = paired_quality_targets.to(
+            dtype=class_logits.dtype)
         classification_loss = _quality_focal_loss(
             class_logits, labels, quality_targets, quality_focal_beta)
 
@@ -4160,10 +4165,10 @@ def build_model(
             + f"; RPN invalid-IoU>={snip_rpn_ignore_iou_thresh:g}"
         )
     in_feat = base.roi_heads.box_predictor.cls_score.in_features
-    if use_quality_focal and box_loss_type != "cbl":
-        raise ValueError("The bounded QFL experiment requires CBL localization")
-    if use_rank_sort and box_loss_type != "cbl":
-        raise ValueError("The bounded Rank & Sort experiment requires CBL localization")
+    if use_quality_focal and box_loss_type not in ("cbl", "h_wiou", "metric", "smooth_l1"):
+        raise ValueError("QFL experiment requires CBL, H-WIoU, or metric localization")
+    if use_rank_sort and box_loss_type not in ("cbl", "h_wiou", "metric", "smooth_l1"):
+        raise ValueError("Rank & Sort experiment requires CBL, H-WIoU, or metric localization")
     if use_double_head and box_loss_type != "cbl":
         raise ValueError("The Double-Head experiment requires CBL localization")
     if cbl_refine_steps < 0:

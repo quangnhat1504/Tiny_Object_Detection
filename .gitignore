@@ -25,6 +25,6 @@ working/
 .hermes/
 scratch/
 *.log
-aitod_simd_s42/
+aitod_*/
 paper/checkpoints/
 bug.txt

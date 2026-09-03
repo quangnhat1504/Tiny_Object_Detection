@@ -37,6 +37,8 @@ This wiki serves as the isolated, authoritative knowledge hub for all mathematic
 ### 3. Empirical Analyses & Benchmark Results
 * [[analyses/tinyperson_empirical_benchmark]]: Fair-20 protocol evaluation on maritime TinyPerson benchmark ($+5.91\%\ \text{mAP}_{50}$, $+3.09\%\ \text{AP}_{\text{micro}}$).
 * [[analyses/aitodv2_sota_matrix]]: Official 8-class AI-TOD-v2 aerial benchmark comparison ($\text{AP}_{vt} = 5.72\%$, $\text{AR}_{vt} = 11.27\%$).
+* [[analyses/modern_tod_sota_deep_research_report]]: Comprehensive Deep Research report on modern SOTA Tiny Object Detection paradigms (2021–2026), taxonomies, benchmark comparison matrices, and mathematical collapse analysis.
+* [[analyses/entropy_homotopy_breakthrough_proposal]]: Theoretical & Empirical Breakthrough Proposal on Entropy-Modulated Homotopy (EH-WIoU) & Context-Aware Feature-Metric Symbiosis inspired by ContextTiny-Net (MDPI Symmetry 2026).
 * [[analyses/hwiou_v2_roadmap_and_extensions]]: Comprehensive mathematical foundations and roadmap for 3 novel extensions (DU-HWIoU, SW-HWIoU, O-HWIoU).
 * [[analyses/ablation_studies_and_sensitivity]]: 4-axis ablation on scale threshold $\sigma_0$, transition geometries, and module placement isolation.
 * [[analyses/statistical_significance_and_bootstrap]]: Paired Student's $t$-test ($t = 73.18, p < 10^{-20}$), Wilcoxon test, and $N=10,000$ non-parametric bootstrap confidence intervals.

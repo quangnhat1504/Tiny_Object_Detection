@@ -1339,7 +1339,7 @@ def main():
                                   "sa_alw_canonical",
                                   "sa_alw_canonical_beta_only",
                                   "sa_alw_canonical_pos_only",
-                                  "h_wiou"],
+                                  "h_wiou", "eh_wiou", "du_hwiou", "sw_hwiou", "oriented_h_wiou"],
                         help="Metric name")
     parser.add_argument("--placement", type=str, default="la_loss",
                         choices=["la", "loss", "la_loss", "la_loss_nms", "sda_decoupled", "h_wiou"])
@@ -1347,7 +1347,7 @@ def main():
     parser.add_argument("--resume", action="store_true",
                         help="Resume from last.pt checkpoint")
     parser.add_argument("--box-loss", type=str, default="metric",
-                        choices=["metric", "smooth_l1", "side_smooth_l1", "ciou", "diou", "cbl", "h_wiou"],
+                        choices=["metric", "smooth_l1", "side_smooth_l1", "ciou", "diou", "cbl", "h_wiou", "eh_wiou"],
                         help="Box regression loss type (decoupled from metric)")
     parser.add_argument("--box-loss-warmup-epochs", type=int, default=None,
                         help="Override metric-loss warmup epochs before decoupled box loss")

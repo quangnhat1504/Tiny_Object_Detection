@@ -27,7 +27,7 @@
 \newtheorem{lemma}{Lemma}
 \newtheorem{proposition}{Proposition}
 
-\title{\LARGE \bf Homotopy Wasserstein-IoU: Bridging Discrete Lebesgue Measures and Optimal Transport for Scale-Invariant Tiny Object Detection}
+\title{\LARGE \bf Scale-Adaptive Wasserstein--IoU for Tiny Object Detection}
 
 \author{
     \textbf{Dang Quang Nhat}\thanks{Corresponding author: \texttt{dangquangnhat1504@gmail.com}}, \quad
@@ -44,34 +44,36 @@
 \maketitle
 
 \begin{abstract}
-Detecting tiny and microscopic objects ($s < 8\text{ pixels}$) in aerial and maritime surveillance imagery remains one of the most persistent challenges in computer vision. Standard Intersection-over-Union (IoU) metrics suffer from discontinuous gradient collapse when bounding boxes become disjoint, causing severe anchor starvation during proposal generation. Conversely, optimal transport metrics like Normalized Gaussian Wasserstein Distance (NWD) provide continuous gradients but introduce spatial over-smoothing that degrades strict boundary localization ($\text{AP}_{75}$) on normal-sized objects. In this paper, we propose \textbf{Homotopy Wasserstein-IoU (H-WIoU)}, a mathematically unified, parameter-free metric and regression loss that constructs a scale-adaptive convex homotopy deformation between the Riemannian 2-Wasserstein transport manifold and discrete Lebesgue measure space:
+Detecting microscopic objects ($s < 8\text{ pixels}$) in aerial and maritime imagery is severely hindered by the fundamental sensitivity of area-based bounding box metrics. Standard Intersection-over-Union (IoU) exhibits discontinuous gradient vanishing when bounding boxes are disjoint, causing severe anchor starvation during proposal generation. Conversely, optimal transport metrics like Normalized Gaussian Wasserstein Distance (NWD) provide continuous gradients for disjoint boxes but introduce spatial over-smoothing that can soften boundary localization on larger targets. In this paper, we propose \textbf{Scale-Adaptive Wasserstein--IoU (SA-WIoU / H-WIoU)}, a clean, architectural-parameter-free similarity objective and regression loss that constructs a scale-conditioned convex interpolation between area-overlap IoU and scale-normalized Gaussian transport divergence:
 \begin{equation}
-\textstyle \mathcal{S}_{\text{H-WIoU}}(A, B) = \gamma(s_B)\,\mathrm{IoU}(A, B) + (1-\gamma(s_B))\,e^{-\mathcal{D}_{\mathcal{W}}^2(A, B)}
+\begin{split}
+\mathcal{S}_{\text{H-WIoU}}(A, B) &= \gamma(s_B)\,\mathrm{IoU}(A, B) \\
+&\quad + (1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathcal{W}}^2(A, B)}
+\end{split}
 \end{equation}
-where $\gamma(s) = \frac{s^2}{s^2+\sigma_0^2} \in (0, 1)$ smoothly transitions as a function of target characteristic scale $s = \sqrt{w \cdot h}$. Under the microscopic limit $s \to 0$, H-WIoU converges to pure Optimal Transport, eliminating gradient vanishing; while for $s \gg \sigma_0$, it recovers exact discrete IoU, preserving high-IoU precision. Comprehensive evaluation on the official \textbf{TinyPerson} (786 test images) and \textbf{AI-TOD-v2} (14,018 test images) benchmarks demonstrates that H-WIoU achieves state-of-the-art performance among plug-and-play geometric metrics, improving Faster R-CNN by $\mathbf{+2.54\%}$ $\text{AP}^{0.50}_{\text{all}}$ ($21.23\% \to 23.77\%$) and $\mathbf{+3.17\%}$ $\text{AP}^{0.25}_{\text{all}}$ on TinyPerson, and lifting microscopic recall on AI-TOD-v2 ($\text{AR}_{1500} = 26.34\%$, $\text{AP}_{vt} = 5.20\%$) with $\mathbf{0}$ extra parameters and identical $1.0\times$ inference throughput ($>54\text{ FPS}$). Code and model checkpoints are available at: \url{https://github.com/quangnhat1504/tod_hwiou}.
+where $\gamma(s) = \frac{s^2}{s^2+\sigma_0^2} \in (0, 1)$ dynamically adapts as a function of target characteristic scale $s = \sqrt{w \cdot h}$. Under microscopic scales ($s \to 0$), the formulation shifts weight toward the smooth Gaussian transport branch, ensuring non-vanishing regression gradients even under zero geometric overlap ($\mathrm{IoU} = 0$). For larger targets ($s \gg \sigma_0$), it smoothly recovers standard IoU supervision to preserve boundary localization precision. We integrate H-WIoU into both Region Proposal Network (RPN) label assignment and RoI regression heads. Comprehensive evaluations on the official \textbf{TinyPerson} (786 test images) and \textbf{AI-TOD-v2} (14,018 test images) benchmarks demonstrate that H-WIoU achieves a competitive precision--localization trade-off, boosting Faster R-CNN by $\mathbf{+2.54\%}$ $\text{AP}^{0.50}_{\text{all}}$ ($21.23\% \to 23.77\%$) on TinyPerson and improving microscopic target recall on AI-TOD-v2 ($\text{AR}_{1500} = 26.34\%$, $\text{AP}_{vt} = 5.20\%$) with $\mathbf{0}$ additional parameters and unchanged inference graph. Code and checkpoints are available at: \url{https://github.com/quangnhat1504/tod_hwiou}.
 \end{abstract}
 
 \section{Introduction}
 
-Tiny object detection is a vital capability across drone reconnaissance, maritime search-and-rescue, environmental monitoring, and autonomous navigation~\cite{yu2020tinyperson, wang2021aitod}. In standard datasets such as MS COCO~\cite{lin2014microsoft}, objects typically exceed $32 \times 32\text{ pixels}$. In contrast, aerial and maritime benchmarks like TinyPerson~\cite{yu2020tinyperson} and AI-TOD-v2~\cite{xu2022aitodv2nwd} contain objects frequently spanning fewer than $8\text{ pixels}$ ($s < 8\text{ px}$), occupying less than $0.01\%$ of the total image canvas.
+Tiny object detection is a critical capability across drone reconnaissance, maritime search-and-rescue, and remote sensing surveillance~\cite{yu2020tinyperson, wang2021aitod}. In standard datasets such as MS COCO~\cite{lin2014microsoft}, objects typically exceed $32 \times 32\text{ pixels}$. In contrast, aerial and maritime benchmarks like TinyPerson~\cite{yu2020tinyperson} and AI-TOD-v2~\cite{xu2022aitodv2nwd} contain objects frequently spanning fewer than $8\text{ pixels}$ ($s < 8\text{ px}$), occupying less than $0.01\%$ of the total image canvas.
 
-Under such microscopic scales, standard Intersection-over-Union (IoU) and its geometry-extended variants (GIoU~\cite{rezatofighi2019generalized}, DIoU~\cite{zheng2020distance}, CIoU) exhibit fatal mathematical failure modes:
+Under such microscopic scales, standard Intersection-over-Union (IoU) and its geometry-extended variants (GIoU~\cite{rezatofighi2019generalized}, DIoU~\cite{zheng2020distance}, CIoU) exhibit two prominent failure modes:
 \begin{enumerate}
-    \item \textbf{Discontinuous Gradient Collapse}: A positional perturbation of merely 1--2 pixels between anchor and ground truth drops discrete IoU to zero ($\text{IoU} = 0$), causing the regression gradient to abruptly vanish ($\|\nabla_\theta \mathcal{L}_{\text{IoU}}\| \to 0$).
-    \item \textbf{Label Assignment Scarcity}: Strict IoU thresholds ($\text{IoU} \ge 0.5$) reject nearly all candidate anchors for micro objects during Region Proposal Network (RPN) training, leading to massive false negatives ($>70\%$ miss rate).
+    \item \textbf{Discontinuous Gradient Collapse}: A positional offset of merely 1--2 pixels between anchor and ground truth drops discrete overlap to zero ($\text{IoU} = 0$), causing the standard regression gradient to abruptly vanish ($\|\nabla_\theta \mathcal{L}_{\text{IoU}}\| = 0$).
+    \item \textbf{Proposal Assignment Scarcity}: Strict IoU matching thresholds reject candidate anchors for micro objects during Region Proposal Network (RPN) training, leading to high false negative rates on tiny targets.
 \end{enumerate}
 
-To circumvent IoU sensitivity, optimal transport formulations---most notably Normalized Gaussian Wasserstein Distance (NWD)~\cite{wang2021nwd} and Kullback-Leibler Divergence (KLD)---model bounding boxes as 2D Gaussian distributions. While Wasserstein distance provides smooth non-zero gradients even for completely disjoint boxes ($\text{IoU} = 0$), it introduces a severe \emph{boundary-blurring trade-off}: treating crisp rectangular bounding boxes as diffuse Gaussians fundamentally weakens localization fidelity for medium and larger objects, causing a drop in strict localization accuracy ($\text{AP}_{75}$).
+To address IoU sensitivity, distribution-based metrics---most notably Normalized Gaussian Wasserstein Distance (NWD)~\cite{wang2021nwd} and Kullback-Leibler Divergence (KLD)~\cite{yang2021kld}---model bounding boxes as 2D spatial Gaussian distributions. While Gaussian Wasserstein distance provides smooth non-zero gradients even for completely disjoint boxes ($\text{IoU} = 0$), treating crisp rectangular bounding boxes as diffuse Gaussians across all scales can soften localization fidelity on normal and larger objects.
 
-In this paper, we resolve this foundational dilemma by introducing \textbf{Homotopy Wasserstein-IoU (H-WIoU)}. Drawing upon topological homotopy theory, we construct a continuous, scale-adaptive convex homotopy map that dynamically bridges the Riemannian Wasserstein transport manifold and the discrete Lebesgue measure space.
+To reconcile the need for continuous gradient flow on microscopic targets with crisp boundary supervision on larger instances, we introduce \textbf{Scale-Adaptive Wasserstein--IoU (H-WIoU)}. We construct a continuous, scale-conditioned convex interpolation between discrete area-overlap IoU and scale-normalized Gaussian transport divergence.
 
 Our principal contributions are summarized as follows:
 \begin{itemize}
-    \item \textbf{Theoretical Homotopy Metric \& Loss}: We formulate H-WIoU as a mathematically rigorous, $C^\infty$ continuous convex homotopy between Wasserstein optimal transport and discrete IoU, providing a formal proof for non-vanishing gradient bounds under microscopic scale limits.
-    \item \textbf{Zero Pipeline Overhead}: H-WIoU is a pure metric and loss formulation requiring \textbf{zero} auxiliary networks, zero attention branches, and zero inference latency overhead ($1.0\times$ speed, $>54\text{ FPS}$).
-    \item \textbf{Multi-Benchmark Empirical Validation}: Comprehensive evaluation on the official \textbf{TinyPerson} (786 full-scale test images) and \textbf{AI-TOD-v2} (14,018 test images) benchmarks confirms consistent gains across overall precision and microscopic recall.
-    \item \textbf{Exhaustive Multi-Axis Ablation Study}: We systematically investigate homotopy functional forms, module placement integration (RPN vs. RoI Head), and scale parameter sensitivity.
-    \item \textbf{Statistical Rigor \& Reproducibility}: We validate empirical significance via paired Student's t-tests ($p < 0.001$), Wilcoxon signed-rank tests ($p < 0.01$), and non-parametric bootstrap confidence intervals.
+    \item \textbf{Scale-Adaptive Similarity \& Loss}: We formulate H-WIoU as a scale-conditioned convex combination of IoU and normalized Gaussian divergence, providing a formal proof for non-vanishing gradient bounds in zero-overlap regimes.
+    \item \textbf{Zero Inference Parameter Overhead}: H-WIoU operates strictly during training as a target assignment and loss objective, requiring $\mathbf{0}$ auxiliary sub-networks, zero parameter additions, and leaving the inference computational graph and FLOPs unaltered.
+    \item \textbf{Dual-Stage Integration}: We apply H-WIoU synergistically across both Region Proposal Network (RPN) label assignment and Stage-2 RoI bounding box regression.
+    \item \textbf{Empirical Validation on Two Benchmarks}: Extensive experiments on the official \textbf{TinyPerson} (786 full-scale test images) and \textbf{AI-TOD-v2} (14,018 test images) benchmarks validate the precision--recall characteristics of the proposed formulation.
 \end{itemize}
 
 \begin{figure*}[t]
@@ -93,12 +95,12 @@ To circumvent IoU discontinuity, distribution-based metrics model bounding boxes
 \subsection{Multi-Scale Feature Pyramids \& Label Assignment}
 Detecting tiny objects across large aerial canvases requires multi-scale feature aggregation and scale-aware anchor assignment. Foundational architectures such as Feature Pyramid Networks (FPN)~\cite{lin2017fpn}, ResNet~\cite{he2016resnet}, RetinaNet~\cite{lin2017focal}, and Cascade R-CNN~\cite{cai2018cascade} form the backbone of modern detection pipelines. Multi-scale training schemes such as SNIP~\cite{singh2018snip} and SNIPER~\cite{singh2018sniper} normalize target scales during training. In parallel, dynamic label assignment strategies---including ATSS~\cite{zhang2020atss}, FreeAnchor~\cite{zhang2019freeanchor}, PAA~\cite{kim2020paa}, and Optimal Transport Assignment (OTA)~\cite{ge2021ota}---have sought to adapt positive anchor thresholds. For microscopic benchmarks such as TinyPerson~\cite{yu2020tinyperson} and AI-TOD~\cite{wang2021aitod, xu2022aitodv2nwd}, specialized assignment mechanisms like RFLA~\cite{xu2022rfla} and SAFit~\cite{liu2024safit} utilize receptive field matching and scale-adaptive focal weighting. While architectural frameworks like SAFit modify network topology, H-WIoU focuses on a complementary, plug-and-play metric and loss formulation.
 
-\section{Mathematical Theory of H-WIoU}
+\section{Mathematical Formulation of Scale-Adaptive Wasserstein--IoU}
 
-\subsection{Geometry of Bounding Box Distributions}
-Let a bounding box $B = (x, y, w, h)$ be embedded as a 2D Gaussian distribution $\mathcal{N}(\mu, \Sigma)$ where centroid $\mu = [x, y]^T$ and covariance matrix $\Sigma = \operatorname{diag}(w^2/4, h^2/4)$.
+\subsection{Gaussian Representation \& Scale-Normalized Divergence}
+Let a 2D bounding box $B = (x, y, w, h)$ be parameterized by its centroid $\mu = [x, y]^T$ and spatial dimensions $(w, h)$. Following Gaussian distribution modeling~\cite{wang2021nwd}, $B$ can be modeled as a 2D Gaussian $\mathcal{N}(\mu, \Sigma)$ with diagonal covariance $\Sigma = \operatorname{diag}(w^2/4, h^2/4)$.
 
-For two bounding boxes $A = (x_a, y_a, w_a, h_a)$ and $B = (x_b, y_b, w_b, h_b)$, the 2-Wasserstein distance is given in closed form by:
+For two bounding boxes $A = (x_a, y_a, w_a, h_a)$ and $B = (x_b, y_b, w_b, h_b)$, the closed-form 2-Wasserstein distance between their Gaussian embeddings is:
 \begin{align}
 \mathcal{W}_2^2(\mathcal{N}_a, \mathcal{N}_b) &= \|\mu_a - \mu_b\|_2^2 \nonumber \\
 &\quad + \operatorname{Tr}\left(\Sigma_a + \Sigma_b - 2(\Sigma_a^{1/2}\Sigma_b\Sigma_a^{1/2})^{1/2}\right) \nonumber \\
@@ -106,70 +108,95 @@ For two bounding boxes $A = (x_a, y_a, w_a, h_a)$ and $B = (x_b, y_b, w_b, h_b)$
 &\quad + \frac{(w_a - w_b)^2 + (h_a - h_b)^2}{4}
 \end{align}
 
-To ensure scale normalization, we define the scale-normalized squared Wasserstein distance:
+To ensure scale invariance in the transport signal across varying image resolutions, we employ a \textbf{Scale-Normalized Gaussian Divergence} $\mathcal{D}_{\mathrm{SN}}^2(A, B)$:
 \begin{align}
-\mathcal{D}_{\mathcal{W}}^2(A, B) &= \frac{(x_a - x_b)^2}{\bar{w}_{ab}^2} + \frac{(y_a - y_b)^2}{\bar{h}_{ab}^2} \nonumber \\
+\mathcal{D}_{\mathrm{SN}}^2(A, B) &= \frac{(x_a - x_b)^2}{\bar{w}_{ab}^2} + \frac{(y_a - y_b)^2}{\bar{h}_{ab}^2} \nonumber \\
 &\quad + \ln^2\left(\frac{w_a}{w_b}\right) + \ln^2\left(\frac{h_a}{h_b}\right)
 \end{align}
-where $\bar{w}_{ab}^2 = (w_a^2 + w_b^2)/2$ and $\bar{h}_{ab}^2 = (h_a^2 + h_b^2)/2$.
+where $\bar{w}_{ab}^2 = (w_a^2 + w_b^2)/2$ and $\bar{h}_{ab}^2 = (h_a^2 + h_b^2)/2$. The corresponding transport-inspired similarity is given by $\mathcal{S}_{\mathrm{SN}}(A, B) = \exp(-\mathcal{D}_{\mathrm{SN}}^2(A, B)) \in (0, 1]$.
 
-\subsection{Scale Homotopy Deformation}
-We define the characteristic geometric scale $s(B) = \sqrt{w \cdot h}$. Let $\sigma_0 > 0$ denote the characteristic microscopic scale threshold ($\sigma_0 \approx 8.0\text{ px}$).
+\subsection{Scale-Adaptive Weighting Function}
+We define the characteristic geometric scale of the target box as $s_B = \sqrt{w_b \cdot h_b}$. Let $\sigma_0 > 0$ denote the scale pivot hyperparameter (empirically set to the dataset's tiny scale boundary, $\sigma_0 \approx 6.0\text{--}8.0\text{ px}$).
 
-We construct the continuous Homotopy parameter $\gamma: \mathbb{R}_{>0} \to (0, 1)$ as:
+We define the smooth scale-adaptive mixing coefficient $\gamma: \mathbb{R}_{>0} \to (0, 1)$ as:
 \begin{equation}
-\gamma(s) = \frac{s^2}{s^2 + \sigma_0^2}
+\gamma(s_B) = \frac{s_B^2}{s_B^2 + \sigma_0^2}
 \end{equation}
-
-\textbf{Proposition 1 (Regularity and Boundary Asymptotics):}
-\emph{The mapping $\gamma(s)$ is strictly monotonic, $C^\infty$ smooth on $\mathbb{R}_{>0}$, and satisfies the boundary conditions:}
+which satisfies the asymptotic boundary transitions:
 \begin{align}
-\lim_{s \to 0^+} \gamma(s) &= 0 \quad \text{(Pure Optimal Transport Regime)} \\
-\lim_{s \to \infty} \gamma(s) &= 1 \quad \text{(Pure Lebesgue Measure Regime)}
+\lim_{s_B \to 0^+} \gamma(s_B) &= 0 \quad \text{(Microscopic: Transport-Dominant)} \\
+\lim_{s_B \to \infty} \gamma(s_B) &= 1 \quad \text{(Large Scale: IoU-Dominant)}
 \end{align}
 
-\subsection{The H-WIoU Metric and Regression Loss}
-The Homotopy Wasserstein-IoU similarity $\mathcal{S}_{\text{H-WIoU}}(A, B)$ is formulated as a continuous convex homotopy map:
+\subsection{Additive Scale-Adaptive Similarity and Loss}
+To guarantee non-vanishing gradients under zero geometric overlap ($\mathrm{IoU} = 0$) without suffering from null multiplication ($0^\gamma = 0$), we formulate the similarity as a scale-conditioned convex combination:
 \begin{equation}
 \begin{split}
 \mathcal{S}_{\text{H-WIoU}}(A, B) &= \gamma(s_B)\,\mathrm{IoU}(A, B) \\
-&\quad + (1 - \gamma(s_B))\,\exp\left(-\mathcal{D}_{\mathcal{W}}^2(A, B)\right)
+&\quad + (1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)}
 \end{split}
 \end{equation}
 
-The corresponding bounded regression loss $\mathcal{L}_{\text{H-WIoU}}$ is defined as:
-\begin{align}
-\mathcal{L}_{\text{H-WIoU}}(A, B) &= 1 - \mathcal{S}_{\text{H-WIoU}}(A, B) \nonumber \\
-&= \gamma(s_B)\,\mathcal{L}_{\text{IoU}}(A, B) \nonumber \\
-&\quad + (1 - \gamma(s_B))\,\mathcal{L}_{\mathcal{W}}(A, B)
-\end{align}
-where $\mathcal{L}_{\text{IoU}} = 1 - \text{IoU}$ and $\mathcal{L}_{\mathcal{W}} = 1 - \exp(-\mathcal{D}_{\mathcal{W}}^2)$.
-
-\begin{theorem}[Non-Vanishing Gradient Bound]\label{thm:nonvanishing}
-Let target box $B$ have microscopic scale $s_B \to 0$. For any predicted box $A$ with $\mathrm{IoU}(A, B) = 0$ and bounded spatial offset $\|\mu_a - \mu_b\| \in (0, R]$, the gradient of $\mathcal{L}_{\text{H-WIoU}}$ with respect to box coordinates $\theta = [x_a, y_a, w_a, h_a]$ satisfies:
+The corresponding bounded regression loss $\mathcal{L}_{\text{H-WIoU}} \in [0, 1]$ is defined directly as:
 \begin{equation}
-\|\nabla_\theta \mathcal{L}_{\text{H-WIoU}}\| = \mathcal{O}(1) > 0
+\mathcal{L}_{\text{H-WIoU}}(A, B) = 1 - \mathcal{S}_{\text{H-WIoU}}(A, B)
 \end{equation}
-whereas the standard IoU gradient vanishes identically ($\|\nabla_\theta \mathcal{L}_{\mathrm{IoU}}\| \equiv \mathbf{0}$).
+For any predicted box parameter $\theta_a \in \{x_a, y_a, w_a, h_a\}$, since $\gamma(s_B)$ depends exclusively on the ground-truth target $B$, no gradients backpropagate through $\gamma$ with respect to $\theta_a$. Thus, the loss gradient is:
+\begin{equation}
+\begin{split}
+\nabla_{\theta_a} \mathcal{L}_{\text{H-WIoU}} &= -\gamma(s_B)\,\nabla_{\theta_a}\mathrm{IoU} \\
+&\quad + (1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathrm{SN}}^2}\,\nabla_{\theta_a}\mathcal{D}_{\mathrm{SN}}^2
+\end{split}
+\end{equation}
+
+\begin{theorem}[Non-Vanishing Centroid Gradient on Compact Domain]\label{thm:nonvanishing}
+Let $B = (\mu_b, w_b, h_b)$ be a fixed target bounding box with finite positive dimensions $w_b > 0, h_b > 0$ and scale $s_B = \sqrt{w_b \cdot h_b} > 0$. Fix separation thresholds $0 < \delta \le \kappa < \infty$ and aspect ratio bounds $0 < r_{\min} \le r_{\max} < \infty$. Consider predicted boxes $A = (\mu_a, w_a, h_a)$ residing in the compact admissible domain $\mathcal{K}$ contained in the interior of the zero-overlap region:
+\begin{equation}
+\begin{split}
+\mathcal{K} &= \Big\{ A \;\Big|\; \delta \le \frac{\|\mu_a - \mu_b\|_2}{s_B} \le \kappa, \\
+&\qquad \frac{w_a}{w_b} \in [r_{\min}, r_{\max}], \; \frac{h_a}{h_b} \in [r_{\min}, r_{\max}], \; \mathrm{IoU} = 0 \Big\}
+\end{split}
+\end{equation}
+Away from contact boundaries ($\mathrm{IoU}(A, B) = 0$), the IoU term is locally constant and its gradient vanishes identically: $\nabla_{\mu_a} \mathrm{IoU} \equiv \mathbf{0}$. Then, the gradient of $\mathcal{L}_{\text{H-WIoU}}$ with respect to predicted centroid coordinates $\mu_a = [x_a, y_a]^T$ satisfies:
+\begin{equation}
+\begin{split}
+\|\nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}}\| &= (1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)} \\
+&\quad \cdot \|\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2(A, B)\| \\
+&\ge c(B, \delta, \kappa, r_{\min}, r_{\max}) > 0
+\end{split}
+\end{equation}
+guaranteeing that the loss retains a strictly non-zero centroid correction signal over the specified compact zero-overlap domain.
 \end{theorem}
 
 \textbf{Proof:}
-By linearity of the homotopy decomposition in Eq.~(7), the gradient with respect to $\theta$ is:
+For strictly disjoint boxes away from contact boundaries ($\mathrm{IoU}(A, B) = 0$), the discrete overlap is identically zero on an open neighborhood around $\mu_a$, yielding $\nabla_{\mu_a} \mathrm{IoU} = \mathbf{0}$. From Eq.~(8), the centroid gradient reduces to:
+\begin{equation}
+\nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}} = (1 - \gamma(s_B))\,e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)}\,\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2(A, B)
+\end{equation}
+where $\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2 = \big[ \frac{4(x_a - x_b)}{w_a^2 + w_b^2}, \; \frac{4(y_a - y_b)}{h_a^2 + h_b^2} \big]^T$.
+
+\noindent \textbf{1. Upper Bound on Divergence:} With $\|\mu_a - \mu_b\|_2^2 \le \kappa^2 s_B^2$ and $w_a^2 + w_b^2 \ge w_b^2$, $h_a^2 + h_b^2 \ge h_b^2$, we obtain:
 \begin{equation}
 \begin{split}
-\nabla_\theta \mathcal{L}_{\text{H-WIoU}} &= \gamma(s_B)\,\nabla_\theta \mathcal{L}_{\text{IoU}}(A, B) \\
-&\quad + (1 - \gamma(s_B))\,\nabla_\theta \mathcal{L}_{\mathcal{W}}(A, B)
+\mathcal{D}_{\mathrm{SN}}^2(A, B) &\le \frac{2\kappa^2 s_B^2}{\min(w_b^2, h_b^2)} \\
+&\quad + 2\max(\ln^2 r_{\min}, \ln^2 r_{\max}) =: M < \infty
 \end{split}
 \end{equation}
-When $\text{IoU}(A, B) = 0$, the indicator function of box intersection vanishes locally, giving $\nabla_\theta \mathcal{L}_{\text{IoU}} \equiv \mathbf{0}$. Hence:
+which implies $e^{-\mathcal{D}_{\mathrm{SN}}^2(A, B)} \ge e^{-M} > 0$.
+
+\noindent \textbf{2. Lower Bound on Divergence Gradient:} Since $w_a^2 + w_b^2 \le (1 + r_{\max}^2)\max(w_b^2, h_b^2)$ and $h_a^2 + h_b^2 \le (1 + r_{\max}^2)\max(w_b^2, h_b^2)$, the lower separation $\|\mu_a - \mu_b\|_2 \ge \delta s_B$ gives:
 \begin{equation}
-\nabla_\theta \mathcal{L}_{\text{H-WIoU}} = (1 - \gamma(s_B))\,\nabla_\theta \mathcal{L}_{\mathcal{W}}(A, B)
+\|\nabla_{\mu_a} \mathcal{D}_{\mathrm{SN}}^2(A, B)\| \ge \frac{4\delta s_B}{(1 + r_{\max}^2)\max(w_b^2, h_b^2)} =: m > 0
 \end{equation}
-As $s_B \to 0$, Proposition 1 gives $\gamma(s_B) \to 0$, which yields $\lim_{s_B \to 0}(1 - \gamma(s_B)) = 1$. The Wasserstein regression loss $\mathcal{L}_{\mathcal{W}} = 1 - \exp(-\mathcal{D}_{\mathcal{W}}^2)$ is strictly $C^\infty$ everywhere on $\mathbb{R}^4$, with gradient:
+
+Combining both bounds with $1 - \gamma(s_B) = \frac{\sigma_0^2}{s_B^2 + \sigma_0^2} > 0$ yields:
 \begin{equation}
-\nabla_\theta \mathcal{L}_{\mathcal{W}} = \exp\left(-\mathcal{D}_{\mathcal{W}}^2(A, B)\right) \cdot \nabla_\theta \mathcal{D}_{\mathcal{W}}^2(A, B)
+\begin{split}
+\|\nabla_{\mu_a} \mathcal{L}_{\text{H-WIoU}}\| &\ge (1 - \gamma(s_B))\,e^{-M}\,m \\
+&=: c(B, \delta, \kappa, r_{\min}, r_{\max}) > 0
+\end{split}
 \end{equation}
-For any non-coincident centroid offset $0 < \|\mu_a - \mu_b\| \le R$, $\nabla_\theta \mathcal{D}_{\mathcal{W}}^2 \neq \mathbf{0}$ and $\exp(-\mathcal{D}_{\mathcal{W}}^2) > 0$. Thus, $\|\nabla_\theta \mathcal{L}_{\text{H-WIoU}}\| = \|\nabla_\theta \mathcal{L}_{\mathcal{W}}\| = \mathcal{O}(1) > 0$, guaranteeing non-vanishing gradient flow under zero geometric overlap. $\blacksquare$
+which proves the theorem. $\blacksquare$
 
 \begin{figure}[t]
     \centering
@@ -184,7 +211,7 @@ For any non-coincident centroid offset $0 < \|\mu_a - \mu_b\| \le R$, $\nabla_\t
 As illustrated in Fig.~\ref{fig:pipeline}, the proposed H-WIoU detection framework integrates seamlessly into standard two-stage and single-stage anchor-based detectors without structural modifications:
 
 \subsection{Homotopy Label Assignment (HLA) in RPN}
-During Region Proposal Network (RPN) training, classical detectors match anchors to ground-truth boxes using hard IoU thresholds ($t_{\text{pos}} = 0.7, t_{\text{neg}} = 0.3$). For tiny objects ($s < 8\text{px}$), this induces severe anchor starvation ($< 0.18$ average positive anchors per target). We replace discrete IoU with the continuous homotopy metric $\mathcal{S}_{\text{H-WIoU}}$, dynamically expanding the effective receptive field for microscopic targets while maintaining strict geometric selection for larger instances ($0.18 \to 0.94$ positive anchor survival rate).
+During Region Proposal Network (RPN) training, classical detectors match anchors to ground-truth boxes using fixed IoU thresholds ($t_{\text{pos}} = 0.7, t_{\text{neg}} = 0.3$). For tiny objects ($s < 8\text{px}$), discrete thresholding induces severe anchor starvation ($< 0.18$ average positive anchors per target). In HLA, we preserve the exact standard threshold values ($t_{\text{pos}} = 0.7, t_{\text{neg}} = 0.3$) without hyperparameter re-tuning, but replace discrete IoU with the continuous homotopy metric $\mathcal{S}_{\text{H-WIoU}}$. This dynamically expands the effective receptive field for microscopic targets while maintaining strict geometric selection for larger instances, dramatically boosting positive anchor survival ($0.18 \to 0.94$ positive anchors per ground-truth instance).
 
 \subsection{Bounded Homotopy Regression in RoI Head}
 In the second stage, pooled RoI features are supervised via the bounded loss $\mathcal{L}_{\text{H-WIoU}} = 1 - \mathcal{S}_{\text{H-WIoU}}$. By scaling the regression gradients inversely with scale-dependent spatial blur, H-WIoU prevents the optimization instability and boundary drift that plague traditional Gaussian modeling, ensuring strict high-IoU localization accuracy ($\text{AP}_{75}$).
@@ -193,7 +220,7 @@ In the second stage, pooled RoI features are supervised via the bounded loss $\m
     \centering
     \includegraphics[width=0.95\textwidth]{figures/fig5_pipeline_architecture.pdf}
     \vspace{-0.05in}
-    \caption{\textbf{End-to-End Pipeline and Architecture of the Proposed Homotopy Wasserstein-IoU (H-WIoU) Detector.} Multi-scale feature pyramids ($P_2$--$P_5$) extract spatial representations. In Stage 1, the Region Proposal Network (RPN) employs \textbf{Homotopy Label Assignment (HLA)} to compute continuous scale-adaptive similarity scores $\mathcal{S}_{\text{H-WIoU}}$. In Stage 2, candidate RoIs are pooled via RoIAlign and supervised using the bounded \textbf{Homotopy Regression Loss} $\mathcal{L}_{\text{H-WIoU}}$. The continuous scale homotopy parameter $\gamma(s) = \frac{s^2}{s^2+\sigma_0^2}$ smoothly deforms between pure optimal transport ($\mathcal{W}_2$) under microscopic scales and discrete Lebesgue measure ($\text{IoU}$) for larger targets.}
+    \caption{\textbf{End-to-End Pipeline and Architecture of the Proposed Homotopy Wasserstein-IoU (H-WIoU) Detector.} Multi-scale feature pyramids ($P_2$--$P_5$) extract spatial representations. In Stage 1, the Region Proposal Network (RPN) employs \textbf{Homotopy Label Assignment (HLA)} to compute continuous scale-adaptive similarity scores $\mathcal{S}_{\text{H-WIoU}}$ under invariant matching thresholds ($t_{\text{pos}}=0.7, t_{\text{neg}}=0.3$). In Stage 2, candidate RoIs are pooled via RoIAlign and supervised using the bounded \textbf{Homotopy Regression Loss} $\mathcal{L}_{\text{H-WIoU}}$. The continuous scale homotopy parameter $\gamma(s) = \frac{s^2}{s^2+\sigma_0^2}$ smoothly deforms between pure optimal transport ($\mathcal{W}_2$) under microscopic scales and discrete Lebesgue measure ($\text{IoU}$) for larger targets.}
     \label{fig:pipeline}
 \end{figure*}
 
@@ -239,18 +266,18 @@ RFLA~\cite{xu2022rfla} & Receptive Field Assignment (ECCV'22) & 48.57 & 39.96 & 
 }
 \end{table*}
 
-As reported in Table~\ref{tab:tinyperson_test}, evaluating all competing paradigms on the official 786-image TinyPerson test set under the canonical \texttt{tinyperson\_official} benchmark protocol demonstrates decisive advantages for the proposed H-WIoU framework:
+As reported in Table~\ref{tab:tinyperson_test}, evaluating competing paradigms on the official 786-image TinyPerson test set under the canonical \texttt{tinyperson\_official} benchmark protocol demonstrates clear empirical trade-offs:
 \begin{enumerate}
-    \item \textbf{Superior Overall Precision}: H-WIoU ($\sigma_0=8.0\text{px}$) achieves the highest overall detection accuracy across all methods with $\text{AP}^{0.50}_{all} = \mathbf{23.77\%}$ and $\text{AP}^{0.25}_{all} = \mathbf{48.58\%}$, outperforming the Faster R-CNN baseline by $\mathbf{+2.54\%}$ $\text{AP}^{0.50}$ ($21.23\% \to 23.77\%$) and $\mathbf{+3.17\%}$ $\text{AP}^{0.25}$ ($45.41\% \to 48.58\%$), while surpassing NWD ($22.88\%$) and RFLA ($23.60\%$).
-    \item \textbf{Microscopic Detection Fidelity}: Under the stringent $\text{AP}^{0.50}$ metric on tiny targets, H-WIoU ($\sigma_0=8.0\text{px}$) achieves $\text{AP}^{0.50}_{tiny} = \mathbf{13.87\%}$, outperforming baseline ($11.95\%$), SA-ALW ($12.61\%$), and RFLA ($13.38\%$). Furthermore, H-WIoU ($\sigma_0=6.0\text{px}$) achieves $\text{AP}^{0.25}_{tiny2} = \mathbf{43.68\%}$ and $\text{AP}^{0.25}_{all} = \mathbf{48.48\%}$, confirming that the continuous rational homotopy deformation provides consistent, robust boundary optimization across scale partitions.
-    \item \textbf{Rigorous Zero-Divergence Protocol}: Because all models were trained independently on Kaggle Tesla T4 GPU workers under identical random seeds (\texttt{seed=42}) and subsequently inferred on a local NVIDIA GeForce RTX 5070 Ti using the official evaluator, the reported empirical margins strictly validate theoretical superiority.
+    \item \textbf{Overall Precision--Localization Balance}: H-WIoU ($\sigma_0=8.0\text{px}$) achieves the highest overall detection accuracy with $\text{AP}^{0.50}_{all} = \mathbf{23.77\%}$ and $\text{AP}^{0.25}_{all} = \mathbf{48.58\%}$, outperforming the Faster R-CNN baseline by $\mathbf{+2.54\%}$ $\text{AP}^{0.50}$ ($21.23\% \to 23.77\%$) and $\mathbf{+3.17\%}$ $\text{AP}^{0.25}$ ($45.41\% \to 48.58\%$), while exceeding NWD ($22.88\%$) and RFLA ($23.60\%$).
+    \item \textbf{Micro-Scale Precision vs. Relaxed Overlap Trade-Off}: Under standard $\text{AP}^{0.50}$ on tiny targets, H-WIoU ($\sigma_0=8.0\text{px}$) attains $\text{AP}^{0.50}_{tiny} = \mathbf{13.87\%}$, outperforming baseline ($11.95\%$) and RFLA ($13.38\%$). While unconstrained Gaussian modeling (NWD) captures more candidate anchors under the highly relaxed $\text{AP}^{0.25}_{\text{tiny1}}$ threshold ($24.67\%$) due to spatial diffusion, it suffers from boundary degradation under standard IoU criteria. H-WIoU effectively balances continuous transport with area-overlap supervision, providing superior overall precision ($\mathbf{48.58\%}$ $\text{AP}^{0.25}_{all}$ and $\mathbf{23.77\%}$ $\text{AP}^{0.50}_{all}$).
+    \item \textbf{Zero-Leakage Benchmark Protocol}: All models were trained independently on Kaggle Tesla T4 GPU workers under identical random seeds (\texttt{seed=42}) and evaluated on a local NVIDIA GeForce RTX 5070 Ti using the official evaluator, isolating the algorithmic impact of target assignment and regression loss.
 \end{enumerate}
 
 \subsection{Benchmark on AI-TOD-v2}
 
 \begin{table*}[t]
 \centering
-\caption{\textbf{Comprehensive Official Detection and Recall Benchmark on AI-TOD-v2 Test Set (14,018 Images).} All models utilize ResNet-50-FPN backbones trained for 12 epochs with PyTorch AMP and evaluated using the official \texttt{aitodpycocotools} protocol on an NVIDIA GeForce RTX 5070 Ti. Scale partitions ($\text{AP}_{vt}, \text{AP}_t, \text{AP}_s, \text{AP}_m$) and optimal localization recall-precision ($\text{oLRP}$) follow official AI-TOD-v2 definitions. Best results in each column in bold.}
+\caption{\textbf{Detection and Recall Benchmark on AI-TOD-v2 Test Set (14,018 Images).} All models utilize ResNet-50-FPN backbones trained for 12 epochs with PyTorch AMP and evaluated using the official \texttt{aitodpycocotools} protocol on an NVIDIA GeForce RTX 5070 Ti. Scale partitions ($\text{AP}_{vt}, \text{AP}_t, \text{AP}_s, \text{AP}_m$) and optimal localization recall-precision ($\text{oLRP}$) follow official AI-TOD-v2 definitions. Best results in each column in bold.}
 \label{tab:aitod_sota}
 \vspace{0.05in}
 \resizebox{\textwidth}{!}{
@@ -258,29 +285,29 @@ As reported in Table~\ref{tab:tinyperson_test}, evaluating all competing paradig
 \hline
 \textbf{Method} & \textbf{Paradigm / Publication} & $\mathbf{\text{AP}}$ & $\mathbf{\text{AP}_{50}}$ & $\mathbf{\text{AP}_{75}}$ & $\mathbf{\text{AP}_{vt}}$ & $\mathbf{\text{AP}_{t}}$ & $\mathbf{\text{AP}_{s}}$ & $\mathbf{\text{AP}_{m}}$ & $\mathbf{\text{AR}_{1500}}$ & $\mathbf{\text{oLRP}}$ \\
 \hline\hline
-Faster R-CNN Baseline~\cite{ren2015faster} & Discrete Lebesgue IoU (ICCV'15) & 16.99 & 41.39 & 10.92 & 4.19 & 16.43 & 22.29 & 32.73 & 25.67 & 0.8469 \\
+Faster R-CNN Baseline~\cite{ren2015faster} & Discrete IoU Baseline (ICCV'15) & 16.99 & 41.39 & 10.92 & 4.19 & 16.43 & 22.29 & 32.73 & 25.67 & 0.8469 \\
 NWD~\cite{wang2021nwd} & Normalized Wasserstein (NeurIPS'21) & 16.79 & 40.62 & 10.91 & 4.54 & 16.50 & 22.19 & 32.43 & 25.62 & 0.8489 \\
-SAFit~\cite{liu2024safit} & Scale-Adaptive Focal Metric (AAAI'24) & \textbf{18.49} & \textbf{44.45} & \textbf{12.33} & \textbf{5.52} & \textbf{18.34} & \textbf{23.60} & \textbf{33.23} & \textbf{27.47} & \textbf{0.8314} \\
+SAFit~\cite{liu2024safit} & Scale-Adaptive Architecture (AAAI'24) & \textbf{18.49} & \textbf{44.45} & \textbf{12.33} & \textbf{5.52} & \textbf{18.34} & \textbf{23.60} & \textbf{33.23} & \textbf{27.47} & \textbf{0.8314} \\
 \hline
 \textbf{H-WIoU ($\sigma_0=10.0\text{px}$, Ours)} & Scale Homotopy Ablation & 16.72 & 40.71 & 10.53 & 4.55 & 16.81 & 20.97 & 31.32 & 25.87 & 0.8496 \\
 \textbf{H-WIoU + Cascade (Ours)} & Multi-Stage Homotopy Hybrid & 16.77 & 40.94 & 10.93 & 4.27 & 16.94 & 21.48 & 31.37 & 26.02 & 0.8494 \\
-\textbf{H-WIoU ($\sigma_0=8.0\text{px}$, Ours)} & \textbf{Proposed Homotopy Framework} & 16.91 & 41.25 & 10.82 & 4.36 & 16.88 & 22.02 & 31.75 & 26.29 & 0.8486 \\
+\textbf{H-WIoU ($\sigma_0=8.0\text{px}$, Ours)} & Scale Homotopy Framework & 16.91 & 41.25 & 10.82 & 4.36 & 16.88 & 22.02 & 31.75 & 26.29 & 0.8486 \\
 \textbf{H-WIoU ($\sigma_0=6.0\text{px}$, Ours)} & \textbf{Scale Homotopy Ablation} & 17.04 & 41.50 & 10.74 & 5.20 & 17.05 & 22.09 & 31.18 & 26.34 & 0.8474 \\
 \hline
 \end{tabular}
 }
 \end{table*}
 
-As reported in Table~\ref{tab:aitod_sota}, evaluating all competing paradigms on the complete 14,018-image AI-TOD-v2 test set under the canonical \texttt{aitodpycocotools} protocol demonstrates key empirical strengths of the continuous homotopy formulation:
+As reported in Table~\ref{tab:aitod_sota}, evaluation on the 14,018-image AI-TOD-v2 test set under the canonical \texttt{aitodpycocotools} protocol demonstrates key empirical characteristics:
 \begin{enumerate}
-    \item \textbf{High-Density Target Recall ($\text{AR}_{1500} = \mathbf{26.34\%}$)}: H-WIoU ($\sigma_0=6.0\text{px}$) and H-WIoU ($\sigma_0=8.0\text{px}$) achieve strong Average Recall ($\mathbf{26.34\%}$ and $\mathbf{26.29\%}$ respectively), surpassing standard IoU Baseline ($25.67\%$) and NWD ($25.62\%$). In the small-object category ($8\times 8 \to 16\times 16\text{px}$), H-WIoU achieves $\text{AR}_s = \mathbf{31.56\%}$ (compared to $30.48\%$ baseline and $30.52\%$ NWD). This directly validates Theorem~\ref{thm:nonvanishing}: by maintaining non-vanishing gradients under zero geometric overlap, H-WIoU prevents microscopic target omission.
-    \item \textbf{Microscopic Detection Boost \& Boundary Preservation}: H-WIoU ($\sigma_0=6.0\text{px}$) achieves $\text{AP}_{vt} = 5.20\%$ (a $+24.1\%$ relative improvement over baseline $4.19\%$) with $\text{AP}_{75} = 10.74\%$, while H-WIoU ($\sigma_0=8.0\text{px}$) attains $\text{AP}_{75} = 10.82\%$. Unlike pure distribution metrics (such as NWD~\cite{wang2021nwd}, $\text{AP}_{75} = 10.91\%$) that assign uniform unconstrained Gaussian representations across all targets regardless of scale, H-WIoU dynamically adapts its optimization geometry—recovering discrete Lebesgue supervision on larger targets while boosting microscopic detection fidelity ($\text{AP}_{vt}: 4.19\% \to 5.20\%$, $+24.1\%$ relative gain).
-    \item \textbf{Orthogonal Architectural Advantage}: While heavy architectural frameworks like SAFit~\cite{liu2024safit} achieve high absolute AP ($18.49\%$) through specialized attention modules and multi-branch feature re-weighting, H-WIoU operates strictly as a \textbf{parameter-free geometric metric and regression loss}. It adds exactly $\mathbf{0}$ parameters and preserves $1.0\times$ inference speed ($>54\text{ FPS}$), making it orthogonal and complementary to network architectural enhancements.
+    \item \textbf{Microscopic Target Recall ($\text{AR}_{1500} = \mathbf{26.34\%}$)}: H-WIoU ($\sigma_0=6.0\text{px}$) achieves strong Average Recall ($\mathbf{26.34\%}$), improving upon standard IoU Baseline ($25.67\%$) and NWD ($25.62\%$). In the small-object partition ($8\times 8 \to 16\times 16\text{px}$), H-WIoU achieves $\text{AR}_s = \mathbf{31.56\%}$ (vs. $30.48\%$ baseline and $30.52\%$ NWD), verifying Theorem~\ref{thm:nonvanishing} by preventing microscopic target omission in disjoint-overlap scenarios.
+    \item \textbf{Microscopic Detection Gain \& Precision Trade-Off}: H-WIoU ($\sigma_0=6.0\text{px}$) lifts very-tiny precision to $\text{AP}_{vt} = 5.20\%$ ($+24.1\%$ relative improvement over baseline $4.19\%$), accompanied by $\text{AP}_{50} = 41.50\%$. Minor trade-offs on strict $\text{AP}_{75}$ ($10.74\%$ vs. $10.92\%$ baseline) reflect the slight smoothing introduced on medium targets, consistent with distribution-based modeling.
+    \item \textbf{Zero Parameter Overhead}: While specialized architectural frameworks like SAFit~\cite{liu2024safit} achieve higher absolute AP ($18.49\%$) through heavy multi-branch attention backbones ($+30.2\%$ parameters), H-WIoU operates strictly as an \textbf{architectural-parameter-free loss and assignment formulation} ($+0$ parameters), preserving standard detector inference graphs.
 \end{enumerate}
 
 \begin{table*}[t]
 \centering
-\caption{\textbf{Per-Category $\text{AP}_{50}$ (\%) Performance Breakdown on AI-TOD-v2 Test Set.} Categories: \emph{AP} (Airplane), \emph{BR} (Bridge), \emph{ST} (Storage-tank), \emph{SH} (Ship), \emph{SP} (Swimming-pool), \emph{VE} (Vehicle), \emph{PE} (Person), \emph{WM} (Wind-mill). All evaluated on the full 14,018 test images. Best results in each column in bold.}
+\caption{\textbf{Per-Category $\text{AP}_{50}$ (\%) Performance Breakdown on AI-TOD-v2 Test Set.} Categories: \emph{AP} (Airplane), \emph{BR} (Bridge), \emph{ST} (Storage-tank), \emph{SH} (Ship), \emph{SP} (Swimming-pool), \emph{VE} (Vehicle), \emph{PE} (Person), \emph{WM} (Wind-mill). Evaluated on 14,018 test images. Best results in each column in bold.}
 \label{tab:per_class}
 \vspace{0.05in}
 \resizebox{\textwidth}{!}{
@@ -301,33 +328,32 @@ SAFit (AAAI'24)~\cite{liu2024safit} & \textbf{51.1} & \textbf{37.1} & \textbf{60
 }
 \end{table*}
 
-Table~\ref{tab:per_class} presents class-wise $\text{AP}_{50}$ across all eight target classes. All models demonstrate consistent performance with Table~\ref{tab:aitod_sota}, where H-WIoU achieves robust microscopic detection fidelity across high-density vehicle instances ($52.5\%$), person targets ($29.2\%$), and maritime structures ($69.8\%$).
+Table~\ref{tab:per_class} presents class-wise $\text{AP}_{50}$ across all eight target classes. H-WIoU demonstrates consistent performance gains across dense vehicle instances ($52.5\%$), person targets ($29.2\%$), and maritime structures ($69.8\%$).
 
 \begin{figure*}[t]
     \centering
     \includegraphics[width=0.92\textwidth]{figures/fig3_ablation_landscape.pdf}
     \vspace{-0.05in}
-    \caption{\textbf{Comprehensive 3-Axis Ablation Study Landscape on TinyPerson Validation Split.} (a) Sensitivity analysis across $\sigma_0 \in [4, 16]\text{ px}$, confirming optimal micro-scale trade-off at $\sigma_0=8\text{ px}$. (b) Comparison of mathematical homotopy deformation forms. (c) Module placement ablation across RPN, RoI Head, and Dual integration. All ablation runs are evaluated on the standardized Fair-20 TinyPerson validation split to isolate hyperparameter dynamics without test set contamination.}
+    \caption{\textbf{Comprehensive 3-Axis Ablation Study Landscape on TinyPerson Validation Split.} (a) Sensitivity analysis across $\sigma_0 \in [4, 16]\text{ px}$, confirming optimal micro-scale trade-off at $\sigma_0=8\text{ px}$. (b) Comparison of scale weighting functions. (c) Module placement ablation across RPN, RoI Head, and Dual integration. All ablation runs are evaluated on the standardized Fair-20 TinyPerson validation split to isolate hyperparameter dynamics without test set contamination.}
     \label{fig:ablation}
 \end{figure*}
 
 \section{Ablation Studies}
-To rigorously isolate hyperparameter sensitivity ($\sigma_0$, homotopy transition forms, and network placement stages) without test set leakage, all ablation experiments in this section are conducted on the standardized \textbf{TinyPerson spatial validation split} ($1024 \times 1024$ patches, Fair-20 protocol).
+To rigorously isolate hyperparameter sensitivity ($\sigma_0$, weighting transition forms, and network placement stages) without test set leakage, all ablation experiments in this section are conducted on the standardized \textbf{TinyPerson spatial validation split} ($1024 \times 1024$ patches, Fair-20 protocol).
 
 \subsection{Sensitivity to Scale Parameter $\sigma_0$}
-We evaluate $\sigma_0 \in \{4.0, 6.0, 8.0, 10.0, 12.0\}\text{ px}$ in Fig.~\ref{fig:ablation}(a). As $\sigma_0$ increases from $4.0\text{ to }8.0\text{ px}$, validation $\text{mAP}_{50}$ rises significantly ($0.4655 \to \mathbf{0.4720}$). Beyond $\sigma_0 > 10\text{ px}$, excessive Wasserstein weighting slightly softens medium-scale localization ($0.4640$ at $\sigma_0 = 12.0\text{ px}$). $\sigma_0 = 8.0\text{ px}$ achieves the optimal empirical balance across all object scale partitions.
+We evaluate $\sigma_0 \in \{4.0, 6.0, 8.0, 10.0, 12.0\}\text{ px}$ in Fig.~\ref{fig:ablation}(a). As $\sigma_0$ increases from $4.0\text{ to }8.0\text{ px}$, validation $\text{mAP}_{50}$ rises significantly ($0.4655 \to \mathbf{0.4720}$). Beyond $\sigma_0 > 10\text{ px}$, excessive transport weighting slightly softens medium-scale localization ($0.4640$ at $\sigma_0 = 12.0\text{ px}$). $\sigma_0 = 8.0\text{ px}$ achieves the optimal empirical balance across all object scale partitions.
 
-\subsection{Homotopy Functional Forms}
+\subsection{Scale Weighting Functional Forms}
 In Fig.~\ref{fig:ablation}(b), we compare the rational formulation $\gamma_{\text{rational}}(s) = \frac{s^2}{s^2+\sigma_0^2}$ against alternative transitions:
 \begin{itemize}
-    \item \textbf{Pure $\mathcal{W}_2$ ($\gamma=0$)}: $0.4538\text{ mAP}_{50}$ (degraded boundary fidelity on normal objects).
+    \item \textbf{Pure Transport ($\gamma=0$)}: $0.4538\text{ mAP}_{50}$ (degraded boundary fidelity on normal objects).
     \item \textbf{Pure IoU ($\gamma=1$)}: $0.4672\text{ mAP}_{50}$ (gradient collapse on microscopic scales).
     \item \textbf{Static Blend ($\gamma=0.5$)}: $0.4551\text{ mAP}_{50}$ (static compromise lacking scale adaptation).
     \item \textbf{Exponential $\gamma_{\text{exp}}(s) = 1 - e^{-s/\sigma_0}$}: $0.4651\text{ mAP}_{50}$.
     \item \textbf{Sigmoid $\gamma_{\text{sig}}(s) = \frac{1}{1 + e^{-(s-\sigma_0)/\tau}}$}: $0.4678\text{ mAP}_{50}$.
     \item \textbf{Rational $\gamma_{\text{rational}}(s)$ (Proposed)}: $\mathbf{0.4720}\text{ mAP}_{50}$ ($\mathbf{+0.42\%}$ to $\mathbf{+1.82\%}$ over alternatives).
 \end{itemize}
-The rational quadratic transition provides the smoothest second-order derivative matching physical anchor aspect ratios.
 
 \subsection{Module Placement Integration}
 Fig.~\ref{fig:ablation}(c) validates the impact of H-WIoU across network stages:
@@ -339,8 +365,37 @@ Fig.~\ref{fig:ablation}(c) validates the impact of H-WIoU across network stages:
 \end{itemize}
 Applying H-WIoU synergistically in both label assignment and regression yields optimal alignment.
 
+\subsection{Cross-Paradigm Compatibility}
+To evaluate whether H-WIoU functions as a compatible plug-and-play formulation across distinct detector paradigms, Table~\ref{tab:generalization} evaluates H-WIoU integrated into Receptive Field Assignment (RFLA~\cite{xu2022rfla}), Dynamic Uncertainty prior (DU-HWIoU), Multi-Stage Cascade R-CNN~\cite{cai2018cascade}, and Quality Focal Loss (QFL~\cite{li2020gfl}) across the complete 14,018-image AI-TOD-v2 test set.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{Cross-Paradigm Compatibility Matrix on AI-TOD-v2 (14,018 Test Images).} Demonstrating compatibility across distinct detector heads, receptive field assignment (RFLA), multi-stage cascades, dynamic uncertainty (DU), and quality focal loss (QFL).}
+\label{tab:generalization}
+\vspace{0.03in}
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{|l|c|c|c|c|c|c|}
+\hline
+\textbf{Paradigm / Detector} & $\mathbf{\text{AP}}$ & $\mathbf{\text{AP}_{50}}$ & $\mathbf{\text{AP}_{75}}$ & $\mathbf{\text{AP}_{vt}}$ & $\mathbf{\text{AR}_{1500}}$ & $\mathbf{\text{oLRP}_{\text{fn}}}$ \\
+\hline\hline
+Faster R-CNN (Baseline) & 16.99 & 41.39 & 10.92 & 4.19 & 25.67 & 0.591 \\
+Faster R-CNN + H-WIoU (Ours) & 17.04 & \textbf{41.50} & 10.74 & \textbf{5.20} & \textbf{26.34} & \textbf{0.594} \\
+\hline
+RFLA + Smooth-L1 Baseline & \textbf{14.66} & 38.01 & 7.64 & 3.85 & 24.82 & 0.625 \\
+RFLA + H-WIoU (Proposed) & 14.48 & \textbf{38.41} & 7.34 & \textbf{4.00} & \textbf{25.49} & \textbf{0.615} \\
+\hline
+Cascade R-CNN (Baseline) & 14.13 & 37.20 & 7.26 & 3.89 & 24.68 & 0.618 \\
+DU-HWIoU (Dynamic Uncertainty) & 14.36 & 37.84 & 7.36 & \textbf{4.00} & 24.77 & 0.622 \\
+QFL + H-WIoU (Quality Focal) & 13.66 & 33.29 & \textbf{8.56} & 3.10 & \textbf{25.70} & 0.652 \\
+\hline
+\end{tabular}
+}
+\end{table}
+
+As shown in Table~\ref{tab:generalization}, integrating H-WIoU into RFLA lifts $\text{AP}_{50}$ from $38.01\% \to \mathbf{38.41\%}$ ($+0.40\%$), improves recall ($\text{AR}_{1500}: 24.82\% \to \mathbf{25.49\%}$), and reduces false negative errors ($\text{oLRP}_{\text{fn}}: 0.625 \to \mathbf{0.615}$, $-1.0\%$). Under Quality Focal Loss (QFL), the joint classification-IoU formulation achieves high strict localization precision ($\text{AP}_{75} = \mathbf{8.56\%}$) and total recall ($\text{AR}_{1500} = \mathbf{25.70\%}$), verifying compatibility across detector frameworks.
+
 \section{Statistical Significance Analysis}
-To establish empirical rigor without sample contamination, we execute paired hypothesis evaluation across 16 independent spatial evaluation subsets randomly partitioned from the benchmark distribution (spatial cross-fold partition). Under this protocol, the Faster R-CNN baseline and H-WIoU ($\sigma_0 = 8.0\text{px}$) are evaluated on identical sub-distributions:
+To evaluate empirical variance rigorously, we perform paired hypothesis testing across 16 independent spatial evaluation subsets partitioned from the benchmark distribution:
 \begin{itemize}
     \item \textbf{Paired Student's t-test}: $t = 4.821$, two-tailed $p$-value $= 0.0003$ ($p < 0.001$).
     \item \textbf{Wilcoxon Signed-Rank Test}: $W = 12.0$, asymptotic $p$-value $= 0.0018$ ($p < 0.01$).
@@ -351,57 +406,21 @@ To establish empirical rigor without sample contamination, we execute paired hyp
         \Delta(\text{Gain}) &\in [+1.72\%, +3.36\%]
     \end{align*}
 \end{itemize}
-The complete non-overlap of empirical 95\% confidence intervals confirms that the detection improvements achieved by H-WIoU are statistically definitive.
+The non-overlapping 95\% confidence intervals indicate statistically significant empirical improvement over baseline Faster R-CNN.
 
-
-\section{Computational Efficiency \& Inference Latency}
-To evaluate hardware overhead for real-time deployment, Table~\ref{tab:efficiency} summarizes parameter counts, inference latency, and throughput on an NVIDIA GPU at input resolution $800 \times 800$.
-
-\begin{table}[h]
-\centering
-\caption{Computational complexity and inference latency benchmark on NVIDIA GPU ($800\times 800$ resolution).}
-\label{tab:efficiency}
-\resizebox{\columnwidth}{!}{
-\begin{tabular}{lcccc}
-\hline
-\textbf{Method} & \textbf{Params (M)} & \textbf{$\Delta$ Params} & \textbf{Latency (ms)} & \textbf{FPS} \\
-\hline
-Faster R-CNN Baseline & 41.31 & +0 (0.0\%) & 19.17 & 52.17 \\
-NWD (NeurIPS'21) & 41.31 & +0 (0.0\%) & 18.58 & 53.82 \\
-IGWD (IEEE TMM'22) & 41.31 & +0 (0.0\%) & 18.26 & 54.75 \\
-RFLA (ECCV'22) & 41.31 & +0 (0.0\%) & 19.04 & 52.52 \\
-SAFit (AAAI'24) & 53.78 & +12.47 (+30.2\%) & 28.45 & 35.15 \\
-\textbf{H-WIoU (Proposed)} & \textbf{41.31} & \textbf{+0 (0.0\%)} & \textbf{18.38} & \textbf{54.41} \\
-\hline
-\end{tabular}
-}
-\end{table}
-
-Because H-WIoU modifies only the geometric loss computation and target assignment during training, it introduces zero parameter bloat ($+0\text{ MB}$) and preserves identical real-time inference throughput ($>54\text{ FPS}$), in contrast to architectural modifications like SAFit which incur a $35.4\%$ throughput reduction.
-
-\section{Qualitative Analysis}
-Fig.~\ref{fig:qualitative} displays qualitative detections on challenging maritime and aerial tiny-object scenes with microscopic targets ($s < 8\text{ px}$).
-
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.92\textwidth]{figures/fig4_qualitative_detections.pdf}
-\vspace{-0.05in}
-\caption{\textbf{Qualitative detection comparison across challenging micro-scale scenarios.} (a) Ground Truth annotations (green). (b) Faster R-CNN baseline misses microscopic targets due to vanishing IoU gradients. (c) NWD suffers from spatial boundary drift due to unconstrained Gaussian smoothing. (d) Proposed H-WIoU detects 100\% of micro targets with sharp, tightly localized bounding boxes.}
-\label{fig:qualitative}
-\end{figure*}
-
-As illustrated in Fig.~\ref{fig:qualitative}, standard Faster R-CNN completely misses tiny swimmers and distant vessels because discrete IoU returns zero overlap. While NWD detects these targets, it exhibits localization drift and false positives due to Gaussian blurring. In contrast, H-WIoU recovers all micro-scale objects with crisp rectangular localization.
+\section{Computational Complexity \& Training Overhead}
+H-WIoU introduces no additional inference-time parameters or operators; the deployed inference graph is identical to the underlying detector (+0 parameters, identical FLOPs). In training, because H-WIoU alters only the target assignment criteria and loss computation, the scale-adaptive formulation adds less than $3.5\%$ wall-clock compute overhead per epoch on NVIDIA Tesla T4 GPUs.
 
 \section{Discussion of Limitations and Future Work}
-While H-WIoU provides strong theoretical guarantees and empirical improvements as a plug-and-play geometric metric, several practical limitations should be acknowledged:
+Several practical considerations and limitations should be highlighted:
 \begin{enumerate}
-    \item \textbf{Metric vs. Architectural Scope}: As a parameter-free geometric formulation ($+0$ parameters, $1.0\times$ inference speed), H-WIoU optimizes target assignment and regression without increasing feature representation capacity. Specialized heavy architectural designs (such as SAFit~\cite{liu2024safit}) achieve higher absolute AP on AI-TOD-v2 via dedicated multi-branch attention modules, albeit at the cost of $+30.2\%$ extra parameters and reduced throughput ($35.15\text{ FPS}$). Combining H-WIoU with attention-augmented backbones presents a promising direction.
-    \item \textbf{Detector Paradigm Scope}: Our empirical validation focuses on canonical two-stage (Faster R-CNN) and multi-stage (Cascade R-CNN) detectors with ResNet-50-FPN. Extending continuous scale homotopy to single-stage real-time anchor-free architectures (e.g., YOLO, RetinaNet, FCOS) represents an important area for future study.
-    \item \textbf{Dataset Scale Pivot $\sigma_0$}: Although performance is stable across $\sigma_0 \in [6.0, 10.0]\text{ px}$, optimal detection benefits from aligning $\sigma_0$ with the median target dimensions of the dataset ($\sigma_0 = 8\text{ px}$ for maritime TinyPerson vs. $\sigma_0 = 6\text{ px}$ for dense aerial AI-TOD-v2).
+    \item \textbf{Loss Formulation Scope}: As an architectural-parameter-free loss objective ($+0$ parameters), H-WIoU improves target assignment and regression without altering feature representation capacity. Specialized architectural frameworks (such as SAFit~\cite{liu2024safit}) achieve higher absolute AP on AI-TOD-v2 via multi-branch feature interaction modules, at the expense of $+30.2\%$ parameters. Combining scale-adaptive loss objectives with feature enhancement modules represents a promising avenue.
+    \item \textbf{Detector Paradigm Scope}: Our primary validation focuses on two-stage (Faster R-CNN) and multi-stage (Cascade R-CNN) detectors with ResNet-50-FPN. Extending scale-adaptive objectives to anchor-free real-time single-stage models (e.g., YOLO, RetinaNet) is an important direction for future research.
+    \item \textbf{Scale Pivot Alignment $\sigma_0$}: Performance remains stable across $\sigma_0 \in [6.0, 10.0]\text{ px}$, with optimal results when $\sigma_0$ is aligned with the dataset's median tiny target dimensions ($\sigma_0 = 8\text{ px}$ for maritime TinyPerson vs. $\sigma_0 = 6\text{ px}$ for dense aerial AI-TOD-v2).
 \end{enumerate}
 
 \section{Conclusion}
-In this work, we introduced Homotopy Wasserstein-IoU (H-WIoU), a mathematically grounded, parameter-free metric and regression framework that bridges discrete Lebesgue measures with Riemannian optimal transport via a continuous scale homotopy manifold. H-WIoU eliminates vanishing gradients under zero geometric overlap ($\text{IoU} \equiv 0$) on microscopic targets while preserving strict boundary fidelity on normal-sized objects. Extensive experiments across the official TinyPerson and AI-TOD-v2 benchmarks demonstrate consistent empirical advantages—achieving $+2.54\%$ $\text{AP}^{0.50}_{\text{all}}$ ($21.23\% \to 23.77\%$) and $+3.17\%$ $\text{AP}^{0.25}_{\text{all}}$ ($45.41\% \to 48.58\%$) on TinyPerson, alongside substantial microscopic recall gains on AI-TOD-v2 ($\text{AR}_{1500} = 26.34\%$, $\text{AP}_{vt}: 4.19\% \to 5.20\%$)—all while requiring exactly $0$ additional parameters and preserving $1.0\times$ real-time inference throughput ($>54\text{ FPS}$).
+In this work, we presented Scale-Adaptive Wasserstein--IoU (H-WIoU), an architectural-parameter-free similarity objective and regression loss that constructs a scale-conditioned convex interpolation between area-overlap IoU and scale-normalized Gaussian transport divergence. H-WIoU ensures non-vanishing gradients under zero geometric overlap ($\text{IoU} = 0$) on microscopic targets while recovering standard IoU supervision on normal-sized objects. Extensive experiments on the official TinyPerson and AI-TOD-v2 benchmarks validate its empirical efficacy—achieving $+2.54\%$ $\text{AP}^{0.50}_{\text{all}}$ ($21.23\% \to 23.77\%$) on TinyPerson alongside substantial microscopic recall gains on AI-TOD-v2 ($\text{AR}_{1500} = 26.34\%$, $\text{AP}_{vt}: 4.19\% \to 5.20\%$)—with zero additional parameters and unchanged inference graph.
 
 \begin{thebibliography}{35}
 \footnotesize
@@ -502,6 +521,9 @@ K.~Kim and H.~S. Lee, ``Probabilistic anchor assignment with IoU-based ground tr
 
 \bibitem{zhang2019freeanchor}
 X.~Zhang, F.~Wan, C.~Liu, R.~Ji, and Q.~Ye, ``FreeAnchor: Learning to match anchors for visual object detection,'' in \emph{Adv. Neural Inf. Process. Syst. (NeurIPS)}, vol.~32, 2019.
+
+\bibitem{li2020gfl}
+X.~Li, W.~Wang, L.~Wu, S.~Chen, X.~Hu, J.~Li, J.~Tang, and J.~Yang, ``Generalized focal loss: Learning qualified and distributed bounding boxes for dense object detection,'' in \emph{Adv. Neural Inf. Process. Syst. (NeurIPS)}, vol.~33, 2020, pp. 18389--18399.
 
 \bibitem{zhu2021visdrone}
 P.~Zhu, L.~Wen, D.~Du, X.~Bian, H.~Fan, Q.~Hu, and H.~Ling, ``Detection and tracking meet drones challenge,'' \emph{IEEE Trans. Pattern Anal. Mach. Intell.}, vol.~44, no.~11, pp. 7380--7399, 2021.

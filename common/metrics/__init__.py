@@ -12,7 +12,7 @@ from __future__ import annotations
 from functools import partial
 from typing import Callable, Dict, Optional
 
-from . import alw, igwd, iou, nwd, sa_alw, sa_alw_canonical, h_wiou, dynamic_uncertainty_h_wiou, wavelet_h_wiou, oriented_h_wiou
+from . import alw, igwd, iou, nwd, sa_alw, sa_alw_canonical, h_wiou, dynamic_uncertainty_h_wiou, wavelet_h_wiou, oriented_h_wiou, cascade_homotopy, entropy_homotopy
 
 METRIC_REGISTRY: Dict[str, Callable] = {
     # Baselines (Phase 1)
@@ -46,6 +46,7 @@ METRIC_REGISTRY: Dict[str, Callable] = {
     "du_hwiou": h_wiou.compute_h_wiou_similarity,
     "sw_hwiou": h_wiou.compute_h_wiou_similarity,
     "oriented_h_wiou": oriented_h_wiou.oriented_h_wiou_similarity,
+    "eh_wiou": entropy_homotopy.compute_entropy_homotopy_similarity,
     # IGWD ablations (Phase 2.4-2.5) — fix cấu trúc của IGWD hướng tới ALW
     "igwd_log_shape":      igwd.compute_log_shape,       # isotropic + log-ratio
     "igwd_anisotropic_s":  igwd.compute_anisotropic_s,   # anisotropic + Euclidean
@@ -104,8 +105,12 @@ def get_metric_distance_fn(name: str) -> Optional[Callable]:
         return sa_alw_canonical.aligned_alw_distance
     if name in {"sa_alw_canonical", "sa_alw_canonical_pos_only"}:
         return sa_alw_canonical.aligned_sa_alw_distance
-    if name == "h_wiou":
+    if name in {"h_wiou", "du_hwiou", "sw_hwiou"}:
         return h_wiou.aligned_h_wiou_loss
+    if name == "eh_wiou":
+        return entropy_homotopy.aligned_entropy_homotopy_loss
+    if name == "oriented_h_wiou":
+        return oriented_h_wiou.aligned_oriented_h_wiou_loss
     return None
 
 
@@ -129,7 +134,7 @@ def configure_metric(
     similarity_fn = get_metric_fn(name)
     distance_fn = get_metric_distance_fn(name)
     metadata = {"canonical": name in CANONICAL_METRICS, "beta": float(beta)}
-    if name == "h_wiou":
+    if name in {"h_wiou", "du_hwiou", "sw_hwiou"}:
         similarity_fn = partial(
             similarity_fn,
             sigma_0=float(h_wiou_sigma_0),
@@ -137,15 +142,31 @@ def configure_metric(
             static_gamma=float(h_wiou_static_gamma),
             sigmoid_tau=float(h_wiou_sigmoid_tau),
         )
-        distance_fn = partial(
-            distance_fn,
-            sigma_0=float(h_wiou_sigma_0),
-            form=str(h_wiou_form),
-            static_gamma=float(h_wiou_static_gamma),
-            sigmoid_tau=float(h_wiou_sigmoid_tau),
-        )
+        if distance_fn is not None:
+            distance_fn = partial(
+                distance_fn,
+                sigma_0=float(h_wiou_sigma_0),
+                form=str(h_wiou_form),
+                static_gamma=float(h_wiou_static_gamma),
+                sigmoid_tau=float(h_wiou_sigmoid_tau),
+            )
         metadata["h_wiou_sigma_0"] = float(h_wiou_sigma_0)
         metadata["h_wiou_form"] = str(h_wiou_form)
+        return similarity_fn, distance_fn, metadata
+    if name == "eh_wiou":
+        similarity_fn = partial(
+            similarity_fn,
+            sigma_0=float(h_wiou_sigma_0),
+            beta=float(h_wiou_static_gamma),
+        )
+        if distance_fn is not None:
+            distance_fn = partial(
+                distance_fn,
+                sigma_0=float(h_wiou_sigma_0),
+                beta=float(h_wiou_static_gamma),
+            )
+        metadata["h_wiou_sigma_0"] = float(h_wiou_sigma_0)
+        metadata["h_wiou_form"] = "eh_wiou"
         return similarity_fn, distance_fn, metadata
     if name == "alw_canonical":
         return partial(similarity_fn, beta=beta), distance_fn, metadata

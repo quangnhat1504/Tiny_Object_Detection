@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.6.20)  28 AUG 2026 23:27
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (MiKTeX 25.12) (preloaded format=pdflatex 2026.6.20)  3 SEP 2026 01:25
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -207,158 +207,152 @@ LaTeX Font Warning: Font shape `OMS/cmtt/m/n' undefined
 (Font)              for symbol `textbraceleft' on input line 44.
 
 
-Underfull \vbox (badness 5578) has occurred while \output is active []
-
-
-Underfull \hbox (badness 1005) in paragraph at lines 58--59
+Underfull \hbox (badness 1005) in paragraph at lines 61--62
 \OT1/cmr/m/n/10 over-Union (IoU) and its geometry-extended vari-ants
  []
 
 
-Underfull \hbox (badness 3250) in paragraph at lines 64--65
-[]\OT1/cmr/m/n/10 To cir-cum-vent IoU sen-si-tiv-ity, op-ti-mal trans-port
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 64--65
-\OT1/cmr/m/n/10 formulations---most no-tably Nor-mal-ized Gaus-sian
- []
-
-
-Underfull \hbox (badness 1917) in paragraph at lines 64--65
-\OT1/cmr/m/n/10 dif-fuse Gaus-sians fun-da-men-tally weak-ens lo-cal-iza-tion
+Underfull \hbox (badness 1102) in paragraph at lines 69--70
+\OT1/cmr/m/n/10 on mi-cro-scopic tar-gets with crisp bound-ary su-per-vi-
  []
 
 [1{C:/Users/ADMIN/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}
 
 
 ]
+Underfull \hbox (badness 1057) in paragraph at lines 76--77
+[]\OT1/cmr/bx/n/10 Empirical Val-i-da-tion on Two Bench-marks\OT1/cmr/m/n/10 :
+ []
+
 <figures/fig1_homotopy_theory.pdf, id=22, 722.7pt x 303.534pt>
 File: figures/fig1_homotopy_theory.pdf Graphic file (type pdf)
 <use figures/fig1_homotopy_theory.pdf>
-Package pdftex.def Info: figures/fig1_homotopy_theory.pdf  used on input line 7
-9.
+Package pdftex.def Info: figures/fig1_homotopy_theory.pdf  used on input line 8
+1.
 (pdftex.def)             Requested size: 475.3907pt x 199.6661pt.
 
-Underfull \hbox (badness 1242) in paragraph at lines 88--89
+Underfull \hbox (badness 1242) in paragraph at lines 90--91
 \OT1/cmr/m/n/10 in-te-grates as-pect ra-tio con-sis-tency, and Efficient-IoU
  []
 
 
-Underfull \hbox (badness 5161) in paragraph at lines 96--96
-[]\OT1/cmr/bx/n/14.4 Mathematical The-ory of H-
+Underfull \hbox (badness 4144) in paragraph at lines 98--98
+[]\OT1/cmr/bx/n/14.4 Mathematical For-mu-la-tion of
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 98--98
+\OT1/cmr/bx/n/14.4 Scale-Adaptive Wasserstein--
+ []
+
+
+Underfull \hbox (badness 2221) in paragraph at lines 100--100
+[]\OT1/cmr/bx/n/12 Gaussian Rep-re-sen-ta-tion & Scale-
  []
 
 [2]
-Underfull \hbox (badness 10000) in paragraph at lines 124--126
-[]\OT1/cmr/bx/n/10 Proposition 1 (Reg-u-lar-ity and Bound-ary
+Underfull \hbox (badness 2903) in paragraph at lines 131--131
+[]\OT1/cmr/bx/n/12 Additive Scale-Adaptive Sim-i-lar-ity
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 149--150
-[]\OT1/cmr/m/it/10 Let
+Overfull \hbox (100.86894pt too wide) in paragraph at lines 153--154
+[]
+ []
+
+
+Underfull \hbox (badness 1400) in paragraph at lines 153--154
+\OT1/cmr/m/it/10 olds $\OT1/cmr/m/n/10 0 \OML/cmm/m/it/10 < ^^N \OMS/cmtt/m/n/1
+0 ^^T \OML/cmm/m/it/10 ^^T < \OMS/cmtt/m/n/10 1$ \OT1/cmr/m/it/10 and as-pect r
+a-tio bounds
  []
 
 [3 <./figures/fig1_homotopy_theory.pdf>]
-<figures/fig2_multimetric_radar.pdf, id=162, 503.37584pt x 407.75453pt>
+<figures/fig2_multimetric_radar.pdf, id=163, 503.37584pt x 407.75453pt>
 File: figures/fig2_multimetric_radar.pdf Graphic file (type pdf)
 <use figures/fig2_multimetric_radar.pdf>
 Package pdftex.def Info: figures/fig2_multimetric_radar.pdf  used on input line
- 176.
+ 203.
 (pdftex.def)             Requested size: 248.02821pt x 200.91518pt.
 
-Underfull \hbox (badness 1436) in paragraph at lines 177--177
+Underfull \hbox (badness 1436) in paragraph at lines 204--204
 []\OT1/cmr/m/n/10 Figure 2: \OT1/cmr/bx/n/10 Multi-Metric Radar Com-par-i-son o
 n
  []
 
 
-Underfull \hbox (badness 1755) in paragraph at lines 189--189
+Underfull \hbox (badness 1755) in paragraph at lines 216--216
 []\OT1/cmr/bx/n/12 Bounded Ho-mo-topy Re-gres-sion in
  []
 
-<figures/fig5_pipeline_architecture.pdf, id=163, 937.82321pt x 417.47922pt>
+<figures/fig5_pipeline_architecture.pdf, id=164, 1012.50267pt x 527.42645pt>
 File: figures/fig5_pipeline_architecture.pdf Graphic file (type pdf)
 <use figures/fig5_pipeline_architecture.pdf>
 Package pdftex.def Info: figures/fig5_pipeline_architecture.pdf  used on input 
-line 194.
-(pdftex.def)             Requested size: 490.89197pt x 218.52374pt.
+line 221.
+(pdftex.def)             Requested size: 490.89197pt x 255.70494pt.
 
-Underfull \hbox (badness 1953) in paragraph at lines 204--205
+Underfull \hbox (badness 1953) in paragraph at lines 231--232
 []\OT1/cmr/bx/n/10 TinyPerson \OT1/cmr/m/n/10 [[]]: High-resolution mar-itime a
 nd
  []
 
-
-Underfull \hbox (badness 2644) in paragraph at lines 216--216
+[4 <./figures/fig2_multimetric_radar.pdf>]
+Underfull \hbox (badness 2644) in paragraph at lines 243--243
 []\OT1/cmr/bx/n/12 Evaluation on Of-fi-cial TinyPer-son
  []
 
-[4 <./figures/fig2_multimetric_radar.pdf>]
-Underfull \hbox (badness 1215) in paragraph at lines 242--243
-[]\OT1/cmr/m/n/10 As re-ported in Ta-ble 1[], eval-u-at-ing all com-pet-ing
+
+Underfull \hbox (badness 1237) in paragraph at lines 269--270
+\OT1/cmr/m/n/10 on the of-fi-cial 786-image TinyPer-son test set un-der
  []
 
 
-Underfull \hbox (badness 1436) in paragraph at lines 246--247
-\OT1/cmr/m/n/10 (\OT1/cmtt/m/n/10 seed=42\OT1/cmr/m/n/10 ) and sub-se-quently i
-n-ferred on a lo-cal
- []
+Underfull \hbox (badness 1242) in paragraph at lines 271--272
+[]\OT1/cmr/bx/n/10 Overall Precision--Localization Bal-ance\OT1/cmr/m/n/10 : H-
 
-
-Underfull \hbox (badness 3058) in paragraph at lines 274--275
-\OT1/cmr/m/n/10 As re-ported in Ta-ble 2[], eval-u-at-ing all com-pet-ing
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 276--277
-[]\OT1/cmr/bx/n/10 High-Density Tar-get Re-call ($[][] \OT1/cmr/m/n/10 =
- []
-
-
-Underfull \hbox (badness 1337) in paragraph at lines 276--277
-\OT1/cmr/m/n/10 achieves $[][] = []$ (com-pared to $30\OML/cmm/m/it/10 :\OT1/cm
-r/m/n/10 48%$
- []
-
-
-Underfull \hbox (badness 1337) in paragraph at lines 276--277
-\OT1/cmr/m/n/10 un-der zero ge-o-met-ric over-lap, H-WIoU pre-vents
- []
-
-
-Underfull \hbox (badness 1540) in paragraph at lines 277--278
-[]\OT1/cmr/bx/n/10 Microscopic De-tec-tion Boost & Bound-ary
  []
 
 [5 <./figures/fig5_pipeline_architecture.pdf>]
-<figures/fig3_ablation_landscape.pdf, id=506, 939.51pt x 274.626pt>
+Underfull \hbox (badness 4518) in paragraph at lines 304--305
+[]\OT1/cmr/bx/n/10 Microscopic De-tec-tion Gain & Pre-ci-sion
+ []
+
+<figures/fig3_ablation_landscape.pdf, id=311, 939.51pt x 274.626pt>
 File: figures/fig3_ablation_landscape.pdf Graphic file (type pdf)
 <use figures/fig3_ablation_landscape.pdf>
 Package pdftex.def Info: figures/fig3_ablation_landscape.pdf  used on input lin
-e 308.
+e 335.
 (pdftex.def)             Requested size: 475.3907pt x 138.9595pt.
 
-Underfull \hbox (badness 2080) in paragraph at lines 321--322
+Underfull \hbox (badness 1590) in paragraph at lines 342--343
+\OT1/cmr/m/n/10 To rig-or-ously iso-late hy-per-pa-ram-e-ter sen-si-tiv-ity ($\
+OML/cmm/m/it/10 ^^[[]$\OT1/cmr/m/n/10 ,
+ []
+
+
+Underfull \hbox (badness 2080) in paragraph at lines 348--349
 \OT1/cmr/m/n/10 In Fig. 4[](b), we com-pare the ra-tio-nal for-mu-la-tion
  []
 
-
-Underfull \hbox (badness 10000) in paragraph at lines 335--336
+[6]
+Underfull \hbox (badness 10000) in paragraph at lines 361--362
 []\OT1/cmr/bx/n/10 Baseline (Stan-dard IoU / Smooth-L1)\OT1/cmr/m/n/10 :
  []
 
-[6] [7 <./figures/fig3_ablation_landscape.pdf>]
-<figures/fig4_qualitative_detections.pdf, id=606, 839.53604pt x 389.38878pt>
-File: figures/fig4_qualitative_detections.pdf Graphic file (type pdf)
-<use figures/fig4_qualitative_detections.pdf>
-Package pdftex.def Info: figures/fig4_qualitative_detections.pdf  used on input
- line 387.
-(pdftex.def)             Requested size: 475.3907pt x 220.49226pt.
- [8]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[7]
+Underfull \hbox (badness 2277) in paragraph at lines 411--411
+[]\OT1/cmr/bx/n/14.4 Computational Com-plex-ity &
+ []
+
+[8 <./figures/fig3_ablation_landscape.pdf>]
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
- [9 <./figures/fig4_qualitative_detections.pdf>] (main.aux)
+ [9]
+(main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2025-12-24>
@@ -369,13 +363,13 @@ LaTeX Font Warning: Some font shapes were not available, defaults substituted.
 
  ) 
 Here is how much of TeX's memory you used:
- 2834 strings out of 467871
- 42777 string characters out of 5418376
- 490351 words of memory out of 5000000
- 31693 multiletter control sequences out of 15000+600000
+ 2827 strings out of 467871
+ 42430 string characters out of 5418376
+ 489545 words of memory out of 5000000
+ 31686 multiletter control sequences out of 15000+600000
  640174 words of font info for 86 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 57i,18n,65p,1217b,382s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 57i,19n,65p,1250b,382s stack positions out of 10000i,1000n,20000p,200000b,200000s
  <C:\Users\ADMIN\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec/dpi600\tcrm
 1000.pk> <C:\Users\ADMIN\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec/dpi60
 0\tcrm0600.pk> <C:\Users\ADMIN\AppData\Local\MiKTeX\fonts/pk/ljfour/jknappen/ec
@@ -406,9 +400,9 @@ ype1/public/amsfonts/cm/cmtt10.pfb><C:/Users/ADMIN/AppData/Local/Programs/MiKTe
 X/fonts/type1/public/amsfonts/cm/cmtt8.pfb><C:/Users/ADMIN/AppData/Local/Progra
 ms/MiKTeX/fonts/type1/public/amsfonts/symbols/msam10.pfb><C:/Users/ADMIN/AppDat
 a/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on main.pdf (9 pages, 1125069 bytes).
+Output written on main.pdf (9 pages, 782882 bytes).
 PDF statistics:
- 821 PDF objects out of 1000 (max. 8388607)
+ 529 PDF objects out of 1000 (max. 8388607)
  0 named destinations out of 1000 (max. 500000)
- 26 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 21 words of extra memory for PDF output out of 10000 (max. 10000000)
 
