@@ -104,6 +104,20 @@ class TestEntropyHomotopy(unittest.TestCase):
         reg_loss = dist_fn(p, g)
         self.assertTrue(torch.allclose(reg_loss, loss_2t, atol=1e-5))
 
+    def test_entropy_homotopy_chunking_large_scale(self):
+        """Verify that chunking handles dense anchor counts (N=50,000) without memory explosion."""
+        N = 50000
+        M = 20
+        anchors = torch.rand(N, 4) * 800.0
+        anchors[:, 2:] += anchors[:, :2] + 4.0  # valid boxes
+        gt = torch.rand(M, 4) * 800.0
+        gt[:, 2:] += gt[:, :2] + 4.0
+
+        # Run with small chunk_size to stress-test chunk loop
+        sim = compute_entropy_homotopy_similarity(anchors, gt, sigma_0=8.0, beta=0.5, chunk_size=8192)
+        self.assertEqual(sim.shape, (N, M))
+        self.assertTrue(torch.all(sim >= 0.0) and torch.all(sim <= 1.0))
+
 
 if __name__ == "__main__":
     unittest.main()

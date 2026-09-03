@@ -67,18 +67,65 @@ class EntropyGuidanceModule(nn.Module):
         return enhanced_feature, entropy_weights
 
 
+def _compute_entropy_homotopy_similarity_chunk(
+    cx_p: torch.Tensor,
+    cy_p: torch.Tensor,
+    w_p: torch.Tensor,
+    h_p: torch.Tensor,
+    cx_g: torch.Tensor,
+    cy_g: torch.Tensor,
+    w_g: torch.Tensor,
+    h_g: torch.Tensor,
+    s_g_sq: torch.Tensor,
+    gamma: torch.Tensor,
+    eps: float = 1e-7,
+) -> torch.Tensor:
+    """Compute EH-WIoU similarity for a manageable chunk of predicted boxes."""
+    # 1. Boxes for IoU
+    x1_a = cx_p - w_p * 0.5
+    y1_a = cy_p - h_p * 0.5
+    x2_a = cx_p + w_p * 0.5
+    y2_a = cy_p + h_p * 0.5
+
+    x1_g = cx_g - w_g * 0.5
+    y1_g = cy_g - h_g * 0.5
+    x2_g = cx_g + w_g * 0.5
+    y2_g = cy_g + h_g * 0.5
+
+    inter_w = (torch.min(x2_a[:, None], x2_g[None, :]) - torch.max(x1_a[:, None], x1_g[None, :])).clamp(min=0.0)
+    inter_h = (torch.min(y2_a[:, None], y2_g[None, :]) - torch.max(y1_a[:, None], y1_g[None, :])).clamp(min=0.0)
+    inter_area = inter_w * inter_h
+    union_area = (w_p * h_p)[:, None] + (w_g * h_g)[None, :] - inter_area
+    iou = (inter_area / (union_area + eps)).clamp(min=eps, max=1.0)
+
+    # 2. Wasserstein distance
+    dx2 = (cx_p[:, None] - cx_g[None, :]) ** 2
+    dy2 = (cy_p[:, None] - cy_g[None, :]) ** 2
+    dw2 = ((w_p[:, None] - w_g[None, :]) * 0.5) ** 2
+    dh2 = ((h_p[:, None] - h_g[None, :]) * 0.5) ** 2
+    w2_sq = dx2 + dy2 + dw2 + dh2
+    d_w_sq = w2_sq / (2.0 * s_g_sq + eps)
+    wasserstein_similarity = torch.exp(-d_w_sq.clamp(max=50.0))
+
+    # 3. Additive Scale-Entropy Convex Interpolation: S = gamma * IoU + (1 - gamma) * S_W
+    similarity = gamma * iou + (1.0 - gamma) * wasserstein_similarity
+    return similarity.clamp(0.0, 1.0)
+
+
 def compute_entropy_homotopy_similarity(
     *args: torch.Tensor,
     entropy_prior: Optional[torch.Tensor] = None,
     sigma_0: float = 8.0,
     beta: float = 0.5,
     eps: float = 1e-7,
+    chunk_size: int = 16384,
     **_,
 ) -> torch.Tensor:
     """
     Compute pairwise Entropy-Modulated Homotopy Similarity (S_EH-WIoU) matrix [N, M].
     Supports both 2-tensor calling convention (pred_boxes [N, 4], gt_boxes [M, 4])
     and 8-coordinate convention (xa, ya, wa, ha, xg, yg, wg, hg [N] and [M]).
+    Implements memory-safe chunking along N to prevent CUDA OOM on dense FPN anchor grids.
     """
     if len(args) == 2:
         pred_boxes, gt_boxes = args
@@ -87,22 +134,6 @@ def compute_entropy_homotopy_similarity(
         if N == 0 or M == 0:
             return torch.empty((N, M), dtype=pred_boxes.dtype, device=pred_boxes.device)
 
-        # 1. Standard Discrete IoU
-        x1 = torch.max(pred_boxes[:, 0:1], gt_boxes[:, 0:1].t())
-        y1 = torch.max(pred_boxes[:, 1:2], gt_boxes[:, 1:2].t())
-        x2 = torch.min(pred_boxes[:, 2:3], gt_boxes[:, 2:3].t())
-        y2 = torch.min(pred_boxes[:, 3:4], gt_boxes[:, 3:4].t())
-
-        inter_w = (x2 - x1).clamp(min=0.0)
-        inter_h = (y2 - y1).clamp(min=0.0)
-        inter_area = inter_w * inter_h
-
-        area_p = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=0.0) * (pred_boxes[:, 3] - pred_boxes[:, 1]).clamp(min=0.0)
-        area_g = (gt_boxes[:, 2] - gt_boxes[:, 0]).clamp(min=0.0) * (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp(min=0.0)
-        union_area = area_p[:, None] + area_g[None, :] - inter_area
-        iou = (inter_area / (union_area + eps)).clamp(min=eps, max=1.0)
-
-        # 2. Centroids and sizes
         cx_p = (pred_boxes[:, 0] + pred_boxes[:, 2]) * 0.5
         cy_p = (pred_boxes[:, 1] + pred_boxes[:, 3]) * 0.5
         w_p = (pred_boxes[:, 2] - pred_boxes[:, 0]).clamp(min=eps)
@@ -120,53 +151,44 @@ def compute_entropy_homotopy_similarity(
         if N == 0 or M == 0:
             return torch.zeros((N, M), device=xa.device, dtype=xa.dtype)
 
-        # Reconstruct boxes
-        x1_a, y1_a, x2_a, y2_a = xa - wa * 0.5, ya - ha * 0.5, xa + wa * 0.5, ya + ha * 0.5
-        x1_g, y1_g, x2_g, y2_g = xg - wg * 0.5, yg - hg * 0.5, xg + wg * 0.5, yg + hg * 0.5
-
-        inter_w = (torch.min(x2_a[:, None], x2_g[None, :]) - torch.max(x1_a[:, None], x1_g[None, :])).clamp(min=0.0)
-        inter_h = (torch.min(y2_a[:, None], y2_g[None, :]) - torch.max(y1_a[:, None], y1_g[None, :])).clamp(min=0.0)
-        inter_area = inter_w * inter_h
-        area_a = wa * ha
-        area_g = wg * hg
-        union_area = (area_a[:, None] + area_g[None, :] - inter_area).clamp_min(eps)
-        iou = (inter_area / union_area).clamp(min=eps, max=1.0)
-
         cx_p, cy_p, w_p, h_p = xa, ya, wa.clamp(min=eps), ha.clamp(min=eps)
         cx_g, cy_g, w_g, h_g = xg, yg, wg.clamp(min=eps), hg.clamp(min=eps)
     else:
         raise ValueError(f"compute_entropy_homotopy_similarity expects 2 or 8 positional arguments, got {len(args)}")
 
-    dx2 = (cx_p[:, None] - cx_g[None, :]) ** 2
-    dy2 = (cy_p[:, None] - cy_g[None, :]) ** 2
-    dw2 = ((w_p[:, None] - w_g[None, :]) * 0.5) ** 2
-    dh2 = ((h_p[:, None] - h_g[None, :]) * 0.5) ** 2
+    # Ground-truth characteristic scale s_g^2 = w_g * h_g [1, M]
+    s_g_sq = (w_g * h_g).clamp(min=eps)[None, :]
 
-    # Characteristic scale s = sqrt(w_g * h_g)
-    s_g = torch.sqrt((w_g * h_g).clamp(min=eps))[None, :]  # [1, M]
-
-    # Raw Wasserstein squared distance W_2^2
-    w2_sq = dx2 + dy2 + dw2 + dh2
-    # Normalized Wasserstein metric: D_W^2 = W_2^2 / (2 * s_g^2)
-    d_w_sq = w2_sq / (2.0 * (s_g ** 2) + eps)
-    wasserstein_similarity = torch.exp(-d_w_sq.clamp(max=50.0))
-
-    # 3. 2D Scale-Entropy Homotopy Parameter gamma(s, H)
+    # 2D Scale-Entropy Homotopy Parameter gamma(s, H) [1, M]
     if entropy_prior is not None:
         if entropy_prior.dim() == 1:
-            h_prior = entropy_prior[None, :]  # [1, M]
+            h_prior = entropy_prior[None, :]
         else:
             h_prior = entropy_prior
-        mod_scale_sq = (s_g ** 2) * (1.0 + beta * h_prior)
+        mod_scale_sq = s_g_sq * (1.0 + beta * h_prior)
     else:
-        mod_scale_sq = s_g ** 2
+        mod_scale_sq = s_g_sq
 
     gamma = mod_scale_sq / (mod_scale_sq + (sigma_0 ** 2))
     gamma = gamma.clamp(0.001, 0.999)
 
-    # 4. Additive Scale-Entropy Convex Interpolation: S = gamma * IoU + (1 - gamma) * S_W
-    similarity = gamma * iou + (1.0 - gamma) * wasserstein_similarity
-    return similarity.clamp(0.0, 1.0)
+    # Memory-safe chunked execution
+    if N <= chunk_size:
+        return _compute_entropy_homotopy_similarity_chunk(
+            cx_p, cy_p, w_p, h_p,
+            cx_g, cy_g, w_g, h_g,
+            s_g_sq, gamma, eps=eps
+        )
+
+    sims = []
+    for i in range(0, N, chunk_size):
+        end_i = min(i + chunk_size, N)
+        sims.append(_compute_entropy_homotopy_similarity_chunk(
+            cx_p[i:end_i], cy_p[i:end_i], w_p[i:end_i], h_p[i:end_i],
+            cx_g, cy_g, w_g, h_g,
+            s_g_sq, gamma, eps=eps
+        ))
+    return torch.cat(sims, dim=0)
 
 
 class EntropyHomotopyLoss(nn.Module):
