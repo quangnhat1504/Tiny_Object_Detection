@@ -3310,6 +3310,120 @@ def attach_cbl_cross_scale_teacher(
     return student
 
 
+class FPNEntropyGuidance(nn.Module):
+    """
+    Entropy Guidance Module applied to FPN multi-scale feature maps.
+    Calculates channel-wise Shannon information entropy on P2 and P3 levels,
+    amplifying high-frequency spatial detail and micro-object boundary contrast.
+    """
+    def __init__(self, in_channels: int = 256, reduction: int = 4):
+        super().__init__()
+        from .metrics.entropy_homotopy import EntropyGuidanceModule
+        self.egm_p2 = EntropyGuidanceModule(in_channels, reduction)
+        self.egm_p3 = EntropyGuidanceModule(in_channels, reduction)
+
+    def forward(self, features: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        out = OrderedDict()
+        for k, v in features.items():
+            if k == "0":  # P2 (stride 4 - finest resolution for micro objects)
+                enhanced, _ = self.egm_p2(v)
+                out[k] = enhanced
+            elif k == "1":  # P3 (stride 8)
+                enhanced, _ = self.egm_p3(v)
+                out[k] = enhanced
+            else:
+                out[k] = v
+        return out
+
+
+def _wrap_roi_for_homotopy_matching(
+    roi_heads: RoIHeads,
+    metric_fn: Callable,
+    fg_thresh: float = 0.40,
+    bg_thresh: float = 0.30,
+    allow_low_quality_matches: bool = True,
+):
+    """
+    Wrap RoIHeads.assign_targets_to_proposals with Scale-Conditioned Homotopy Matching.
+    Replaces rigid discrete IoU >= 0.5 with continuous Scale-Homotopy Similarity,
+    guaranteeing that micro-scale objects (s_g < 16px) do not starve of positive RoI samples.
+    """
+    from torchvision.models.detection._utils import Matcher
+
+    roi_matcher = Matcher(
+        high_threshold=fg_thresh,
+        low_threshold=bg_thresh,
+        allow_low_quality_matches=allow_low_quality_matches,
+    )
+
+    def homotopy_assign_targets_to_proposals(self, proposals, gt_boxes, gt_labels):
+        matched_idxs = []
+        labels = []
+        for proposals_in_image, gt_boxes_in_image, gt_labels_in_image in zip(
+            proposals, gt_boxes, gt_labels
+        ):
+            if gt_boxes_in_image.numel() == 0 or proposals_in_image.numel() == 0:
+                device = proposals_in_image.device
+                clamped_matched_idxs_in_image = torch.zeros(
+                    (proposals_in_image.shape[0],), dtype=torch.int64, device=device
+                )
+                labels_in_image = torch.zeros(
+                    (proposals_in_image.shape[0],), dtype=torch.int64, device=device
+                )
+                matched_idxs.append(clamped_matched_idxs_in_image)
+                labels.append(labels_in_image)
+                continue
+
+            # 1. Standard IoU matrix [M, P]
+            iou_matrix = box_ops.box_iou(gt_boxes_in_image, proposals_in_image)
+
+            # 2. Homotopy Similarity Matrix [M, P]
+            xg = (gt_boxes_in_image[:, 0] + gt_boxes_in_image[:, 2]) * 0.5
+            yg = (gt_boxes_in_image[:, 1] + gt_boxes_in_image[:, 3]) * 0.5
+            wg = (gt_boxes_in_image[:, 2] - gt_boxes_in_image[:, 0]).clamp(min=1.0)
+            hg = (gt_boxes_in_image[:, 3] - gt_boxes_in_image[:, 1]).clamp(min=1.0)
+
+            xp = (proposals_in_image[:, 0] + proposals_in_image[:, 2]) * 0.5
+            yp = (proposals_in_image[:, 1] + proposals_in_image[:, 3]) * 0.5
+            wp = (proposals_in_image[:, 2] - proposals_in_image[:, 0]).clamp(min=1.0)
+            hp = (proposals_in_image[:, 3] - proposals_in_image[:, 1]).clamp(min=1.0)
+
+            try:
+                sim = metric_fn(xp, yp, wp, hp, xg, yg, wg, hg)  # [P, M]
+            except Exception:
+                sim = metric_fn(proposals_in_image, gt_boxes_in_image)
+
+            homotopy_matrix = sim.t().contiguous()  # [M, P]
+
+            # 3. Hybrid Scale-Conditioned Quality Matrix:
+            gt_scales = torch.sqrt(wg * hg)[:, None]  # [M, 1]
+            scale_alpha = (gt_scales / 32.0).clamp(0.0, 1.0)
+            match_quality_matrix = (1.0 - scale_alpha) * homotopy_matrix + scale_alpha * iou_matrix
+
+            matched_idxs_in_image = roi_matcher(match_quality_matrix)
+
+            clamped_matched_idxs_in_image = matched_idxs_in_image.clamp(min=0)
+            labels_in_image = gt_labels_in_image[clamped_matched_idxs_in_image]
+            labels_in_image = labels_in_image.to(dtype=torch.int64)
+
+            # Label background (below low threshold)
+            bg_inds = matched_idxs_in_image == roi_matcher.BELOW_LOW_THRESHOLD
+            labels_in_image[bg_inds] = 0
+
+            # Label ignore (between thresholds)
+            ignore_inds = matched_idxs_in_image == roi_matcher.BETWEEN_THRESHOLDS
+            labels_in_image[ignore_inds] = -1
+
+            matched_idxs.append(clamped_matched_idxs_in_image)
+            labels.append(labels_in_image)
+
+        return matched_idxs, labels
+
+    roi_heads.assign_targets_to_proposals = types.MethodType(
+        homotopy_assign_targets_to_proposals, roi_heads
+    )
+
+
 def _wrap_roi_forward_for_metric_loss(roi_heads, metric_fn, reliability_thr,
                                        metric_distance_fn=None,
                                        metric_loss_weight=1.0,
@@ -3827,6 +3941,8 @@ def build_model(
     snip_rpn_ignore_iou_thresh: float = RPN_BG_IOU,
     snip_collect_stats: bool = False,
     metric_distance_fn: Optional[Callable] = None,
+    use_homotopy_roi_matching: bool = False,
+    use_egm: bool = False,
 ) -> nn.Module:
     """Build a Faster R-CNN with metric at given placements.
 
@@ -3948,6 +4064,20 @@ def build_model(
         if target is not None:
             target.to(memory_format=torch.channels_last)
             print(f"  [speed] backbone converted to channels_last memory format")
+
+    if use_egm:
+        backbone = getattr(base, "backbone", None)
+        if backbone is not None:
+            egm = FPNEntropyGuidance(in_channels=getattr(backbone, "out_channels", 256))
+            backbone.egm = egm
+            orig_backbone_forward = backbone.forward
+
+            def forward_with_egm(x):
+                features = orig_backbone_forward(x)
+                return backbone.egm(features)
+
+            backbone.forward = forward_with_egm
+            print("  [EGM] Feature-Level Entropy Guidance Module active on P2/P3")
 
     anchor_gen = AnchorGenerator(
         sizes=((4, 8, 16), (16, 32, 64), (64, 128, 256),
@@ -4332,6 +4462,20 @@ def build_model(
         base.roi_heads._metric_fn = metric_fn
         base.roi_heads._reliability_thr = reliability_thr
         _wrap_postprocess_for_soft_metric_nms(base.roi_heads, metric_fn, reliability_thr)
+
+    if use_homotopy_roi_matching:
+        roi_metric = metric_fn
+        if roi_metric is None:
+            from .metrics.cascade_homotopy import compute_entropy_homotopy_similarity
+            roi_metric = compute_entropy_homotopy_similarity
+        _wrap_roi_for_homotopy_matching(
+            base.roi_heads,
+            metric_fn=roi_metric,
+            fg_thresh=0.40,
+            bg_thresh=0.30,
+            allow_low_quality_matches=True,
+        )
+        print("  [Homotopy RoI Matching] Continuous scale-homotopy proposal matching active (fg>=0.40, bg<0.30, allow_low_quality=True)")
 
     return base
 

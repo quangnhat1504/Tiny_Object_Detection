@@ -14,6 +14,41 @@ tags:
 
 # Journal Project Activity Log
 
+## 2026-09-04 (Phase 4): Forensic Error Decomposition, Homotopy-Aware RoI Head Matching, Feature-Level EGM, and Seed-42 Pipeline Upgrade
+
+* **Forensic False Negative Error Decomposition ($\text{oLRP}_{\text{fn}} = 0.6172$)**:
+  * Detailed diagnostic audit on the Seed 42 baseline ($21.68\%$ mAP) revealed that $61.72\%$ of overall detection errors originate from **False Negatives** (missed tiny objects).
+  * *Root Cause*: RPN dynamically assigns rich positive anchors using $\mathcal{S}_{\text{EH-WIoU}}$, producing high-quality micro-proposals ($s < 16\text{px}$). However, standard `RoIHeads` uses discrete $\text{IoU} \ge 0.50$ matching without low-quality fallback. A $6\times 6\text{px}$ box shifted by just $2\text{px}$ has $\text{IoU} = 0.2857 < 0.50$, causing RoIHead to misclassify it as background (`0`), severing regression gradients and suppressing micro-object confidence scores.
+* **Architecture Upgrades Implemented**:
+  1. **Homotopy-Aware RoI Head Matching** (`common/model.py: _wrap_roi_for_homotopy_matching`): Replaced rigid discrete IoU thresholding with continuous scale-homotopy quality metric $\mathcal{Q} = (1 - \alpha)\mathcal{S}_{\text{EH-WIoU}} + \alpha \text{IoU}$, where $\alpha = \min(1, s_g / 32\text{px})$, paired with `Matcher(fg_thresh=0.40, bg_thresh=0.30, allow_low_quality_matches=True)`.
+  2. **Feature-Level Entropy Guidance Module (EGM)** (`common/model.py: FPNEntropyGuidance`): Hooked into FPN backbone levels $P_2$ (stride 4) and $P_3$ (stride 8) using Shannon channel entropy attention to amplify micro-object contrast. Registered cleanly as `base.backbone.egm`.
+  3. **Cascade Homotopy Euclidean Formulation** (`common/metrics/cascade_homotopy.py`): Harmonized all cascade stages with the additive Euclidean Gaussian 2-Wasserstein metric without logarithmic singularities.
+  4. **Training Script Checkpoint Bugfix** (`scripts/train_frcnn_aitod.py`): Fixed defect where empty detection epochs unconditionally overwrote `best.pt`. Added `--use-homotopy-roi` and `--use-egm` CLI flags.
+* **Comprehensive Verification**:
+  * Unit test `paper_a/tests/test_homotopy_roi_matching.py` PASSED ($6\times 6\text{px}$ micro-proposal retained as positive foreground, full model forward+backward gradients validated).
+  * Entire 107-test suite in `paper_a/tests/` PASSED in 4.939s (107/107).
+  * Phase 0 ledger validation PASSED (`G0 PASS`).
+
+## 2026-09-04 (Phase 3): Full Kaggle Checkpoint Ingestion & Master 14,018-Image Test Set Evaluation (RTX 5070 Ti)
+
+* **Successful Cluster Checkpoint Retrieval & Verification**:
+  * Successfully retrieved all 5 AI-TOD-v2 and 1 TinyPerson checkpoints from Kaggle workers:
+    1. `phuc1806`: `tod-aitod-ehwiou-s42-proposed` ($\sigma_0=8.0\text{px}$, Seed 42) -> `best.pt` (165.9 MB)
+    2. `thyngluthy`: `tod-aitod-ehwiou-sig6-s42` ($\sigma_0=6.0\text{px}$, Seed 42) -> `best.pt` (165.9 MB)
+    3. `hngngnguynvn`: `tod-aitod-ehwiou-sig8-s123` ($\sigma_0=8.0\text{px}$, Seed 123) -> `best.pt` (165.9 MB)
+    4. `trieuvo123`: `tod-aitod-sw-hwiou-s42-proposed` (Wavelet Homotopy SW-HWIoU) -> `best.pt` (165.9 MB)
+    5. `amongus1504`: `tod-aitod-qfl-duhwiou-s42-proposed` (QFL + DU-HWIoU) -> `best.pt` (165.9 MB)
+    6. `dipphmngc`: `tod-tp-ehwiou-sig8-s42` (TinyPerson EH-WIoU) -> `best.pt` (330.1 MB)
+* **Master 14,018-Image Official Test Set Evaluation (RTX 5070 Ti)**:
+  * Evaluated all models on the full official test set (`aitodv2_test.json`, 14,018 images) using `aitodpycocotools`.
+  * **Empirical Matrix (Official 14,018 Test Images)**:
+    * `EH-WIoU Proposed (sigma0=8.0px, s42)`: **$\text{mAP} = 21.68\%$**, $\text{mAP}_{50} = \mathbf{44.59\%}$, $\text{mAP}_{75} = \mathbf{20.72\%}$, $\text{AP}_{vt} = \mathbf{7.00\%}$, $\text{AR}_{100} = \mathbf{28.50\%}$, $\text{AR}_{vt} = \mathbf{13.06\%}$, $\text{oLRP} = \mathbf{0.8289}$.
+    * `EH-WIoU Proposed (sigma0=6.0px, s42)`: $\text{mAP} = 17.14\%$, $\text{mAP}_{50} = 41.03\%$, $\text{mAP}_{75} = 12.61\%$, $\text{AP}_{vt} = 3.46\%$, $\text{AR}_{100} = 21.41\%$, $\text{oLRP} = 0.8554$.
+    * `SW-HWIoU Proposed (sigma0=8.0px, s42)`: $\text{mAP} = 16.82\%$, $\text{mAP}_{50} = 41.34\%$, $\text{mAP}_{75} = 10.98\%$, $\text{AP}_{vt} = 4.54\%$, $\text{AR}_{100} = 25.01\%$, $\text{AR}_{vt} = 10.02\%$, $\text{oLRP} = 0.8500$.
+    * `EH-WIoU Proposed (sigma0=8.0px, s123)`: $\text{mAP} = 16.59\%$, $\text{mAP}_{50} = 40.69\%$, $\text{mAP}_{75} = 10.36\%$, $\text{AP}_{vt} = 4.88\%$, $\text{AR}_{100} = 24.78\%$, $\text{AR}_{vt} = 9.50\%$, $\text{oLRP} = 0.8527$.
+    * `QFL + DU-HWIoU Proposed (s42)`: $\text{mAP} = 13.61\%$, $\text{mAP}_{50} = 32.99\%$, $\text{mAP}_{75} = 8.66\%$, $\text{AP}_{vt} = 3.34\%$, $\text{AR}_{100} = 24.58\%$, $\text{AR}_{vt} = 10.90\%$, $\text{oLRP} = 0.8806$.
+  * Results fully stored in `journal/results/ehwiou_downloaded_evaluated_metrics.json` and `journal/results/ehwiou_downloaded_evaluated_metrics.md`.
+
 ## 2026-09-04 (Phase 2): Latent CUDA OOM Forensic Root-Cause Resolution, Memory-Safe Chunking & 8-Worker Active GPU Matrix
 
 * **Forensic Diagnosis of Latent CUDA OOM During Dense FPN Assignment**:

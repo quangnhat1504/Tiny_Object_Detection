@@ -62,6 +62,8 @@ def train_aitod(
     rpn_cascade: bool = False,
     use_quality_focal: bool = False,
     quality_focal_beta: float = 2.0,
+    use_homotopy_roi: bool = False,
+    use_egm: bool = False,
 ):
     set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -195,6 +197,8 @@ def train_aitod(
         rpn_cascade=rpn_cascade,
         use_quality_focal=use_quality_focal,
         quality_focal_beta=quality_focal_beta,
+        use_homotopy_roi_matching=use_homotopy_roi,
+        use_egm=use_egm,
     )
     model.to(device)
 
@@ -321,7 +325,6 @@ def train_aitod(
                     print(f"  -> New Best Model saved! (AP50 = {best_map50:.4f})")
             else:
                 print("No detections above score threshold")
-                torch.save(model.state_dict(), output_dir / "best.pt")
 
     # Save metrics JSON
     (output_dir / "metrics.json").write_text(json.dumps(metrics_history, indent=2), encoding="utf-8")
@@ -352,6 +355,8 @@ def main():
     parser.add_argument("--rpn-cascade", action="store_true", help="Enable multi-stage RPN cascade")
     parser.add_argument("--use-quality-focal", action="store_true", help="Enable Task-Aligned Quality Focal Loss")
     parser.add_argument("--quality-focal-beta", type=float, default=2.0, help="QFL modulating exponent")
+    parser.add_argument("--use-homotopy-roi", action="store_true", help="Enable continuous Homotopy-Aware RoI Head Matching")
+    parser.add_argument("--use-egm", action="store_true", help="Enable Feature-Level Entropy Guidance Module on FPN P2/P3")
     args = parser.parse_args()
 
     train_aitod(
@@ -374,6 +379,8 @@ def main():
         rpn_cascade=args.rpn_cascade,
         use_quality_focal=args.use_quality_focal,
         quality_focal_beta=args.quality_focal_beta,
+        use_homotopy_roi=args.use_homotopy_roi,
+        use_egm=args.use_egm,
     )
 
 

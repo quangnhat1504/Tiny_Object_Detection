@@ -29,6 +29,7 @@ This wiki serves as the isolated, authoritative knowledge hub for all mathematic
 * [[log]]: Chronological experiment, derivation, cluster deployment, and manuscript revision diary.
 
 ### 2. Theoretical Concepts & Mathematical Proofs
+* [[concepts/entropy_homotopy_wiou]]: Entropy-Modulated Homotopy Wasserstein-IoU (EH-WIoU), Euclidean 2-Wasserstein without log singularities, RoI Homotopy Matching, and Feature-Level EGM.
 * [[concepts/homotopy_wasserstein_iou]]: Topological $C^\infty$ homotopy formulation bridging discrete Lebesgue measures and Riemannian optimal transport.
 * [[concepts/gradient_asymptotics_and_boundedness]]: Non-vanishing gradient bound proofs ($\|\nabla_\theta \mathcal{L}_{\text{H-WIoU}}\| = \mathcal{O}(1)$ under disjoint alignment vs $\nabla \mathcal{L}_{\text{IoU}} \equiv 0$).
 * [[concepts/homotopy_label_assignment]]: Stage 1 RPN dynamic label assignment mechanism and candidate positive survival rate analysis ($0.18 \to 0.94$).

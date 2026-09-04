@@ -14,13 +14,13 @@ import torch
 import torch.nn as nn
 from torchvision.ops import box_iou
 
+from .entropy_homotopy import (
+    aligned_entropy_homotopy_loss,
+    compute_entropy_homotopy_similarity,
+)
 from .h_wiou import (
     EPS,
     compute_scale_homotopy,
-    pairwise_wasserstein_distance_squared,
-    aligned_wasserstein_distance_squared,
-    compute_h_wiou_similarity,
-    aligned_h_wiou_loss,
 )
 
 
@@ -66,7 +66,7 @@ class CascadeHomotopyLoss(nn.Module):
         sigma_k = self.sigmas[stage_idx]
         weight_k = self.loss_weights[stage_idx]
 
-        loss = aligned_h_wiou_loss(*args, sigma_0=sigma_k, form=self.form, **kwargs)
+        loss = aligned_entropy_homotopy_loss(*args, sigma_0=sigma_k, **kwargs)
         return weight_k * loss
 
 
@@ -108,7 +108,7 @@ def cascade_homotopy_stage_matcher(
     hg = (gt_boxes[:, 3] - gt_boxes[:, 1]).clamp_min(EPS)
 
     # 2. Compute Stage Homotopy Similarity Matrix [N, M]
-    sim_matrix = compute_h_wiou_similarity(
+    sim_matrix = compute_entropy_homotopy_similarity(
         xa, ya, wa, ha,
         xg, yg, wg, hg,
         sigma_0=sigma_k,
