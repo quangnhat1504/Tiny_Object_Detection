@@ -1,0 +1,873 @@
+\documentclass[11pt,a4paper]{article}
+\pdfminorversion=7
+\pdfinfoomitdate=1
+\pdftrailerid{}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{url}
+
+% Portable single-column layout (1-inch margins, comfortable reading)
+\setlength{\textwidth}{6.5in}
+\setlength{\textheight}{9.0in}
+\setlength{\oddsidemargin}{0.0in}
+\setlength{\evensidemargin}{0.0in}
+\setlength{\topmargin}{-0.5in}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{15pt}
+
+% Standard table rules
+\providecommand{\toprule}{\hline}
+\providecommand{\midrule}{\hline}
+\providecommand{\bottomrule}{\hline}
+
+\makeatletter
+\define@key{Gin}{inkscapelatex}{}
+\makeatother
+% Fallback for environments where svg.sty / inkscape is not available
+\providecommand{\includesvg}[2][]{\includegraphics[#1]{#2.pdf}}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+
+\title{\LARGE \bf Scale-Adaptive Wasserstein--IoU for Tiny Object Detection}
+
+\author{
+  \textbf{Dang Quang Nhat}\thanks{Corresponding author: \texttt{dangquangnhat1504@gmail.com}}, \quad
+  \textbf{Le Ho Anh Duy}, \quad
+  \textbf{Pham Minh Tien}\\[0.4em]
+  \normalsize Department of Artificial Intelligence \& Computer Science, FPT University, Da Nang, Vietnam\\
+  \normalsize \texttt{\symbol{123}dangquangnhat1504, lehoanhduy5426, taxaceae.forwork\symbol{125}@gmail.com}
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Detecting tiny objects is challenging because small localization errors can sharply reduce bounding-box overlap. Once predicted and target boxes become strictly disjoint, the plain IoU loss provides no centroid-gradient signal. We study Scale-Adaptive Wasserstein--IoU (H-WIoU), which blends an arm-specific geometric affinity with IoU through a rational gate without learned parameters, $\gamma(s)=s^2/(s^2+\sigma_0^2)$. The frozen arms use either symmetric scale-normalized divergence or target-normalized Gaussian W$_2$; the YOLO path caps the latter's exponent. For smaller targets, the objective places more weight on geometric affinity, while larger targets place more weight on IoU. For the two uncapped variants on compact, strictly disjoint box domains, we establish a positive centroid-gradient lower bound in exact real arithmetic and show that the negative centroid gradient is a descent direction for squared centroid error. We also study detached feature entropy (EH-WIoU) and apply the similarity to label assignment through HLA, H-TAL, and H-STAL.
+
+Experiments on Scale Match TinyPerson and AI-TOD-v2 evaluate the formulation across Faster R-CNN, FCOS, Cascade R-CNN, RetinaNet, YOLOv8s, and NMS-free YOLO26s. On TinyPerson validation, Faster R-CNN dual placement increases $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ from $20.35\%$ to $25.65\%$, while EH-WIoU reaches $26.46\%$; FCOS with H-WIoU and Gaussian centerness increases overall $\mathrm{AP}_{50}$ from $27.52\%$ to $31.13\%$ within its factorial protocol. Held-out TinyPerson test results include gains on the smallest-object subsets, while a further 51 extended models show results that vary by detector and metric. Across 71 canonical and extended test evaluations, these single-seed measurements do not establish a general ranking of losses. Validation and official-test scores are presented separately. The proposed terms are used only during training and introduce no additional inference-time operators. Code is available at the project repository.
+\end{abstract}
+
+\section{Introduction}
+
+Detecting tiny objects is critical for real-world applications such as maritime search and rescue, drone surveillance, and aerial satellite monitoring~\cite{yu2020tinyperson,wang2021aitod,xu2022aitodv2nwd}. In these settings, objects often occupy only a handful of pixels on the camera sensor. For example, a swimmer stranded in open water or a distant vehicle in satellite imagery may have a characteristic scale of $s = \sqrt{wh} < 8$ pixels.
+
+At this microscopic scale, standard object detection methods face a fundamental geometric failure:
+\begin{quote}
+  \emph{A shift of just 1 or 2 pixels can completely eliminate bounding-box overlap.}
+\end{quote}
+Consider two identical $4\times4$-pixel bounding boxes. If one box is shifted by 2 pixels in both horizontal and vertical directions, the overlapping area drops from $16$ pixels down to just $4$ pixels—a $75\%$ loss of overlap, resulting in $\mathrm{IoU} = 4/(16+16-4) = 1/7 \approx 0.14$. If the shift exceeds 4 pixels, the boxes no longer overlap at all ($\mathrm{IoU} = 0$).
+
+\begin{figure}[t]
+  \centering
+  \includesvg[width=0.92\textwidth,inkscapelatex=false]{figures/fig1_revised_geometry}
+  \caption{SNGD affinity geometry.}
+  \label{fig:homotopy_geometry}
+\end{figure}
+
+Figure~\ref{fig:homotopy_geometry}(a) shows how the rational scale gate changes the mixture between geometric affinity and IoU. Panel (b) translates equal $4\times4$ boxes horizontally: first contact occurs at $d=4$ pixels, and strict separation begins for $d>4$; the GIoU curve is not clipped. Panel (c) shows one-sided translation derivatives on smooth intervals, with unequal slopes for IoU and its mixture at contact. The plot includes overlap and contact, whereas the theorem's uniform bound applies only on its compact, strictly separated domain.
+
+Inside a strictly disjoint region, the IoU term is locally constant with respect to box coordinates, so its box-coordinate gradient is zero. Other training losses can still update the network; the missing signal here concerns the IoU regression term.
+
+To address this problem, several geometry-extended losses have been proposed. Generalized IoU (GIoU)~\cite{rezatofighi2019generalized} adds a penalty based on the smallest enclosing box, and Distance-IoU (DIoU)~\cite{zheng2020distance} penalizes the distance between box centers. Their geometric penalties differ from the scale-conditioned affinity studied here; this paper compares the resulting detectors empirically rather than asserting a universal gradient direction for those losses.
+
+Another approach is to model bounding boxes as 2D Gaussian distributions and measure their distance using the Normalized Wasserstein Distance (NWD)~\cite{wang2021nwd}. Its distance remains defined for separated boxes and provides a smooth center-distance term. A zero center displacement, however, has zero center gradient, and finite-precision exponentials can saturate at large distances. We blend geometric affinity with IoU so the weight assigned to each depends on target scale.
+
+\paragraph{Our Insight: Scale-Adaptive Blending.}
+We do not need to choose between IoU and Wasserstein distance. Instead, we can combine their strengths:
+\begin{itemize}
+  \item For \textbf{tiny objects}, place more weight on a smooth, scale-normalized geometric affinity that remains positive at finite separation in exact arithmetic.
+  \item For \textbf{larger objects}, rely primarily on standard IoU to ensure sharp, tight bounding boxes.
+\end{itemize}
+
+We realize this concept in \textbf{Scale-Adaptive Wasserstein--IoU (H-WIoU)} (Figure~\ref{fig:homotopy_geometry}). Using a quadratic rational gate $\gamma(s) = s^2 / (s^2 + \sigma_0^2)$, H-WIoU shifts mixture weight toward IoU as target scale grows without adding learned gate parameters; the pivot $\sigma_0$ is selected by protocol. The frozen implementations use either a symmetric scale-normalized divergence or target-normalized Gaussian Wasserstein affinity, as specified below. We also study an entropy-guided extension (\textbf{EH-WIoU}) and apply scale-adaptive similarity to positive label assignment (\textbf{HLA}, \textbf{H-TAL}, and \textbf{H-STAL}).
+
+\paragraph{Key Contributions:}
+\begin{enumerate}
+  \item \textbf{Scale-Adaptive Formulation.} We study H-WIoU as a family that combines one of two specified geometric affinities with IoU through a rational gate controlled by target scale, with no learned gate parameters.
+  \item \textbf{Analytical Properties.} On compact, strictly disjoint box domains, we establish a uniform positive centroid-gradient lower bound in exact real arithmetic and show that the negative centroid gradient is a descent direction for squared centroid error.
+  \item \textbf{Detector Integration and Factorial Analysis.} We integrate the similarity into regression and assignment across Faster R-CNN, FCOS, Cascade R-CNN, RetinaNet, YOLOv8s, and YOLO26s, and use factorial experiments to separate loss, centerness, sampling, and placement effects.
+  \item \textbf{Held-Out Evaluation.} We evaluate selected configurations on the official TinyPerson test split and report detector-dependent gains and trade-offs across fine-grained object-scale subsets.
+\end{enumerate}
+
+
+\section{Related Work}
+
+\subsection{Bounding-Box Regression Losses}
+Early object detectors used Smooth-L1 loss to penalize coordinate offsets independently~\cite{girshick2015fast}. Because independent coordinate regression does not optimize overall box overlap, IoU loss was introduced to directly align training with evaluation metrics. To handle disjoint boxes where IoU is zero, GIoU~\cite{rezatofighi2019generalized} incorporates the area of the smallest enclosing box, DIoU~\cite{zheng2020distance} adds a normalized center-distance penalty, and CIoU~\cite{zheng2020distance} / EIoU~\cite{zhang2022eiou} add aspect-ratio and dimension penalties. Other variants, such as $\alpha$-IoU~\cite{he2021alphaiou}, Wise-IoU~\cite{tong2023wiou}, SIoU~\cite{ghevondean2022siou}, and Inner-IoU~\cite{zhang2023inneriou}, reshape gradient weights or use auxiliary scaling factors.
+
+In parallel, Wasserstein-based losses model bounding boxes as 2D Gaussians. Normalized Wasserstein Distance (NWD)~\cite{wang2021nwd,xu2022aitodv2nwd} computes a transport-based similarity that remains defined when boxes do not overlap. Subsequent works, including GWD~\cite{yang2021gwd}, KLD~\cite{yang2021kld}, IGWD~\cite{hu2025cfenet}, and GCD~\cite{guan2025gcd}, extended Gaussian modeling to oriented boxes and aerial imagery. H-WIoU blends an identified geometric affinity with IoU as a continuous function of object scale.
+
+\subsection{Label Assignment for Tiny Objects}
+Assigning positive training anchors is notoriously difficult for tiny objects. Standard Max-IoU matching requires candidates to exceed fixed overlap thresholds (e.g., $0.5$ or $0.7$), which microscopic objects rarely achieve. Adaptive strategies such as ATSS~\cite{zhang2020atss}, PAA~\cite{kim2020paa}, and OTA~\cite{ge2021ota} compute statistical or optimal-transport assignments. For tiny objects specifically, RFLA~\cite{xu2022rfla} uses Gaussian receptive-field points, and SimD~\cite{shi2024simd} combines centroid distance with shape similarity. Our Homotopy Label Assignment (HLA) incorporates scale-adaptive similarity directly into the anchor-matching stage.
+
+\subsection{Real-Time and NMS-Free Detectors}
+Modern one-stage detectors like YOLOv8~\cite{jocher2023yolo} and YOLOv9~\cite{wang2024yolov9} use the Task-Aligned Assigner (TAL)~\cite{feng2021tood}, which ranks candidates by $t = s^\alpha \cdot \mathrm{IoU}^\beta$. End-to-end NMS-free models, such as YOLO26s~\cite{ultralytics2026yolo26} (built upon dual-label assignment~\cite{wang2024yolov10}), eliminate non-maximum suppression by combining one-to-one and one-to-many matching branches. In this paper, we extend our scale-adaptive similarity into both YOLOv8s (H-TAL) and YOLO26s (H-STAL).
+
+
+\section{Methodology}
+
+\subsection{Representing Boxes as 2D Gaussians}
+Let a predicted box be $A = (\mu_a, w_a, h_a)$ and its target be $B = (\mu_b, w_b, h_b)$, where $\mu = (x, y)^T$ is the box center, and $w, h > 0$ are the width and height. Following NWD~\cite{wang2021nwd}, we can associate each box with a 2D Gaussian distribution $\mathcal{N}(\mu, \Sigma)$, where the covariance matrix is defined by:
+\begin{equation}
+  \Sigma = \operatorname{diag}\left(\frac{w^2}{4}, \frac{h^2}{4}\right).
+\end{equation}
+This converts a crisp, hard-edged rectangle into a smooth, continuous bell curve. The 2-Wasserstein distance between two such Gaussian distributions is:
+\begin{equation}
+  \label{eq:wasserstein}
+  \mathcal{W}_2^2(\mathcal{N}_a, \mathcal{N}_b)
+  = \|\mu_a - \mu_b\|_2^2 + \frac{(w_a - w_b)^2 + (h_a - h_b)^2}{4}.
+\end{equation}
+Notice that this distance has physical units of pixels squared. A 2-pixel error on a 4-pixel object has the same numerical penalty as a 2-pixel error on a 100-pixel object, even though a 2-pixel shift is massive for the tiny object ($50\%$ of its size) and negligible for the large object ($2\%$). To fix this, we must normalize the distance by scale.
+
+\subsection{Geometric Affinities Used by the Frozen Arms}
+One implementation defines the \textbf{Scale-Normalized Geometric Divergence (SNGD)} by normalizing center displacements with both boxes' dimensions and measuring shape by log ratios:
+\begin{equation}
+  \label{eq:sngd}
+  \mathcal{D}_{\mathrm{SN}}^2(A, B)
+  = \frac{2(x_a - x_b)^2}{w_a^2 + w_b^2}
+  + \frac{2(y_a - y_b)^2}{h_a^2 + h_b^2}
+  + \ln^2\left(\frac{w_a}{w_b}\right)
+  + \ln^2\left(\frac{h_a}{h_b}\right).
+\end{equation}
+This divergence has several appealing properties:
+\begin{itemize}
+  \item \textbf{Scale Invariance:} If we scale both boxes by a constant factor $\lambda > 0$ (e.g., zooming in on an image), $\mathcal{D}_{\mathrm{SN}}^2$ remains completely unchanged.
+  \item \textbf{Non-negativity:} $\mathcal{D}_{\mathrm{SN}}^2(A, B) \ge 0$, and equals $0$ if and only if $A = B$.
+  \item \textbf{Symmetry:} $\mathcal{D}_{\mathrm{SN}}^2(A, B) = \mathcal{D}_{\mathrm{SN}}^2(B, A)$.
+\end{itemize}
+
+Its affinity is bounded in $(0, 1]$ via the exponential map:
+\begin{equation}
+  T_{\mathrm{SN}}(A, B) = \exp\left(-\mathcal{D}_{\mathrm{SN}}^2(A, B)\right).
+\end{equation}
+The other implementation normalizes the squared Gaussian Wasserstein distance in Eq.~\eqref{eq:wasserstein} by the \emph{target} area. With $s_B^2=w_bh_b$ and numerical stabilizer $\varepsilon>0$, it computes
+\begin{equation}
+  \label{eq:target_w2}
+  \mathcal{D}_{\mathrm{TW}}^2(A,B)
+  = \frac{\mathcal{W}_2^2(\mathcal{N}_a,\mathcal{N}_b)}{2s_B^2+\varepsilon},
+  \qquad T_{\mathrm{TW}}(A,B)=\exp\!\left(-\mathcal{D}_{\mathrm{TW}}^2(A,B)\right).
+\end{equation}
+Unlike SNGD, this target-normalized affinity uses squared width and height differences and is asymmetric in candidate and target. Both affinities equal one for identical boxes and remain positive at finite displacement in exact arithmetic. YOLO's implementation caps the exponent at 30 for numerical stability; that cap changes the gradient at extreme separations. We write $T_q$ for the exact affinity $q\in\{\mathrm{SN},\mathrm{TW}\}$ selected by the frozen arm and identify the YOLO capped variant separately.
+
+\subsection{The Rational Scale Gate}
+To blend the selected affinity $T_q(A, B)$ with standard $\mathrm{IoU}(A, B)$, we define a scale-dependent gating function. Let $s_B = \sqrt{w_b h_b}$ denote the scale of the target box, and let $\sigma_0 > 0$ be a reference scale pivot (in pixels). We define the rational gate $\gamma(s_B)$ as:
+\begin{equation}
+  \label{eq:gamma}
+  \gamma(s_B) = \frac{s_B^2}{s_B^2 + \sigma_0^2}, \qquad
+  1 - \gamma(s_B) = \frac{\sigma_0^2}{s_B^2 + \sigma_0^2}.
+\end{equation}
+This gate behaves in an intuitive and desirable way:
+\begin{enumerate}
+  \item For \textbf{microscopic objects} ($s_B \to 0$), $\gamma(s_B) \to 0$ and $1 - \gamma(s_B) \to 1$. The supervision relies entirely on the selected geometric affinity $T_q(A, B)$.
+  \item For \textbf{large objects} ($s_B \gg \sigma_0$), $\gamma(s_B) \to 1$ and $1 - \gamma(s_B) \to 0$. The supervision transitions completely to standard $\mathrm{IoU}(A, B)$.
+  \item At the \textbf{pivot scale} ($s_B = \sigma_0$), $\gamma(\sigma_0) = 0.5$, providing an equal 50/50 blend.
+\end{enumerate}
+
+For either identified affinity, the \textbf{H-WIoU similarity} and its corresponding regression loss are:
+\begin{equation}
+  \label{eq:similarity}
+  \begin{split}
+    \mathcal{S}_{\mathrm{H},q}(A, B) &= \gamma(s_B) \cdot \mathrm{IoU}(A, B) + \left(1 - \gamma(s_B)\right) \cdot T_q(A, B),\\
+    \mathcal{L}_{\mathrm{H},q}(A, B) &= 1 - \mathcal{S}_{\mathrm{H},q}(A, B).
+  \end{split}
+\end{equation}
+Both $\mathcal{S}_{\mathrm{H},q}$ and $\mathcal{L}_{\mathrm{H},q}$ are bounded within $[0, 1]$. On strictly separated boxes with nonzero center displacement, the uncapped affinities supply a nonzero center-gradient component in exact arithmetic even though the IoU component is locally constant.
+
+\subsection{Optional Feature Entropy Extension (EH-WIoU)}
+\label{sec:entropy_math}
+In complex backgrounds (such as sea clutter or aerial shadows), we can optionally modulate the gate using the channel entropy of local deep features. For a feature vector at spatial location $q$ with $C_f>1$ channels, we compute its normalized channel entropy $H_q \in [0, 1]$:
+\begin{equation}
+  p_{q,c} = \frac{e^{f_{q,c}}}{\sum_{j=1}^{C_f} e^{f_{q,j}}}, \qquad
+  H_q = -\frac{\sum_{c=1}^{C_f} p_{q,c} \ln p_{q,c}}{\ln C_f}.
+\end{equation}
+We then modulate the scale gate using a coupling factor $\beta \ge 0$:
+\begin{equation}
+  \label{eq:entropy_homotopy}
+  \gamma_\beta(s_B, H) = \frac{s_B^2(1 + \beta H)}{s_B^2(1 + \beta H) + \sigma_0^2}.
+\end{equation}
+When $\beta = 0$, this recovers the scale-only gate for the \emph{same selected affinity} $q$. During backpropagation, detaching entropy stops gradients through the entropy-prior computation; the regression or assignment loss can still update shared detector parameters through other paths.
+
+\subsection{Theoretical Guarantees}
+
+\begin{theorem}[Disjoint-box centroid gradient]
+  \label{thm:nonvanishing}
+  Fix a target box $B$ with $w_b,h_b>0$ and $\sigma_0>0$. Define
+  \begin{equation*}
+    \mathcal{Z}_B=\{A:\mathrm{IoU}(A,B)=0\}.
+  \end{equation*}
+  For $0<\delta\le\kappa<\infty$ and $0<r_{\min}\le r_{\max}<\infty$, let $K$ be a nonempty compact subset of $\mathrm{int}(\mathcal{Z}_B)$ such that every $A\in K$ satisfies
+  \begin{equation}
+    \delta \le \frac{\|\mu_a - \mu_b\|_2}{s_B} \le \kappa, \qquad
+    \frac{w_a}{w_b} \in [r_{\min}, r_{\max}], \qquad
+    \frac{h_a}{h_b} \in [r_{\min}, r_{\max}].
+  \end{equation}
+  For either \emph{uncapped}, scale-only affinity $q\in\{\mathrm{SN},\mathrm{TW}\}$, in exact real arithmetic there exists a constant $c_q > 0$, depending on $B$, the stated bounds, $\sigma_0$, and $q$, such that
+  \begin{equation}
+    \label{eq:lower_bound}
+    \|\nabla_{\mu_a} \mathcal{L}_{\mathrm{H},q}(A, B)\|_2 \ge c_q
+  \end{equation}
+  uniformly for all $A \in K$. This statement does not cover YOLO's capped exponent or finite-precision saturation.
+\end{theorem}
+
+\noindent\textbf{Intuition of Proof.} For $A \in K \subset \mathrm{int}(\mathcal{Z}_B)$, the boxes are strictly disjoint, so the IoU term is locally constant. Differentiating the two uncapped affinities with respect to the predicted center gives
+\begin{equation}
+  \label{eq:centroid_gradient}
+  \begin{aligned}
+  g_{\mathrm{SN}} &= 4(1-\gamma)T_{\mathrm{SN}}
+  \begin{bmatrix} (x_a-x_b)/(w_a^2+w_b^2) \\ (y_a-y_b)/(h_a^2+h_b^2) \end{bmatrix},\\
+  g_{\mathrm{TW}} &= \frac{2(1-\gamma)T_{\mathrm{TW}}}{2s_B^2+\varepsilon}(\mu_a-\mu_b).
+  \end{aligned}
+\end{equation}
+Because $1-\gamma>0$, each uncapped $T_q>0$, and $\|\mu_a-\mu_b\|_2\ge\delta s_B>0$ with bounded positive dimensions, each continuous gradient norm has a positive minimum on compact $K$. Figure~\ref{fig:homotopy_geometry}(c) illustrates one translation slice of the SNGD variant; it does not plot the uniform constant $c_q$. \hfill $\square$
+
+\begin{proposition}[Corrective Gradient Direction]
+  \label{prop:corrective_direction}
+  For either uncapped scale-only affinity $q\in\{\mathrm{SN},\mathrm{TW}\}$, any strictly disjoint differentiable box $A$ with $\Delta=\mu_a-\mu_b\ne 0$ has a centroid gradient $g_q=\nabla_{\mu_a}\mathcal{L}_{\mathrm{H},q}$ satisfying
+  \begin{equation}
+    \langle g_q,\Delta\rangle>0.
+  \end{equation}
+  Each expression in Eq.~\eqref{eq:centroid_gradient} is a positive coefficient times the displacement, with positive coordinate weights for SNGD. Thus $-g_q$ is a strict descent direction for squared centroid error. A centroid-only update
+  \begin{equation}
+    \mu_a^+ = \mu_a - \alpha g_q
+  \end{equation}
+  reduces the squared centroid error for sufficiently small $\alpha > 0$. This statement concerns the box-center variables and does not guarantee improvement under an arbitrary network-parameter update.
+\end{proposition}
+
+\subsection{Detector Integration}
+
+\begin{figure}[t]
+  \centering
+  \includesvg[width=0.95\textwidth,inkscapelatex=false]{figures/fig2_architecture_publication}
+  \caption{H-WIoU formulations and detector integration.}
+  \label{fig:architecture}
+\end{figure}
+
+As shown in Figure~\ref{fig:architecture}, the frozen arms use different affinities and training placements. FCOS, the Faster R-CNN placement and beta factorials, Cascade R-CNN, and RetinaNet use the target-normalized W$_2$ path. YOLO uses its capped target-normalized path. The generic Faster R-CNN metric registry can instead select SNGD under \texttt{h\_wiou}; each reported arm must be identified from its frozen command and config. These training changes leave the compared inference architectures unchanged:
+\begin{itemize}
+  \item \textbf{RPN Label Assignment (HLA):} In Faster R-CNN, the identified $\mathcal{S}_{\mathrm{H},q}$ replaces the standard IoU score used during anchor matching. This can change candidate ranking and threshold crossings while retaining the detector's remaining matching rules.
+  \item \textbf{RoI / Dense Box Regression:} The identified $\mathcal{L}_{\mathrm{H},q}$ replaces the configured baseline box loss in Faster R-CNN, FCOS, Cascade R-CNN, or RetinaNet, with placement specified per arm.
+  \item \textbf{Task-Aligned Assignment (H-TAL \& H-STAL):} In one-stage YOLOv8s and end-to-end NMS-free YOLO26s, the alignment score $t = s^\alpha \cdot \mathrm{IoU}^\beta$ is replaced with:
+  \begin{equation}
+    \label{eq:htal}
+    t_{\mathrm{H}} = s^\alpha \cdot \left[\mathcal{S}_{\mathrm{H},q}(A, B)\right]^\beta.
+  \end{equation}
+  For finite distances below YOLO's exponent cap, this avoids forcing the spatial component to zero solely because IoU is zero.
+\end{itemize}
+
+
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Datasets and Evaluation Metrics}
+\begin{itemize}
+  \item \textbf{Scale Match TinyPerson~\cite{yu2020tinyperson}:} A benchmark for tiny person detection in maritime and seaside environments. We use the audited Scale Match surface with $628$ training and $118$ validation images, tiled into $512\times512$ patches with $64$-pixel overlap ($1,684$ validation tiles). We evaluate overall AP at IoU thresholds of $0.25$, $0.50$, and $0.75$, along with fine-grained scale subsets: $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ ($s \le 8$\,px) and reasonable-scale objects ($\mathrm{AP}_{50}^{\mathrm{reas.}}$).
+  \item \textbf{AI-TOD-v2~\cite{xu2022aitodv2nwd}:} The dataset authors report $28,036$ aerial images across the released splits. Our frozen training contract contains $11,214$ training annotation records ($11,204$ nonempty workload images) and $2,804$ allowed validation images; the held-out final split is evaluated only in the separately audited official-test results. We report $\mathrm{AP}$ (averaged across $\text{IoU} \in [0.50:0.05:0.95]$), $\mathrm{AP}_{50}$, $\mathrm{AP}_{75}$, very-tiny and tiny-object AP ($\mathrm{AP}_{vt}$ and $\mathrm{AP}_{t}$), small-object $\mathrm{AP}_s$, and recall $\mathrm{AR}_{1500}$.
+\end{itemize}
+All metrics in this paper are reported in \textbf{percentages (\%)} with two decimal places, and IoU thresholds are ordered in ascending sequence ($\mathrm{AP}_{25} \to \mathrm{AP}_{50} \to \mathrm{AP}_{75}$).
+
+\subsection{Implementation and Training Protocols}
+All experiments use PyTorch and Seed 42. Training runs were executed on Kaggle GPUs; an NVIDIA RTX 5070 Ti was used for local checkpoint replay and latency measurements. Two-stage and dense anchor-free models use ResNet-50-FPN backbones~\cite{he2016resnet,lin2017fpn}. Model parameters are: Faster R-CNN ($41.3$M), FCOS ($32.1$M), Cascade R-CNN ($41.9$M), RetinaNet ($32.2$M), YOLOv8s ($11.1$M), and YOLO26s ($9.9$M). The TinyPerson Faster R-CNN, FCOS, Cascade R-CNN, and RetinaNet comparisons use 20-epoch training budgets; family-specific optimizer settings are recorded in their frozen protocols. AI-TOD-v2 FCOS loss comparisons use 10 epochs, whereas the Faster R-CNN label-assignment comparison uses 12 epochs. YOLOv8s and YOLO26s request a maximum of 100 epochs with early-stopping patience 25; some runs end earlier.
+
+
+\section{Results and Analysis}
+
+\subsection{TinyPerson Multi-Paradigm Evaluation}
+\label{sec:tinyperson_main}
+
+Table~\ref{tab:tinyperson_main} reports performance across four detector paradigms on Scale Match TinyPerson. Boldface marks peak displayed values within each detector family.
+
+\begin{table}[t]
+  \centering
+  \caption{TinyPerson validation across detector families.}
+  \label{tab:tinyperson_main}
+  \small
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{llccccc}
+    \toprule
+    Detector / Configuration & Parameters & $\mathrm{AP}_{25}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{all}}$ & $\mathrm{AP}_{75}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ & $\mathrm{AP}_{50}^{\mathrm{reas.}}$\\
+    \midrule
+    Faster R-CNN: Baseline & 41.3M & 59.30 & 42.22 & 5.92 & 20.35 & 54.59\\
+    \quad HLA + RoI H-WIoU (Dual) & 41.3M & \textbf{59.48} & 42.22 & 6.05 & 25.65 & \textbf{61.75}\\
+    \quad EH-WIoU ($\beta=1$) & 41.3M & 59.42 & \textbf{42.97} & \textbf{6.15} & \textbf{26.46} & 59.78\\
+    \midrule
+    FCOS: GIoU Baseline & 32.1M & 48.26 & 27.52 & 3.05 & 5.58 & 43.45\\
+    \quad H-WIoU + Gaussian centerness & 32.1M & 54.20 & \textbf{31.13} & \textbf{3.06} & 8.10 & \textbf{51.26}\\
+    \quad H-WIoU + Gaussian centerness + TOD sampling & 32.1M & \textbf{55.75} & 30.10 & \textbf{3.06} & \textbf{11.92} & 41.47\\
+    \midrule
+    Cascade R-CNN: Baseline & 41.9M & 61.86 & \textbf{46.08} & \textbf{7.00} & 26.70 & 58.51\\
+    \quad EH-WIoU ($\sigma_0=5$, $\beta=0.5$) & 41.9M & 60.97 & 44.81 & 6.34 & -- & \textbf{60.56}\\
+    \midrule
+    RetinaNet: Baseline & 32.2M & 51.04 & 34.58 & 4.12 & 7.82 & 39.80\\
+    \quad H-WIoU ($\sigma_0=5$) & 32.2M & \textbf{51.86} & \textbf{35.12} & \textbf{4.25} & \textbf{8.94} & \textbf{42.12}\\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+Key observations from Table~\ref{tab:tinyperson_main}:
+\begin{itemize}
+  \item \textbf{Faster R-CNN:} Dual placement (HLA in RPN + H-WIoU in RoI) improves microscopic object detection, raising $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ from $20.35\%$ to $25.65\%$ ($+5.30$ percentage points, a $26\%$ relative gain) and reasonable-scale AP from $54.59\%$ to $61.75\%$ ($+7.16$ pp). The entropy-guided variant (EH-WIoU, $\beta=1$) achieves the highest overall $\mathrm{AP}_{50}$ of $42.97\%$ and peak $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ of $26.46\%$.
+  \item \textbf{FCOS:} The standard GIoU baseline reaches $27.52\%$ $\mathrm{AP}_{50}$. H-WIoU with Gaussian centerness reaches $31.13\%$ $\mathrm{AP}_{50}$ ($+3.61$ pp) and $51.26\%$ reasonable AP ($+7.81$ pp). Adding TOD-adaptive sampling gives $11.92\%$ $\mathrm{AP}_{50}^{\mathrm{tiny1}}$, compared with $5.58\%$ for the baseline.
+  \item \textbf{Cascade R-CNN \& RetinaNet:} The Cascade method's clean EMA replay gives $60.97\%$ AP$_{25}$, $44.81\%$ overall AP$_{50}$, and $60.56\%$ reasonable-scale AP$_{50}$, versus $61.86\%$, $46.08\%$, and $58.51\%$ for its baseline. Its tiny1 AP$_{50}$ remains withheld because two replay records differ beyond tolerance. RetinaNet's tiny1 AP$_{50}$ rises from $7.82\%$ to $8.94\%$ in its tested comparison.
+\end{itemize}
+
+\subsection{Sensitivity to the H-WIoU Homotopy Form}
+\label{sec:homotopy_form_sensitivity}
+
+We compared five alternative homotopy forms with the accepted rational-form control on the same Seed-42 TinyPerson validation surface. All models use H-WIoU with $\sigma_0=5$ pixels, standard centerness and sampling, and a 20-epoch schedule. Table~\ref{tab:homotopy_form_sensitivity} reports each run's best validation checkpoint; the rational control was independently replayed in the factorial study. Boldface marks the highest observed value for each metric among the six forms. The sigmoid form has the highest observed AP, AP$_{50}$, and tiny1 AP$_{50}$. The rational form is therefore not the top-performing choice in this single-seed comparison; these results describe the tested checkpoints and do not establish statistical significance.
+
+\begin{table}[t]
+  \centering
+  \caption{Homotopy-form sensitivity on TinyPerson validation.}
+  \label{tab:homotopy_form_sensitivity}
+  \small
+  \begin{tabular}{lcccc}
+    \toprule
+    Homotopy form & Best epoch & AP & AP$_{50}$ & AP$_{50}^{\mathrm{tiny1}}$ \\
+    \midrule
+    Rational & 6 & 25.74 & 26.23 & 5.66 \\
+    Exponential & 6 & 25.89 & 26.67 & 6.50 \\
+    Sigmoid & 10 & \textbf{26.90} & \textbf{27.93} & \textbf{8.18} \\
+    Static ($\gamma=0.5$) & 8 & 25.13 & 25.52 & 6.86 \\
+    Pure W$_2$ ($\gamma=0$) & 10 & 22.12 & 22.27 & 5.35 \\
+    Pure IoU ($\gamma=1$) & 9 & 26.48 & 27.06 & 8.04 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Comparison with Published Bounding-Box Objectives}
+\label{sec:sota_loss_benchmark}
+
+Table~\ref{tab:sota_losses} summarizes Seed-42 TinyPerson validation comparisons. TinyPerson factorial rows use best-validation checkpoints. External TinyPerson objectives use terminal epoch-20 metrics except IGWD, GCD, and Inner-IoU, whose frozen best-AP$_{50}$ checkpoints are identified in the row labels and pass selector-bound replay. Prediction-schema recovery removes only out-of-contract class index 0 from separate derived files; evaluator metrics are unchanged. Because the selectors differ, these results are descriptive rather than a cross-method ranking; boldface marks column maxima only. Rows that fail scoped replay or schema gates are withheld, and Gaussian-centerness rows are system-level comparisons.
+
+\begin{table}[t]
+  \centering
+  \caption{Bounding-box loss comparison on TinyPerson validation.}
+  \label{tab:sota_losses}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lllcccc}
+    \toprule
+    & & & \multicolumn{4}{c}{\textbf{Scale Match TinyPerson (20 Epochs)}}\\
+    Category & Loss Objective & Venue & $\mathrm{AP}_{50}^{\mathrm{all}}$ & $\mathrm{AP}_{75}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ & $\mathrm{AP}_{50}^{\mathrm{reas.}}$\\
+    \midrule
+    Standard & GIoU & CVPR'19 & 27.52 & 3.05 & 5.58 & 43.45\\
+    \midrule
+    Geometric & CIoU & AAAI'20 & 23.93 & 2.41 & 7.91 & 35.70\\
+    & DIoU & AAAI'20 & 25.46 & 2.81 & 8.58 & 39.58\\
+    & EIoU & Neurocomp.'22 & 24.23 & 1.89 & 7.66 & 42.34\\
+    & WIoU v1 & arXiv'23 & 24.42 & 2.38 & 9.89 & 35.66\\
+    \midrule
+    Distributional & NWD & arXiv'21 & 22.83 & 1.78 & 7.76 & 41.08\\
+    & IGWD (Best AP$_{50}$, 6) & TMM'26 & 26.43 & 2.99 & 4.85 & 43.59\\
+    & SimD & IROS'24 & 23.51 & 2.19 & 7.32 & 39.15\\
+    & GCD (Best AP$_{50}$, 15) & GRSL'25 & 24.87 & 1.87 & 7.93 & 37.37\\
+    \midrule
+    Extended & $\alpha$-IoU & NeurIPS'21 & 26.54 & 2.79 & 9.41 & 44.82\\
+    & SIoU & arXiv'22 & 23.69 & 2.00 & 8.19 & 39.77\\
+    & Inner-IoU (Best AP$_{50}$, 6) & arXiv'23 & 27.07 & 3.12 & 5.67 & 46.93\\
+    \midrule
+    \textbf{Proposed} & \textbf{H-WIoU (Loss Only)} & Ours & 26.23 & 2.90 & 5.66 & 40.48\\
+    & \textbf{H-WIoU + Gaussian centerness} & Ours & \textbf{31.13} & \textbf{3.06} & 8.10 & \textbf{51.26}\\
+    & \textbf{H-WIoU + Gaussian centerness + TOD sampling} & Ours & 30.10 & \textbf{3.06} & \textbf{11.92} & 41.47\\
+    \bottomrule
+  \end{tabular}%
+  }
+\end{table}
+
+The selected TinyPerson factorial checkpoints report AP$_{50}$ values of $26.23\%$ for H-WIoU loss only and $31.13\%$ for H-WIoU with Gaussian centerness. IGWD, GCD, and Inner-IoU use predeclared best-AP$_{50}^{\mathrm{all}}$ checkpoints (epochs 6, 15, and 6); all pass strict reload and full 1,684-tile replay at the unchanged $0.0005$ tolerance, while their terminal selectors remain held. Other external rows use terminal epoch-20 metrics and separate manifest-bound best-checkpoint predictions for schema checks; the three rows labeled Best AP$_{50}$ use the same selector for both. These mixed-selector results are descriptive only. AI-TOD-v2 loss rows remain audit-only because no complete protocol-matched comparison passed identity, schema, and replay gates. Gaussian-centerness configurations change the training setup and do not isolate the loss effect.
+
+\subsection{Comparison of Label-Assignment Strategies}
+\label{sec:sota_assignment}
+
+Table~\ref{tab:sota_assignment} reports Seed-42 TinyPerson Faster R-CNN assignment diagnostics and marks the checkpoint selector used for each row. Standard IoU and HLA use placement-factorial best checkpoints; ATSS and SimD use terminal epoch-20 checkpoints; RFLA uses its predeclared best-AP50 checkpoint at epoch 6. Every displayed row passes full-validation replay for its listed selector. ATSS and SimD schema checks use manifest-bound best-checkpoint predictions separate from their displayed terminal metric selectors.
+
+NWD-assignment remains withheld because neither terminal nor best-checkpoint replay passes. AI-TOD-v2 values remain audit-only because no assignment row has a complete accepted identity and replay chain. These scores are descriptive; selector differences prevent a cross-method ranking, and boldface only marks the highest displayed value in each metric column.
+
+\begin{table}[!htbp]
+  \centering
+  \caption{Assignment strategies in TinyPerson Faster R-CNN.}
+  \label{tab:sota_assignment}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lllcccc}
+    \toprule
+    & & & \multicolumn{4}{c}{\textbf{TinyPerson (20 Epochs)}}\\
+    Assignment Strategy & Selector & Venue & $\mathrm{AP}_{50}^{\mathrm{all}}$ & $\mathrm{AP}_{75}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ & $\mathrm{AP}_{50}^{\mathrm{reas.}}$\\
+    \midrule
+    Standard IoU Max-Match & Best & NeurIPS'15 & 42.22 & 5.92 & 20.35 & 54.59\\
+    ATSS & Terminal (20) & CVPR'20 & 35.58 & 3.96 & 16.13 & 49.58\\
+    RFLA & Best AP$_{50}$ (6) & ECCV'22 & 39.45 & 4.99 & 15.82 & 54.81\\
+    NWD-assign & Withheld & arXiv'21 & -- & -- & -- & --\\
+    SimD-assign & Terminal (20) & IROS'24 & 33.34 & 3.14 & 18.03 & 48.94\\
+    \midrule
+    \textbf{HLA (RPN Only)} & Placement best & Ours & \textbf{42.48} & \textbf{6.12} & 22.59 & 54.52\\
+    \textbf{Dual HLA (RPN + RoI)} & Placement best & Ours & 42.22 & 6.05 & \textbf{25.65} & \textbf{61.75}\\
+    \bottomrule
+  \end{tabular}%
+  }
+\end{table}
+
+RFLA's terminal epoch-20 replay misses the tiny1 AP50 tolerance by $0.000659224$; Table~\ref{tab:sota_assignment} therefore reports its predeclared, replay-passing best AP50 checkpoint at epoch 6. AI-TOD-v2 assignment values remain audit-only because their source/config and selector-bound replay chains are incomplete.
+
+\clearpage
+\subsection{Real-Time YOLOv8s and NMS-Free YOLO26s Results}
+\label{sec:realtime_frontier}
+
+Table~\ref{tab:yolo_frontier} reports native Ultralytics validation diagnostics from the last logged training epoch of each YOLO run. These four metrics per dataset share the same native evaluator; they are not the independent benchmark replay scores of the saved \texttt{best.pt} checkpoints. The requested training maximum is 100 epochs with patience 25, but early stopping shortened several TinyPerson runs. The models are YOLOv8s (11.1M parameters) and NMS-free YOLO26s (9.9M parameters); boldface marks the highest native metric within each detector family. We interpret differences within each detector family as descriptive native-validation results.
+
+\begin{table}[!htbp]
+  \centering
+  \caption{YOLO validation metrics at the last logged epoch.}
+  \label{tab:yolo_frontier}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{llcccc|cccc}
+    \toprule
+    & & \multicolumn{4}{c|}{\textbf{AI-TOD-v2 (up to 100 epochs)}} & \multicolumn{4}{c}{\textbf{TinyPerson (up to 100 epochs)}}\\
+    Detector & Formulation & Precision & Recall & $\mathrm{AP}_{50}$ & $\mathrm{AP}$ & Precision & Recall & $\mathrm{AP}_{50}$ & $\mathrm{AP}$\\
+    \midrule
+    \textbf{YOLOv8s} & CIoU Baseline & 63.55 & 51.80 & 54.08 & \textbf{24.18} & 58.26 & \textbf{41.42} & \textbf{44.17} & \textbf{15.21}\\
+    & IGWD & 61.91 & 52.33 & \textbf{54.57} & 24.09 & 58.08 & 40.64 & 43.77 & 14.75\\
+    & H-WIoU & \textbf{64.61} & 51.48 & 53.95 & 23.78 & \textbf{58.65} & 38.16 & 40.75 & 13.67\\
+    & H-TAL (Dual) & 58.47 & \textbf{54.32} & 53.89 & 22.96 & 56.15 & 35.79 & 39.13 & 12.83\\
+    \midrule
+    \textbf{YOLO26s} & CIoU Baseline & 56.93 & 53.33 & 53.44 & \textbf{23.71} & \textbf{56.29} & \textbf{45.74} & \textbf{47.45} & \textbf{16.03}\\
+    (NMS-Free) & IGWD & 60.99 & \textbf{54.20} & \textbf{53.98} & 23.27 & 54.61 & 41.79 & 44.68 & 14.90\\
+    & H-WIoU & 59.09 & 51.25 & 52.63 & 22.45 & 56.13 & 39.61 & 42.46 & 14.56\\
+    & H-STAL (Dual) & \textbf{72.01} & 50.04 & 53.32 & 22.70 & 52.35 & 39.77 & 41.53 & 13.73\\
+    \bottomrule
+  \end{tabular}%
+  }
+\end{table}
+
+In the native AI-TOD-v2 YOLO26s logs, H-STAL has precision $72.01\%$ versus $56.93\%$ for CIoU ($+15.08$ pp), with lower recall ($50.04\%$ versus $53.33\%$) and similar native AP$_{50}$ ($53.32\%$ versus $53.44\%$). The corresponding TinyPerson H-STAL run has lower native AP than its CIoU baseline. These diagnostic contrasts do not establish a common-evaluator benchmark ranking; independent replay of saved best checkpoints is tracked separately.
+
+\subsection{Official TinyPerson Benchmark Test Evaluation}
+\label{sec:official_test_eval}
+
+We evaluated models on the official held-out TinyPerson test set ($786$ images, $18,508$ ground-truth annotations) using the official PointTinyBenchmark evaluator with ignore-uncertain annotations enabled. Sliding-window inference uses $512\times512$ tiles with $64$-pixel overlap ($23,319$ tiles per model). In Table~\ref{tab:tinyperson_official_test}, boldface marks peak scores within each detector family.
+
+\begin{table}[t]
+  \centering
+  \caption{Canonical TinyPerson official-test results.}
+  \label{tab:tinyperson_official_test}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{llccccccccc}
+    \toprule
+    Detector & Formulation & $\mathrm{AP}_{25}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{all}}$ & $\mathrm{AP}_{75}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny2}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny3}}$ & $\mathrm{AP}_{50}^{\mathrm{small}}$ & $\mathrm{AP}_{50}^{\mathrm{reas.}}$\\
+    \midrule
+    Faster R-CNN & Standard Baseline & 70.17 & 52.33 & 9.83 & 47.24 & 26.68 & 50.78 & 61.12 & \textbf{69.47} & \textbf{70.33}\\
+    & EH-WIoU Dual & 71.79 & \textbf{53.23} & \textbf{9.92} & \textbf{49.53} & \textbf{30.92} & \textbf{53.39} & 61.59 & 68.99 & 68.01\\
+    & Unit Entropy ($\beta=1$) & \textbf{71.84} & 52.98 & 9.69 & 49.34 & \textbf{30.92} & 53.38 & \textbf{62.02} & 68.62 & 67.52\\
+    \midrule
+    FCOS & GIoU Baseline & 63.62 & 40.07 & 5.62 & 31.95 & 9.95 & 30.71 & 47.91 & 61.10 & \textbf{62.35}\\
+    & H-WIoU + Gaussian centerness & 68.31 & \textbf{43.18} & \textbf{6.35} & 36.79 & 11.68 & 38.09 & \textbf{53.05} & \textbf{61.62} & 62.31\\
+    & H-WIoU + Gaussian centerness + TOD sampling & \textbf{69.56} & 43.16 & 6.02 & \textbf{37.59} & \textbf{15.71} & \textbf{38.46} & 52.59 & 60.76 & 60.00\\
+    \midrule
+    Cascade R-CNN & Baseline & \textbf{72.61} & \textbf{55.33} & \textbf{11.03} & \textbf{52.41} & 32.18 & \textbf{56.79} & \textbf{65.10} & 70.25 & \textbf{70.17}\\
+    & Cascade EH-WIoU & 72.34 & 54.87 & 10.40 & 51.15 & \textbf{32.20} & 54.57 & 64.25 & \textbf{70.45} & 70.03\\
+    \midrule
+    YOLOv8s & H-TAL (Dual) & \textbf{71.87} & \textbf{51.69} & \textbf{7.82} & \textbf{49.03} & \textbf{33.86} & \textbf{55.29} & \textbf{61.36} & \textbf{64.48} & \textbf{59.18}\\
+    \midrule
+    YOLO26s & H-STAL (NMS-Free) & \textbf{72.54} & \textbf{52.42} & \textbf{8.38} & \textbf{48.91} & \textbf{34.98} & \textbf{55.72} & \textbf{60.17} & \textbf{64.84} & \textbf{61.34}\\
+    \bottomrule
+  \end{tabular}%
+  }
+\end{table}
+
+The held-out TinyPerson test set shows the clearest gains on the smallest-object subsets for Faster R-CNN and FCOS. Faster R-CNN EH-WIoU Dual increases $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ from $26.68\%$ to $30.92\%$ ($+4.24$ pp), while the FCOS H-WIoU bundle increases it from $9.95\%$ to $15.71\%$ ($+5.76$ pp). FCOS H-WIoU with Gaussian centerness also increases overall $\mathrm{AP}_{50}$ from $40.07\%$ to $43.18\%$. Cascade R-CNN shows nearly unchanged tiny1 AP but lower aggregate $\mathrm{AP}_{50}$/$\mathrm{AP}_{75}$, illustrating that the benefits are not uniform across detector families.
+
+\subsection{AI-TOD-v2 Official Test Results}
+\label{sec:aitod_official_test}
+
+The canonical AI-TOD-v2 test results cover all 14,018 images and are separate from the validation results reported earlier. Boldface marks the highest score within each detector family.
+
+\begin{table}[t]
+\centering
+\caption{Canonical AI-TOD-v2 official-test results.}
+\label{tab:aitod_official_test}
+\small
+\resizebox{\textwidth}{!}{%
+  \begin{tabular}{llccccccc}
+\toprule
+Detector & Formulation & AP & $\mathrm{AP}_{50}$ & $\mathrm{AP}_{75}$ & $\mathrm{AP}_{vt}$ & $\mathrm{AP}_{t}$ & $\mathrm{AP}_{s}$ & $\mathrm{AR}_{1500}$\\
+\midrule
+    FCOS & GIoU baseline  & 16.65 & 39.81 & 11.01 & 4.05 & 15.04 & 21.48 & 28.27 \\
+    FCOS & H-WIoU loss-only  & 17.16 & 41.43 & 11.30 & 3.26 & 16.02 & 21.82 & 28.45 \\
+    FCOS & H-WIoU bundle  & \textbf{17.61} & \textbf{43.09} & \textbf{11.41} & \textbf{5.26} & \textbf{16.42} & \textbf{22.04} & \textbf{28.87} \\
+    \midrule
+    Faster R-CNN & Standard baseline  & 17.90 & 43.79 & 11.67 & 5.56 & 17.20 & 23.31 & 27.98 \\
+    Faster R-CNN & HLA RPN  & \textbf{21.26} & \textbf{48.58} & \textbf{15.04} & \textbf{8.91} & \textbf{21.32} & \textbf{24.52} & \textbf{31.33} \\
+    Faster R-CNN & H-WIoU Dual (entropy prior disabled)  & 17.98 & 43.90 & 11.25 & 6.17 & 17.60 & 22.32 & 28.32 \\
+    \midrule
+    YOLOv8s & CIoU baseline  & \textbf{21.71} & \textbf{49.86} & \textbf{15.20} & \textbf{7.08} & \textbf{19.86} & 28.41 & \textbf{32.00} \\
+    YOLOv8s & H-TAL  & 20.79 & 49.83 & 13.61 & 6.21 & 18.67 & \textbf{28.65} & 31.92 \\
+    \midrule
+    YOLO26s & CIoU baseline  & \textbf{21.15} & 48.78 & \textbf{14.70} & \textbf{8.31} & 20.03 & \textbf{27.60} & 31.11 \\
+    YOLO26s & H-STAL (NMS-free)  & 21.14 & \textbf{50.36} & 13.93 & 7.63 & \textbf{20.04} & 27.50 & \textbf{31.35} \\
+\bottomrule
+\end{tabular}%
+}\end{table}
+
+\subsection{Additional Official-Test Results}
+\label{sec:extended_official_test_results}
+
+The extended evaluation adds 51 models to the 20 canonical models: 22 additional AI-TOD-v2 models evaluated on 14,018 images and 29 additional TinyPerson models evaluated on 786 images. Each row is one Seed-42 checkpoint evaluated on its official test split. These tables describe the observed models and do not establish a general ranking of loss functions; boldface marks the highest score within each detector family.
+
+\begin{table}[t]
+\centering
+\caption{Additional AI-TOD-v2 official-test results.}
+\label{tab:extended_aitod_test}
+\small
+\resizebox{\textwidth}{!}{%
+  \begin{tabular}{llccccccc}
+\toprule
+Detector & Formulation & AP & $\mathrm{AP}_{50}$ & $\mathrm{AP}_{75}$ & $\mathrm{AP}_{vt}$ & $\mathrm{AP}_{t}$ & $\mathrm{AP}_{s}$ & $\mathrm{AR}_{1500}$\\
+\midrule
+    FCOS & Alpha-IoU  & 5.89 & 16.80 & 3.13 & 0.24 & 3.58 & 10.24 & 13.26 \\
+    FCOS & DIoU  & 5.96 & 17.28 & 2.85 & \textbf{0.31} & \textbf{3.99} & 10.46 & 13.74 \\
+    FCOS & EIoU  & 6.09 & 17.34 & 2.98 & 0.30 & 3.71 & 10.67 & \textbf{13.92} \\
+    FCOS & GCD  & 5.98 & 16.80 & 3.26 & \textbf{0.31} & 3.73 & 10.34 & 13.48 \\
+    FCOS & GIoU  & 6.17 & 17.19 & 3.11 & 0.27 & 3.87 & 10.71 & 13.68 \\
+    FCOS & IGWD  & 5.69 & 16.76 & 2.74 & 0.23 & 3.72 & 9.74 & 13.22 \\
+    FCOS & Inner-IoU  & 6.01 & 17.11 & 3.03 & 0.27 & 3.87 & 10.37 & 13.81 \\
+    FCOS & NWD  & 5.69 & 16.23 & 2.83 & 0.29 & 3.68 & 10.12 & 13.20 \\
+    FCOS & SimD  & 5.74 & 16.70 & 2.93 & 0.28 & 3.54 & 9.90 & 12.89 \\
+    FCOS & SIoU  & 5.96 & 17.11 & 2.97 & 0.29 & 3.83 & 10.32 & 13.76 \\
+    FCOS & WIoU  & \textbf{6.27} & \textbf{17.57} & \textbf{3.27} & 0.29 & 3.82 & \textbf{10.91} & 13.76 \\
+    \midrule
+    Faster R-CNN & ATSS  & 8.72 & 22.12 & 4.95 & 2.64 & 9.41 & 11.67 & 17.87 \\
+    Faster R-CNN & HLA, RPN only  & \textbf{21.27} & \textbf{48.58} & 15.03 & \textbf{8.90} & \textbf{21.32} & \textbf{24.64} & \textbf{31.33} \\
+    Faster R-CNN & NWD assignment  & 18.43 & 42.00 & 12.95 & 8.85 & 19.27 & 19.85 & 27.68 \\
+    Faster R-CNN & RFLA  & 18.21 & 41.34 & 12.74 & 7.91 & 18.43 & 20.69 & 26.83 \\
+    Faster R-CNN & SimD assignment  & 20.72 & 45.59 & \textbf{15.31} & 8.58 & 20.09 & 24.53 & 29.39 \\
+    \midrule
+    YOLO26s & H-WIoU  & 20.39 & \textbf{48.81} & 13.46 & 6.25 & 18.63 & 27.18 & 29.97 \\
+    YOLO26s & IGWD  & \textbf{20.95} & 48.51 & \textbf{14.67} & \textbf{7.22} & \textbf{19.66} & \textbf{27.35} & \textbf{30.83} \\
+    \midrule
+    YOLOv8s & CIoU  & 21.72 & 49.86 & 15.21 & \textbf{7.08} & 19.87 & 28.39 & 32.00 \\
+    YOLOv8s & H-TAL  & 20.80 & 49.86 & 13.68 & 6.21 & 18.68 & \textbf{28.66} & 31.94 \\
+    YOLOv8s & H-WIoU  & 21.53 & \textbf{50.52} & 14.48 & 6.66 & 19.45 & 28.36 & 31.19 \\
+    YOLOv8s & IGWD  & \textbf{21.82} & 50.27 & \textbf{15.43} & 6.71 & \textbf{20.17} & 28.27 & \textbf{32.10} \\
+\bottomrule
+\end{tabular}%
+}\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Additional TinyPerson official-test results.}
+\label{tab:extended_tinyperson_test}
+\small
+\resizebox{\textwidth}{!}{%
+  \begin{tabular}{llccccccccc}
+\toprule
+Detector & Formulation & $\mathrm{AP}_{25}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{all}}$ & $\mathrm{AP}_{75}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny2}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny3}}$ & $\mathrm{AP}_{50}^{\mathrm{small}}$ & $\mathrm{AP}_{50}^{\mathrm{reas.}}$\\
+\midrule
+    FCOS & GIoU baseline  & 65.44 & 41.55 & 6.13 & 34.44 & 11.55 & 34.71 & 49.58 & 61.11 & 61.43\\
+    FCOS & EH-WIoU  & \textbf{69.66} & \textbf{43.75} & \textbf{6.36} & \textbf{38.07} & \textbf{15.79} & \textbf{39.52} & \textbf{52.65} & 61.49 & 60.74\\
+    FCOS & Alpha-IoU  & 64.95 & 40.80 & 5.94 & 34.16 & 12.18 & 34.00 & 49.43 & 59.89 & 59.56\\
+    FCOS & CIoU  & 65.07 & 40.78 & 5.80 & 34.42 & 11.21 & 33.61 & 50.67 & 60.96 & 60.22\\
+    FCOS & DIoU  & 65.46 & 40.38 & 5.28 & 34.12 & 13.39 & 34.91 & 48.38 & 58.02 & 58.94\\
+    FCOS & EIoU  & 63.09 & 38.34 & 5.00 & 30.67 & 9.72 & 29.68 & 46.67 & 58.56 & 60.79\\
+    FCOS & FCOS factorial (GIoU with TOD sampling)  & 63.24 & 40.25 & 5.59 & 32.48 & 11.31 & 30.24 & 49.04 & 61.28 & 61.50\\
+    FCOS & H-WIoU (standard centerness and sampling)  & 63.91 & 39.95 & 5.80 & 32.22 & 9.20 & 31.67 & 48.12 & 61.15 & 61.15\\
+    FCOS & H-WIoU + TOD sampling  & 62.52 & 39.29 & 5.51 & 31.40 & 10.83 & 30.44 & 47.03 & 60.23 & 61.07\\
+    FCOS & H-WIoU ($\sigma_0=4$)  & 63.75 & 40.08 & 5.84 & 31.69 & 9.61 & 30.72 & 47.47 & 61.04 & \textbf{62.84}\\
+    FCOS & H-WIoU ($\sigma_0=8$)  & 64.14 & 39.76 & 5.79 & 32.38 & 10.06 & 31.08 & 48.41 & 60.95 & 60.01\\
+    FCOS & GCD  & 62.69 & 37.70 & 5.31 & 32.24 & 9.97 & 32.55 & 46.94 & 56.20 & 53.67\\
+    FCOS & IGWD  & 63.15 & 38.87 & 5.14 & 31.20 & 8.89 & 29.96 & 47.39 & 59.65 & 60.95\\
+    FCOS & Inner-IoU  & 63.91 & 39.93 & 5.66 & 32.08 & 9.63 & 31.06 & 48.25 & 60.69 & 62.18\\
+    FCOS & NWD  & 61.29 & 35.50 & 4.44 & 30.46 & 10.90 & 29.76 & 44.10 & 53.11 & 50.27\\
+    FCOS & SimD  & 63.98 & 40.53 & 5.51 & 32.91 & 9.72 & 31.30 & 49.24 & \textbf{61.84} & 61.66\\
+    FCOS & SIoU  & 62.63 & 39.02 & 5.46 & 30.62 & 9.44 & 29.94 & 45.86 & 59.92 & 61.54\\
+    FCOS & WIoU  & 64.98 & 40.73 & 5.82 & 34.65 & 11.90 & 35.53 & 49.73 & 60.12 & 59.79\\
+    \midrule
+    Faster R-CNN & ATSS  & 68.68 & 50.23 & 9.47 & 45.18 & 23.49 & 48.73 & 59.43 & 68.31 & 65.70\\
+    Faster R-CNN & NWD  & 69.28 & 51.26 & 10.01 & 45.42 & 23.31 & 48.04 & 60.02 & 69.09 & \textbf{69.48}\\
+    Faster R-CNN & RFLA  & 71.07 & 50.93 & 9.61 & 46.98 & 25.91 & 49.58 & 61.11 & 67.86 & 65.43\\
+    Faster R-CNN & SimD  & \textbf{71.37} & \textbf{52.88} & \textbf{10.49} & \textbf{48.50} & \textbf{28.88} & \textbf{51.67} & \textbf{61.37} & \textbf{69.37} & 68.64\\
+    \midrule
+    YOLO26s & H-STAL (NMS-free)  & \textbf{72.94} & 52.41 & 8.35 & 48.90 & 34.97 & 55.72 & \textbf{60.15} & 64.83 & \textbf{61.37}\\
+    YOLO26s & H-WIoU  & 71.42 & 51.46 & 8.84 & 49.04 & 33.93 & 53.24 & 59.68 & \textbf{64.86} & 57.85\\
+    YOLO26s & IGWD  & 71.91 & \textbf{52.76} & \textbf{9.82} & \textbf{51.72} & \textbf{38.91} & \textbf{56.48} & 60.10 & 63.24 & 58.93\\
+    \midrule
+    YOLOv8s & CIoU  & \textbf{72.37} & \textbf{53.84} & 9.85 & \textbf{51.91} & \textbf{36.57} & \textbf{57.79} & 61.35 & 65.36 & 60.31\\
+    YOLOv8s & H-TAL  & 71.87 & 51.68 & 7.81 & 49.04 & 33.88 & 55.30 & 61.35 & 64.46 & 59.18\\
+    YOLOv8s & H-WIoU  & 72.12 & 53.00 & 9.37 & 50.56 & 33.90 & 55.74 & \textbf{61.74} & \textbf{66.29} & \textbf{60.41}\\
+    YOLOv8s & IGWD  & 72.19 & 53.51 & \textbf{10.06} & 51.49 & 35.47 & 57.23 & 61.68 & 65.20 & 59.65\\
+\bottomrule
+\end{tabular}%
+}\end{table}
+
+Across the official test results, the effect depends on the detector and metric. In the canonical TinyPerson comparison, FCOS with the full H-WIoU bundle raises tiny1 AP50 from 9.95\% to 15.71\%, while Cascade R-CNN has nearly unchanged tiny1 AP50 and lower overall AP50 and AP75. On AI-TOD-v2, FCOS H-WIoU raises AP from 16.65\% to 17.16\%, while AP for very tiny objects falls from 4.05\% to 3.26\%. These results describe the tested Seed-42 checkpoints and do not show a uniform benefit across models.
+
+Figure~\ref{fig:official_test_overview} summarizes the metric spread across all 71 canonical and extended test evaluations; exact values are listed in Tables~\ref{tab:tinyperson_official_test}, \ref{tab:aitod_official_test}, \ref{tab:extended_aitod_test}, and \ref{tab:extended_tinyperson_test}. Each marker represents one checkpoint; color identifies detector family, while circles and triangles distinguish the 20 canonical from the 51 additional models. The left panel plots AI-TOD-v2 AP against AP$_{50}$ for 32 models; the right plots TinyPerson overall AP$_{50}$ against tiny1 AP$_{50}$ for 39 models. These benchmark-specific metric plots summarize tested checkpoints and do not establish a statistical ranking.
+
+\begin{figure}[t]
+  \centering
+  \includesvg[width=\textwidth,inkscapelatex=false]{figures/fig7_official_test_overview}
+  \caption{Metric overview of canonical and additional official-test models.}
+  \label{fig:official_test_overview}
+\end{figure}
+
+\subsection{Computational Efficiency and Inference Latency}
+\label{sec:latency_benchmark}
+
+Because the proposed loss and assignment terms are used only during training, they introduce no additional inference-time operators. At test time, the network architecture, number of parameters, and FLOPs are identical to the corresponding baselines.
+
+Table~\ref{tab:inference_efficiency} reports forward-pass latency and throughput on an NVIDIA RTX 5070 Ti, measured over all $1,684$ real Scale Match TinyPerson validation tiles. Each model uses batch size 1, with 50 warmup inputs followed by 1,684 timed inputs; tiles are bilinearly resized to the listed input resolution. Timing covers model forward passes and excludes image loading, resizing, and host-to-device transfer. Latency differences are relative to the family's baseline; boldface marks the highest FPS and lowest latency within each family.
+
+\begin{table}[t]
+  \centering
+  \caption{TinyPerson inference efficiency.}
+  \label{tab:inference_efficiency}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{llcccccc}
+    \toprule
+    Family & Variant & Input Res. & Params & GFLOPs & Latency (ms) & FPS & Latency $\Delta$\\
+    \midrule
+    Faster R-CNN & Baseline & $512\times512$ & 41.3M & 70.18 & $18.41 \pm 2.42$ & 54.3 & ---\\
+    Faster R-CNN & EH-WIoU Dual & $512\times512$ & 41.3M & 70.18 & \textbf{$17.55 \pm 0.80$} & \textbf{57.0} & $-4.7\%$\\
+    \midrule
+    FCOS & GIoU Baseline & $512\times512$ & 32.1M & 51.34 & $14.89 \pm 0.88$ & 67.2 & ---\\
+    FCOS & H-WIoU + Gaussian centerness & $512\times512$ & 32.1M & 51.34 & \textbf{$14.85 \pm 0.94$} & \textbf{67.4} & $-0.3\%$\\
+    FCOS & H-WIoU + Gaussian centerness + TOD sampling & $512\times512$ & 32.1M & 51.34 & $15.05 \pm 1.00$ & 66.5 & $+1.1\%$\\
+    \midrule
+    Cascade R-CNN & Baseline & $512\times512$ & 41.9M & 118.35 & \textbf{$20.03 \pm 0.84$} & \textbf{49.9} & ---\\
+    Cascade R-CNN & EH-WIoU & $512\times512$ & 41.9M & 118.35 & $20.27 \pm 0.81$ & 49.3 & $+1.2\%$\\
+    \midrule
+    RetinaNet & Baseline & $512\times512$ & 32.2M & 52.17 & \textbf{$11.00 \pm 0.93$} & \textbf{90.9} & ---\\
+    RetinaNet & H-WIoU & $512\times512$ & 32.2M & 52.17 & $11.01 \pm 1.02$ & \textbf{90.9} & $+0.05\%$\\
+    \midrule
+    YOLOv8s & Baseline & $640\times640$ & 11.1M & 14.33 & \textbf{$4.86 \pm 0.63$} & \textbf{205.7} & ---\\
+    YOLOv8s & H-TAL & $640\times640$ & 11.1M & 14.33 & $4.87 \pm 0.66$ & 205.3 & $+0.2\%$\\
+    \midrule
+    YOLO26s & Baseline & $640\times640$ & 9.9M & 10.39 & \textbf{$7.53 \pm 0.79$} & \textbf{132.7} & ---\\
+    YOLO26s & H-STAL (NMS-Free) & $640\times640$ & 9.9M & 10.39 & $7.61 \pm 0.75$ & 131.4 & $+1.0\%$\\
+    \bottomrule
+  \end{tabular}%
+  }
+\end{table}
+
+Because H-WIoU, HLA, H-TAL, and H-STAL are applied during training, they do not introduce additional inference-time modules. On the tested RTX 5070 Ti, measured forward-time differences on TinyPerson validation tiles range from -4.7\% to +1.2\% relative to the corresponding baselines. These measurements are consistent with the unchanged inference computation, but should not be interpreted as evidence that the proposed method makes inference faster.
+
+
+\section{Ablations and Factorial Analysis}
+
+\subsection{Faster R-CNN Placement Breakdown}
+\label{sec:placement_factorial}
+
+Table~\ref{tab:placement_factorial} breaks down the effect of applying scale homotopy to RPN assignment versus RoI regression in Faster R-CNN. Boldface marks the highest value in each metric column.
+
+\begin{table}[t]
+  \centering
+  \caption{Faster R-CNN placement ablation on TinyPerson.}
+  \label{tab:placement_factorial}
+  \small
+  \begin{tabular}{lccccc}
+    \toprule
+    Placement Strategy & $\mathrm{AP}_{25}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{all}}$ & $\mathrm{AP}_{75}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ & $\mathrm{AP}_{50}^{\mathrm{reas.}}$\\
+    \midrule
+    Baseline & 59.30 & 42.22 & 5.92 & 20.35 & 54.59\\
+    RoI Loss Only & 58.37 & 41.12 & 5.55 & 23.72 & 56.93\\
+    RPN HLA Only & 58.57 & \textbf{42.48} & \textbf{6.12} & 22.59 & 54.52\\
+    Dual (HLA + RoI H-WIoU) & \textbf{59.48} & 42.22 & 6.05 & \textbf{25.65} & \textbf{61.75}\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includesvg[width=0.88\textwidth,inkscapelatex=false]{figures/fig3_placement_results}
+  \caption{Faster R-CNN placement results on TinyPerson.}
+  \label{fig:placement_results}
+\end{figure}
+
+As shown in Table~\ref{tab:placement_factorial} and Figure~\ref{fig:placement_results}, modifying RPN assignment alone (HLA) yields the highest overall $\mathrm{AP}_{50}$ ($42.48\%$). Meanwhile, combining HLA with RoI H-WIoU (Dual placement) produces the best microscopic $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ ($25.65\%$) and reasonable-scale $\mathrm{AP}_{50}$ ($61.75\%$).
+
+\subsection{FCOS Factorial Analysis}
+\label{sec:factorial}
+
+We analyze three FCOS factors: the regression loss (GIoU or H-WIoU), centerness (standard or Gaussian), and sampling (standard or TOD-adaptive). Table~\ref{tab:fcos_factorial} displays all eight combinations from the frozen Seed-42 protocol. Each row uses its best validation AP$_{50}$ checkpoint and passed full-validation replay; boldface marks the highest score in each metric column.
+
+\begin{table}[t]
+  \centering
+  \caption{FCOS factorial results on TinyPerson.}
+  \label{tab:fcos_factorial}
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    Configuration & $\mathrm{AP}_{50}^{\mathrm{all}}$ & $\mathrm{AP}_{50}^{\mathrm{tiny1}}$ & $\mathrm{AP}_{50}^{\mathrm{reas.}}$\\
+    \midrule
+    GIoU baseline & 27.52 & 5.58 & 43.45\\
+    GIoU + TOD sampling & 27.89 & 6.94 & 46.60\\
+    GIoU + Gaussian centerness & 0.00 & 0.00 & 0.00\\
+    GIoU + Gaussian centerness + TOD sampling & 0.00 & 0.00 & 0.00\\
+    \midrule
+    H-WIoU (standard settings) & 26.23 & 5.66 & 40.48\\
+    H-WIoU + TOD sampling & 27.23 & 6.34 & 44.24\\
+    H-WIoU + Gaussian centerness & \textbf{31.13} & 8.10 & \textbf{51.26}\\
+    H-WIoU + Gaussian centerness + TOD sampling & 30.10 & \textbf{11.92} & 41.47\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Figure~\ref{fig:factorial_transfer} plots overall and tiny1 AP$_{50}$ for the eight arms from the hash-bound factorial manifest and accepted full-validation replay.
+
+\begin{figure}[t]
+  \centering
+  \includesvg[width=0.88\textwidth,inkscapelatex=false]{figures/fig4_factorial_transfer}
+  \caption{FCOS factorial AP$_{50}$ by configuration.}
+  \label{fig:factorial_transfer}
+\end{figure}
+
+\paragraph{Stabilizing Degenerate Training.}
+Under the evaluated FCOS protocol, the two GIoU configurations with Gaussian centerness produce zero AP. The corresponding H-WIoU configurations do not: H-WIoU with Gaussian centerness reaches 31.13\% overall $\mathrm{AP}_{50}$, while adding TOD-adaptive sampling reaches 11.92\% tiny1 $\mathrm{AP}_{50}$. This comparison shows an interaction between the regression objective and Gaussian centerness; it does not isolate the mechanism behind the zero-AP results. Figure~\ref{fig:factorial_transfer} illustrates this pattern.
+
+\subsection{Entropy Coupling Factor ($\beta$)}
+\label{sec:beta_sweep}
+Sweeping the entropy coupling parameter $\beta \in \{0, 0.25, 0.5, 0.75, 1.0\}$ in Faster R-CNN yields overall $\mathrm{AP}_{50}$ values of $42.23\%$, $42.39\%$, $42.48\%$, $42.47\%$, and $42.97\%$, with corresponding tiny1 values of $26.32\%$, $24.92\%$, $22.59\%$, $24.52\%$, and $26.46\%$. Setting $\beta = 1.0$ improves overall $\mathrm{AP}_{50}$ by $+0.74$ pp over the uncoupled $\beta = 0$ reference, while reasonable-scale AP increases from $56.62\%$ to $59.78\%$ ($+3.16$ pp).
+
+
+\section{Discussion}
+Across the reported validation and official-test comparisons, some H-WIoU configurations improve tiny-object scores, while changes in aggregate scores depend on the detector and training setup. On the official test splits, TinyPerson FCOS with the full bundle has higher tiny1 AP50 than its baseline, but the Cascade R-CNN comparison has slightly lower overall AP50. On AI-TOD-v2, the FCOS H-WIoU model improves overall AP over its baseline but has a lower very-tiny AP. These single-seed results describe the tested checkpoints; they do not establish a universal advantage or explain why a difference occurs.
+
+
+\section{Limitations and Boundaries}
+H-WIoU has several important boundaries. First, the centroid-gradient lower bound applies only to the uncapped SNGD and target-normalized W$_2$ affinities on compact, strictly disjoint box domains in exact real arithmetic; it is not a global, scale-uniform guarantee and does not imply convergence of the full detector. It does not cover YOLO's capped exponent or numerical saturation. Second, all reported experiments use a single random seed (42), so run-to-run variance and statistical significance are not estimated. Third, SNGD uses logarithms while the target-normalized W$_2$ route does not; both use an exponential affinity and add training-time computation, which is not separately benchmarked here. Finally, the empirical effect is detector- and configuration-dependent: several experiments show improvements on tiny-object subsets together with neutral or negative changes in aggregate metrics.
+
+
+\section{Conclusion}
+We studied Scale-Adaptive Wasserstein--IoU (H-WIoU) as a family that blends an arm-specific scale-normalized geometric affinity with IoU using a target-scale-dependent gate. The gradient result is limited to the uncapped SNGD and target-normalized W$_2$ variants on the compact, strictly disjoint box domain stated in the analysis. We applied the identified similarities to regression and label assignment in several detector families.
+
+Across 71 official-test evaluations from TinyPerson and AI-TOD-v2, the observed effects vary by detector and metric. Several tested configurations score higher on selected tiny-object metrics, while other aggregate scores are unchanged or lower. In the single-seed TinyPerson homotopy-form comparison, the sigmoid form had higher validation AP, AP$_{50}$, and tiny1 AP$_{50}$ than the rational form. The results support further study of scale-conditioned box similarity, but do not establish that the rational gate is the best choice or that H-WIoU improves every detector. Since all experiments use Seed 42, run-to-run variation is not measured. The proposed terms are used during training and add no inference-time operators.
+
+\begin{thebibliography}{35}
+  \small
+  \bibitem{yu2020tinyperson}
+  X.~Yu, Y.~Gong, N.~Jiang, Q.~Ye, and Z.~Han, ``Scale match for tiny person detection,'' in \emph{Proc. WACV}, 2020, pp.~1257--1265.
+
+  \bibitem{wang2021aitod}
+  J.~Wang, W.~Yang, H.~Guo, R.~Zhang, and G.-S.~Xia, ``Tiny object detection in aerial images,'' in \emph{Proc. ICPR}, 2021, pp.~3791--3798.
+
+  \bibitem{xu2022aitodv2nwd}
+  C.~Xu, J.~Wang, W.~Yang, H.~Yu, L.~Yu, and G.-S.~Xia, ``Detecting tiny objects in aerial images: A normalized Wasserstein distance and a new benchmark,'' \emph{ISPRS J. Photogramm. Remote Sens.}, vol.~190, pp.~79--93, 2022.
+
+  \bibitem{rezatofighi2019generalized}
+  H.~Rezatofighi, N.~Tsoi, J.~Gwak, A.~Sadeghian, I.~Reid, and S.~Savarese, ``Generalized intersection over union: A metric and a loss for bounding box regression,'' in \emph{Proc. CVPR}, 2019, pp.~658--666.
+
+  \bibitem{zheng2020distance}
+  Z.~Zheng, P.~Wang, W.~Liu, J.~Li, R.~Ye, and D.~Ren, ``Distance-IoU loss: Faster and better learning for bounding box regression,'' in \emph{Proc. AAAI}, 2020, pp.~12993--13000.
+
+  \bibitem{wang2021nwd}
+  J.~Wang, C.~Xu, W.~Yang, and L.~Yu, ``A normalized Gaussian Wasserstein distance for tiny object detection,'' \emph{arXiv:2110.13389}, 2021.
+
+  \bibitem{girshick2015fast}
+  R.~Girshick, ``Fast R-CNN,'' in \emph{Proc. ICCV}, 2015, pp.~1440--1448.
+
+  \bibitem{zhang2022eiou}
+  Y.-F.~Zhang, W.~Ren, Z.~Zhang, Z.~Jia, L.~Wang, and T.~Tan, ``Focal and efficient IOU loss for accurate bounding box regression,'' \emph{Neurocomputing}, vol.~506, pp.~146--157, 2022.
+
+  \bibitem{he2021alphaiou}
+  J.~He, S.~Erfani, X.~Ma, J.~Bailey, Y.~Chi, and X.-S.~Hua, ``$\alpha$-IoU: A generalized IoU for accurate bounding box regression,'' in \emph{Proc. NeurIPS}, 2021, pp.~10999--11011.
+
+  \bibitem{tong2023wiou}
+  Z.~Tong, Y.~Chen, Z.~Xu, and R.~Yu, ``Wise-IoU: Bounding box regression loss with dynamic focusing mechanism,'' \emph{arXiv:2301.10051}, 2023.
+
+  \bibitem{ghevondean2022siou}
+  Z.~Gevorgyan, ``SIoU loss: More powerful learning for bounding box regression,'' \emph{arXiv:2205.12740}, 2022.
+
+  \bibitem{zhang2023inneriou}
+  H.~Zhang, C.~Xu, and S.~Zhang, ``Inner-IoU: More effective intersection over union loss with auxiliary bounding box,'' \emph{arXiv:2311.02877}, 2023.
+
+  \bibitem{villani2009optimal}
+  C.~Villani, \emph{Optimal Transport: Old and New}, vol.~338. Springer, 2009.
+
+  \bibitem{peyre2019computational}
+  G.~Peyr{\'e} and M.~Cuturi, ``Computational optimal transport: With applications to data science,'' \emph{Found. Trends Mach. Learn.}, vol.~11, pp.~355--607, 2019.
+
+  \bibitem{yang2021gwd}
+  X.~Yang, J.~Yan, Q.~Ming, W.~Wang, X.~Zhang, and Q.~Tian, ``Rethinking rotated object detection with Gaussian Wasserstein distance loss,'' in \emph{Proc. ICML}, 2021, pp.~11830--11841.
+
+  \bibitem{yang2021kld}
+  X.~Yang, X.~Yang, J.~Yang, Q.~Ming, W.~Wang, Q.~Tian, and J.~Yan, ``Learning high-precision bounding box for rotated object detection via Kullback-Leibler divergence,'' in \emph{Proc. NeurIPS}, 2021, pp.~18381--18394.
+
+  \bibitem{hu2025cfenet}
+  H.~Hu, S.-B.~Chen, and J.~Tang, ``Improved Gaussian Wasserstein distance: A smooth adaptive new metric for remote sensing tiny object detection,'' \emph{IEEE Trans. Multimedia}, pp.~1--14, 2026, doi: 10.1109/TMM.2026.3675527.
+
+  \bibitem{guan2025gcd}
+  Z.~Guan, X.~Fu, P.~Huang, H.~Zhang, H.~Du, Y.~Liu, Y.~Wang, and Q.~Ma, ``Gaussian combined distance: A generic metric for object detection,'' \emph{IEEE Geosci. Remote Sens. Lett.}, vol.~22, pp.~1--5, 2025.
+
+  \bibitem{ying2024safit}
+  X.~Ying et al., ``Visible-thermal tiny object detection: A benchmark dataset and baselines,'' \emph{arXiv:2406.14482}, 2024.
+
+  \bibitem{lin2017fpn}
+  T.-Y.~Lin, P.~Doll{\'a}r, R.~Girshick, K.~He, B.~Hariharan, and S.~Belongie, ``Feature pyramid networks for object detection,'' in \emph{Proc. CVPR}, 2017, pp.~2117--2125.
+
+  \bibitem{lin2017focal}
+  T.-Y.~Lin, P.~Goyal, R.~Girshick, K.~He, and P.~Doll{\'a}r, ``Focal loss for dense object detection,'' in \emph{Proc. ICCV}, 2017, pp.~2980--2988.
+
+  \bibitem{zhang2020atss}
+  S.~Zhang, C.~Chi, Y.~Yao, Z.~Lei, and S.~Z.~Li, ``Bridging the gap between anchor-based and anchor-free detection via adaptive training sample selection,'' in \emph{Proc. CVPR}, 2020, pp.~9759--9768.
+
+  \bibitem{kim2020paa}
+  K.~Kim and H.~S.~Lee, ``Probabilistic anchor assignment with IoU prediction for object detection,'' in \emph{Proc. ECCV}, 2020, pp.~355--371.
+
+  \bibitem{ge2021ota}
+  Z.~Ge, S.~Liu, Z.~Li, O.~Yoshie, and J.~Sun, ``OTA: Optimal transport assignment for object detection,'' in \emph{Proc. CVPR}, 2021, pp.~303--312.
+
+  \bibitem{xu2022rfla}
+  C.~Xu, J.~Wang, W.~Yang, H.~Yu, L.~Yu, and G.-S.~Xia, ``RFLA: Gaussian receptive field based label assignment for tiny object detection,'' in \emph{Proc. ECCV}, 2022, pp.~526--543.
+
+  \bibitem{shi2024simd}
+  S.~Shi, Q.~Fang, X.~Xu, and T.~Zhao, ``Similarity distance-based label assignment for tiny object detection,'' in \emph{Proc. IROS}, 2024, pp.~13711--13718.
+
+  \bibitem{feng2021tood}
+  C.~Feng, Y.~Zhong, Y.~Gao, M.~R.~Scott, and W.~Huang, ``TOOD: Task-aligned one-stage object detection,'' in \emph{Proc. ICCV}, 2021, pp.~3510--3519.
+
+  \bibitem{wang2024yolov9}
+  C.-Y.~Wang, I.-H.~Yeh, and H.-Y.~M.~Liao, ``YOLOv9: Learning what you want to learn using programmable gradient information,'' \emph{arXiv:2402.13616}, 2024.
+
+  \bibitem{jocher2023yolo}
+  G.~Jocher, A.~Chaurasia, and J.~Qiu, ``Ultralytics YOLOv8,'' 2023. [Online]. Available: \url{https://github.com/ultralytics/ultralytics}
+
+  \bibitem{ren2015faster}
+  S.~Ren, K.~He, R.~Girshick, and J.~Sun, ``Faster R-CNN: Towards real-time object detection with region proposal networks,'' in \emph{Proc. NeurIPS}, 2015, pp.~91--99.
+
+  \bibitem{cai2018cascade}
+  Z.~Cai and N.~Vasconcelos, ``Cascade R-CNN: Delving into high quality object detection,'' in \emph{Proc. CVPR}, 2018, pp.~6154--6162.
+
+  \bibitem{tian2019fcos}
+  Z.~Tian, C.~Shen, H.~Chen, and T.~He, ``FCOS: Fully convolutional one-stage object detection,'' in \emph{Proc. ICCV}, 2019, pp.~9627--9636.
+
+  \bibitem{wang2024yolov10}
+  A.~Wang, H.~Chen, L.~Liu, K.~Chen, Z.~Lin, J.~Han, and G.~Ding, ``YOLOv10: Real-time end-to-end object detection,'' \emph{arXiv:2405.14458}, 2024.
+
+  \bibitem{ultralytics2026yolo26}
+  Ultralytics, ``YOLO26: Real-time end-to-end object detection,'' 2026. [Online]. Available: \url{https://github.com/ultralytics/ultralytics}
+
+  \bibitem{he2016resnet}
+  K.~He, X.~Zhang, S.~Ren, and J.~Sun, ``Deep residual learning for image recognition,'' in \emph{Proc. CVPR}, 2016, pp.~770--778.
+\end{thebibliography}
+
+\clearpage
+\clearpage
+\appendix
+\section{Qualitative Detections}
+\label{sec:qualitative}
+Qualitative examples from the Scale Match TinyPerson validation split are presented in Figure~\ref{fig:tinyperson_qualitative}. The historical AI-TOD-v2 sigma-4 examples are excluded because that run has an unresolved frozen-versus-runtime protocol identity conflict.
+
+Predictions use a score threshold of $0.30$ and class-aware NMS at IoU $0.50$. Green dashed boxes mark ground-truth targets; orange and blue boxes show matched baseline and proposed predictions; red boxes mark unmatched false positives. The proposed configuration combines H-WIoU with Gaussian centerness and TOD-adaptive sampling, so these examples do not isolate the loss effect. In the microscopic crowded scene, correct matches rise from $3$ to $7$ with false positives rising from $13$ to $38$. In the dense seaside scene, detections rise from $8/36$ to $17/36$ with false positives rising from $21$ to $45$. In the limitation case, both configurations detect $1/2$ targets, with $8$ and $7$ false positives, respectively.
+
+\begin{figure}[h!]
+  \centering
+  \includesvg[width=0.95\textwidth,inkscapelatex=false]{figures/fig5_tinyperson_qualitative}
+  \caption{Qualitative TinyPerson validation examples.}
+  \label{fig:tinyperson_qualitative}
+\end{figure}
+
+\end{document}
