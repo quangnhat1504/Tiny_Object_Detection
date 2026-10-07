@@ -2,10 +2,9 @@
 title: "Journal Project Activity Log"
 type: "overview"
 created: "2026-08-23"
-updated: "2026-09-26"
+updated: "2026-10-07"
 sources:
   - "journal/manuscript/main.tex"
-  - "journal/results"
 tags:
   - "journal"
   - "log"
@@ -1485,3 +1484,15 @@ tags:
 * **Layout**: Removed the forced page break before Table 4 and tightened the preceding Table 3 discussion to avoid an isolated line. Rebuilt and visually reviewed all 21 A4 pages; no clipping, overlap, or unreadable tables were found.
 * **PDF**: Two direct `pdflatex -interaction=nonstopmode -halt-on-error` passes succeeded. The final log has no reference, LaTeX/PDF, overfull, or underfull warnings; `scripts/audit_agent_contract.py` returned `PASS`. `main.tex` SHA-256: `9E3A77549503629B0724C869A032FCA4C7FFD78AE86076DA3DDD79FF628D60EF`; `main.pdf` SHA-256: `851F77B31D620A0C7E601FCC72CD570FAB13020C1F4FDD8EC374BD004ECEB698`.
 * **Evidence scope**: No scores, table cells, selectors, or figure assets changed. No training, Kaggle call, validation replay, cloud mutation, official-test access, repository `data/`, or sealed-project access occurred. Details: `journal/audits/manuscript_final_evidence_reconciliation_20260927.md`.
+
+## [2026-10-07] update | Add scoped wiki index and safe cleanup policy
+
+* Added an index for the wiki records present on this branch and marked the September 27 overview as historical.
+* Archived the old overview because most source paths it listed are absent from this branch. Its contents remain unchanged under `archive/legacy-journal-wiki-20261007/` and in Git history.
+* Added a retention policy and a read-only-by-default hygiene auditor. The auditor excludes protected data, test, runtime, and worktree paths before scanning.
+* A broader local wiki snapshot was not copied because its source records do not match this branch. The branch-level findings are in `journal/audits/repository_wiki_cleanup_20261007.md`.
+## [2026-10-07] update | Add a scoped wiki index and safe cleanup policy
+
+* Added an index for the two wiki records present on this branch and labeled the September 27 overview as historical.
+* Added a retention policy and a read-only-by-default hygiene auditor. The auditor prunes protected data, test, runtime, and worktree paths before scanning.
+* A broader local wiki snapshot was not copied to this branch because its source list does not match files available here. The branch-level findings are recorded in `journal/audits/repository_wiki_cleanup_20261007.md`.
