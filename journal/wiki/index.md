@@ -2,11 +2,10 @@
 title: "Journal Wiki Index"
 type: "overview"
 created: "2026-10-07"
-updated: "2026-10-07"
+updated: "2026-10-08"
 sources:
-  - "journal/wiki/overview.md"
-  - "journal/wiki/log.md"
-  - "journal/audits/repository_wiki_cleanup_20261007.md"
+  - "journal/wiki/RepositoryHygiene.md"
+  - "journal/wiki/EvidenceBoundaries.md"
 tags:
   - "index"
   - "journal"
@@ -14,13 +13,11 @@ tags:
 
 # Journal Wiki Index
 
-Use this index for the records present in this branch. The older overview is
-preserved under `archive/legacy-journal-wiki-20261007/`; the dated log records
-changes to the wiki and repository rules.
+Use these pages for the repository hygiene workflow and its evidence limits.
+The older September overview remains under
+`archive/legacy-journal-wiki-20261007/`; it describes a different source tree.
 
 ## Pages
 
-- [Branch status and evidence limits](overview.md)
-- [Research log](log.md)
-- [Artifact retention policy](../../docs/ARTIFACT_RETENTION_POLICY.md)
-- [Wiki and cleanup audit](../audits/repository_wiki_cleanup_20261007.md)
+- [Repository hygiene](RepositoryHygiene.md)
+- [Evidence boundaries](EvidenceBoundaries.md)
